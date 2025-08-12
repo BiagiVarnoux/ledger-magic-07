@@ -91,6 +91,15 @@ const seedAccounts: Account[] = [
 function fmt(n: number) { return n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function todayISO() { return new Date().toISOString().slice(0,10); }
 function yyyymm(date: string) { return date.slice(0,7); }
+function toDecimal(val?: string) {
+  if (!val) return 0;
+  // Permite "1.234,56" o "1,234.56" y espacios
+  const s = val.replace(/\s+/g, "");
+  // Si hay coma, se asume decimal: quita puntos de miles y cambia coma por punto
+  const normalized = s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s;
+  const n = parseFloat(normalized);
+  return isNaN(n) ? 0 : n;
+}
 function cmpDate(a:string,b:string){ return a.localeCompare(b); }
 function generateEntryId(date: string, existing: JournalEntry[]) {
   const prefix = date.slice(0,7); // yyyy-mm
@@ -225,12 +234,21 @@ export default function AppContableES() {
   function setLine(idx:number, patch: Partial<LineDraft>){ setLines(ls => ls.map((l,i)=> i===idx ? { ...l, ...patch } : l)); }
   function removeLine(idx:number){ setLines(ls => ls.filter((_,i)=>i!==idx)); }
 
-  const totals = useMemo(()=>{ let d=0,c=0; for (const l of lines){ const dv = parseFloat(l.debit||"0"); const cv = parseFloat(l.credit||"0"); if (!isNaN(dv)) d+=dv; if (!isNaN(cv)) c+=cv; } return { debit:d, credit:c, diff: +(d-c).toFixed(2) }},[lines]);
+  const totals = useMemo(() => {
+  let d = 0, c = 0;
+  for (const l of lines) {
+    const dv = toDecimal(l.debit);
+    const cv = toDecimal(l.credit);
+    d += dv; c += cv;
+  }
+  return { debit: d, credit: c, diff: +(d - c).toFixed(2) };
+}, [lines]);
+
 
   function validateAndBuildEntry(): JournalEntry | null {
     const clean: JournalLine[] = [];
     for (const l of lines){
-      const acc = l.account_id?.trim(); const d = +(l.debit||"0"); const c = +(l.credit||"0");
+      const acc = l.account_id?.trim(); const d = toDecimal(l.debit); const c = toDecimal(l.credit);
       if (!acc && d===0 && c===0) continue;
       if (!acc) { toast.error("Línea sin cuenta"); return null; }
       const accExists = accounts.find(a => a.id === acc && a.is_active);
@@ -470,10 +488,18 @@ export default function AppContableES() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Input type="number" min="0" step="0.01" value={l.debit||""} onChange={e=> setLine(idx,{debit:e.target.value, credit: ""})} />
+                          <Input type="text" inputMode="decimal" placeholder="0,00" value={l.debit || ""} onChange={(e) => setLine(idx, {debit: e.target.value.replace(/[^\d,.\-]/g, ""), // permite números, coma, punto, signo
+credit: ""
+    })
+  }
+/>
                         </TableCell>
                         <TableCell>
-                          <Input type="number" min="0" step="0.01" value={l.credit||""} onChange={e=> setLine(idx,{credit:e.target.value, debit: ""})} />
+                          <Input type="text" inputMode="decimal" placeholder="0,00" value={l.credit || ""} onChange={(e) => setLine(idx, {credit: e.target.value.replace(/[^\d,.\-]/g, ""),
+      debit: ""
+    })
+  }
+/>
                         </TableCell>
                         <TableCell>
                           <Input value={l.line_memo||""} onChange={e=> setLine(idx,{line_memo:e.target.value})} />
