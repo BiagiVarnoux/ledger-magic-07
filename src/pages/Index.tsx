@@ -64,6 +64,29 @@ interface Account {
 interface JournalLine { account_id: string; debit: number; credit: number; line_memo?: string; }
 interface JournalEntry { id: string; date: string; memo?: string; lines: JournalLine[]; void_of?: string; }
 
+// --- Abreviaciones de tipo de cuenta y lógica de signo (+/-) ---
+const TYPE_ABBR: Record<AccountType, string> = {
+  ACTIVO: "A",
+  PASIVO: "P",
+  PATRIMONIO: "Pn",
+  INGRESO: "I",
+  GASTO: "G",
+};
+
+function increaseSideFor(type: AccountType): Side {
+  // A y G aumentan en DEBE; P, Pn e I aumentan en HABER
+  return (type === "ACTIVO" || type === "GASTO") ? "DEBE" : "HABER";
+}
+
+function signForLine(account: Account | undefined, line: { debit?: number | string; credit?: number | string }): "+" | "-" | "" {
+  if (!account) return "";
+  const debitVal = typeof line.debit === "string" ? toDecimal(line.debit) : (line.debit || 0);
+  const creditVal = typeof line.credit === "string" ? toDecimal(line.credit) : (line.credit || 0);
+  const side: Side = debitVal > 0 ? "DEBE" : creditVal > 0 ? "HABER" : "" as any;
+  if (!side) return "";
+  return side === increaseSideFor(account.type) ? "+" : "-";
+}
+
 // ------------------------ Seeds (ES) ------------------------
 const seedAccounts: Account[] = [
   { id: "A.1",  name: "Banco MN",            type: "ACTIVO",      normal_side: "DEBE",  is_active: true },
@@ -235,15 +258,14 @@ export default function AppContableES() {
   function removeLine(idx:number){ setLines(ls => ls.filter((_,i)=>i!==idx)); }
 
   const totals = useMemo(() => {
-  let d = 0, c = 0;
-  for (const l of lines) {
-    const dv = toDecimal(l.debit);
-    const cv = toDecimal(l.credit);
-    d += dv; c += cv;
-  }
-  return { debit: d, credit: c, diff: +(d - c).toFixed(2) };
-}, [lines]);
-
+    let d = 0, c = 0;
+    for (const l of lines) {
+      const dv = toDecimal(l.debit);
+      const cv = toDecimal(l.credit);
+      d += dv; c += cv;
+    }
+    return { debit: d, credit: c, diff: +(d - c).toFixed(2) };
+  }, [lines]);
 
   function validateAndBuildEntry(): JournalEntry | null {
     const clean: JournalLine[] = [];
@@ -478,28 +500,60 @@ export default function AppContableES() {
                     {lines.map((l,idx)=> (
                       <TableRow key={idx}>
                         <TableCell>
-                          <Select value={l.account_id} onValueChange={(v)=> setLine(idx,{account_id:v})}>
-                            <SelectTrigger><SelectValue placeholder="Selecciona cuenta"/></SelectTrigger>
-                            <SelectContent className="max-h-80">
-                              {accounts.filter(a=>a.is_active).map(a=> (
-                                <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <Select value={l.account_id} onValueChange={(v)=> setLine(idx,{account_id:v})}>
+                                <SelectTrigger><SelectValue placeholder="Selecciona cuenta"/></SelectTrigger>
+                                <SelectContent className="max-h-80">
+                                  {accounts.filter(a=>a.is_active).map(a=> (
+                                    <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {(() => {
+                              const acc = accounts.find(x=>x.id===l.account_id);
+                              if (!acc) return null;
+                              const abbr = TYPE_ABBR[acc.type];
+                              const sgn = signForLine(acc, l);
+                              return (
+                                <span
+                                  className="font-mono text-xs px-2 py-0.5 rounded-full border whitespace-nowrap"
+                                  title={l.account_id}
+                                >
+                                  {abbr} {sgn}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Input type="text" inputMode="decimal" placeholder="0,00" value={l.debit || ""} onChange={(e) => setLine(idx, {debit: e.target.value.replace(/[^\d,.\-]/g, ""), // permite números, coma, punto, signo
-credit: ""
-    })
-  }
-/>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0,00"
+                            value={l.debit || ""}
+                            onChange={(e) =>
+                              setLine(idx, {
+                                debit: e.target.value.replace(/[^\d,.\-]/g, ""),
+                                credit: ""
+                              })
+                            }
+                          />
                         </TableCell>
                         <TableCell>
-                          <Input type="text" inputMode="decimal" placeholder="0,00" value={l.credit || ""} onChange={(e) => setLine(idx, {credit: e.target.value.replace(/[^\d,.\-]/g, ""),
-      debit: ""
-    })
-  }
-/>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0,00"
+                            value={l.credit || ""}
+                            onChange={(e) =>
+                              setLine(idx, {
+                                credit: e.target.value.replace(/[^\d,.\-]/g, ""),
+                                debit: ""
+                              })
+                            }
+                          />
                         </TableCell>
                         <TableCell>
                           <Input value={l.line_memo||""} onChange={e=> setLine(idx,{line_memo:e.target.value})} />
@@ -552,12 +606,21 @@ credit: ""
                             <div className="text-sm space-y-1">
                               {e.lines.map((l,i)=>{
                                 const a = accounts.find(x=>x.id===l.account_id);
-                                return <div key={i} className="flex gap-2">
-                                  <span className="font-mono w-24">{l.account_id}</span>
-                                  <span className="flex-1">{a?.name}</span>
-                                  <span className="w-24 text-right">{l.debit?fmt(l.debit):""}</span>
-                                  <span className="w-24 text-right">{l.credit?fmt(l.credit):""}</span>
-                                </div>;
+                                const abbr = a ? TYPE_ABBR[a.type] : "?";
+                                const sgn = signForLine(a, l);
+                                return (
+                                  <div key={i} className="flex items-center gap-2">
+                                    <span
+                                      className="font-mono text-xs px-2 py-0.5 rounded-full border"
+                                      title={l.account_id}
+                                    >
+                                      {abbr} {sgn}
+                                    </span>
+                                    <span className="flex-1">{a?.name || l.account_id}</span>
+                                    <span className="w-24 text-right">{l.debit?fmt(l.debit):""}</span>
+                                    <span className="w-24 text-right">{l.credit?fmt(l.credit):""}</span>
+                                  </div>
+                                );
                               })}
                             </div>
                           </TableCell>
