@@ -1,3 +1,4 @@
+// src/pages/Index.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,22 +9,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Undo2, Pencil, Trash2, Save, Plus, Download } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 
-/** App Contable (ES) — Supabase (cliente integrado) + LocalStorage fallback
+/** App Contable (ES) – Supabase lazy + LocalStorage fallback
  * - Plan de Cuentas (CRUD)
  * - Libro Diario (doble partida)
- * - Libro Mayor (saldo inicial/acumulado)
+ * - Libro Mayor (corriente con saldo)
  * - Reportes (Balance de comprobación, Estado de resultados, Balance general)
- * - Anulación de asientos
- * - Export CSV
+ * - Anulación de asientos y export CSV
  * Persistencia:
- *   - Se usa supabase (cliente ya configurado en el proyecto). Si hay error de conexión, se recurre a LocalStorage.
+ *   - Si hay envs de Supabase -> usa Supabase (lazy import)
+ *   - Si no, usa LocalStorage
  */
 
-// SEO básicos
-const PAGE_TITLE = "App Contable — (Supabase/LocalStorage)";
-const PAGE_DESC = "Contabilidad simple en español con plan de cuentas, diario, mayor y reportes.";
+// ------------------------ Supabase lazy (no instanciar al cargar) ------------------------
+type MaybeSupa = import("@supabase/supabase-js").SupabaseClient | null;
+
+const readEnv = () => ({
+  url:
+    (typeof window !== "undefined" && (window as any).env?.NEXT_PUBLIC_SUPABASE_URL) ||
+    (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_SUPABASE_URL) ||
+    "",
+  key:
+    (typeof window !== "undefined" && (window as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
+    (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
+    "",
+});
+
+let supabasePromise: Promise<MaybeSupa> | null = null;
+async function getSupabase(): Promise<MaybeSupa> {
+  const { url, key } = readEnv();
+  if (!url || !key) return null;
+  if (!supabasePromise) {
+    supabasePromise = (async () => {
+      const { createClient } = await import("@supabase/supabase-js");
+      return createClient(url, key, { auth: { persistSession: false } });
+    })();
+  }
+  return supabasePromise;
+}
 
 // ------------------------ Tipos (ES) ------------------------
 const ACCOUNT_TYPES = ["ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "GASTO"] as const;
@@ -102,48 +125,56 @@ const LocalAdapter: IDataAdapter = {
 
 const SupaAdapter: IDataAdapter = {
   async loadAccounts(){
-    const { data, error } = await supabase.from("accounts").select("id,name,type,normal_side,is_active").order("id");
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
+    const { data, error } = await supa.from("accounts").select("id,name,type,normal_side,is_active").order("id");
     if (error) throw error; return (data||[]) as Account[];
   },
   async upsertAccount(a){
-    const { error } = await supabase.from("accounts").upsert(a);
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAccount(a);
+    const { error } = await supa.from("accounts").upsert(a);
     if (error) throw error;
   },
   async deleteAccount(id){
-    const { error } = await supabase.from("accounts").delete().eq("id", id);
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAccount(id);
+    const { error } = await supa.from("accounts").delete().eq("id", id);
     if (error) throw error;
   },
   async loadEntries(){
-    const { data: heads, error: e1 } = await supabase.from("journal_entries").select("id,date,memo,void_of").order("date");
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadEntries();
+    const { data: heads, error: e1 } = await supa.from("journal_entries").select("id,date,memo,void_of").order("date");
     if (e1) throw e1; const ids = (heads||[]).map(h=>h.id); if (ids.length===0) return [];
-    const { data: lines, error: e2 } = await supabase.from("journal_lines").select("entry_id,account_id,debit,credit,line_memo").in("entry_id", ids);
+    const { data: lines, error: e2 } = await supa.from("journal_lines").select("entry_id,account_id,debit,credit,line_memo").in("entry_id", ids);
     if (e2) throw e2;
     const map = new Map<string, JournalEntry>();
-    for (const h of (heads||[])) map.set(h.id, { id: h.id, date: String((h as any).date), memo: (h as any).memo || undefined, void_of: (h as any).void_of || undefined, lines: [] });
+    for (const h of (heads||[])) map.set(h.id, { id: h.id, date: String(h.date), memo: (h as any).memo || undefined, void_of: (h as any).void_of || undefined, lines: [] });
     for (const l of (lines||[])) { const e = map.get((l as any).entry_id)!; e.lines.push({ account_id: (l as any).account_id, debit: Number((l as any).debit)||0, credit: Number((l as any).credit)||0, line_memo: (l as any).line_memo||undefined }); }
     return Array.from(map.values()).sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id));
   },
   async saveEntry(e){
-    const { error: e1 } = await supabase.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null });
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
+    const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null });
     if (e1) throw e1;
-    const { error: eDel } = await supabase.from("journal_lines").delete().eq("entry_id", e.id);
+    const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
     if (eDel) throw eDel;
     const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: l.debit, credit: l.credit, line_memo: l.line_memo||null }));
-    const { error: e2 } = await supabase.from("journal_lines").insert(payload);
+    const { error: e2 } = await supa.from("journal_lines").insert(payload);
     if (e2) throw e2;
   },
   async deleteEntry(id){
-    const { error: e1 } = await supabase.from("journal_lines").delete().eq("entry_id", id);
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteEntry(id);
+    const { error: e1 } = await supa.from("journal_lines").delete().eq("entry_id", id);
     if (e1) throw e1;
-    const { error: e2 } = await supabase.from("journal_entries").delete().eq("id", id);
+    const { error: e2 } = await supa.from("journal_entries").delete().eq("id", id);
     if (e2) throw e2;
   },
 };
 
-// Elegir adapter dinámicamente según conectividad Supabase
+// Elegir adapter dinámicamente
 async function pickAdapter(): Promise<IDataAdapter> {
+  const supa = await getSupabase();
+  if (!supa) return LocalAdapter;
   try {
-    const { error } = await supabase.from("accounts").select("id").limit(1);
+    const { error } = await supa.from("accounts").select("id").limit(1);
     if (error) return LocalAdapter;
     return SupaAdapter;
   } catch { return LocalAdapter; }
@@ -151,12 +182,6 @@ async function pickAdapter(): Promise<IDataAdapter> {
 
 // ------------------------ App ------------------------
 export default function AppContableES() {
-  useEffect(() => {
-    document.title = PAGE_TITLE;
-    const meta = document.querySelector('meta[name="description"]');
-    if (meta) meta.setAttribute("content", PAGE_DESC);
-  }, []);
-
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [adapter, setAdapter] = useState<IDataAdapter>(LocalAdapter);
@@ -293,7 +318,7 @@ export default function AppContableES() {
 
   // ------- Exportar CSV -------
   function exportCSV(filename: string, rows: string[][]){
-    const csv = rows.map(r=> r.map(x=>`"${(x??"").toString().replace(/\"/g,'""')}"`).join(",")).join("\n");
+    const csv = rows.map(r=> r.map(x=>`"${(x??"").toString().replaceAll('"','""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
   }
@@ -677,7 +702,7 @@ export default function AppContableES() {
       </Tabs>
 
       <footer className="text-xs text-muted-foreground pt-2">
-        Persistencia local por defecto. Supabase se usa automáticamente si hay conectividad.
+        Persistencia local por defecto. Si Supabase está configurado en Lovable, se usa automáticamente (lazy).
       </footer>
     </div>
   );
