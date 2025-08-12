@@ -468,8 +468,8 @@ export default function AppContableES() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[260px]">Cuenta</TableHead>
-                      <TableHead className="w-[150px]">Debe</TableHead>
-                      <TableHead className="w-[150px]">Haber</TableHead>
+                      <TableHead className="w-[180px]">Debe</TableHead>
+                      <TableHead className="w-[180px]">Haber</TableHead>
                       <TableHead>Glosa línea</TableHead>
                       <TableHead className="text-right"><Button size="sm" variant="outline" onClick={addLine}><Plus className="w-4 h-4"/></Button></TableHead>
                     </TableRow>
