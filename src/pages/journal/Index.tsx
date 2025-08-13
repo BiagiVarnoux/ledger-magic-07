@@ -209,9 +209,9 @@ export default function JournalPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[140px]">Cuenta</TableHead>
-                  <TableHead>Debe</TableHead>
-                  <TableHead>Haber</TableHead>
+                  <TableHead className="w-[250px]">Cuenta</TableHead>
+                  <TableHead className="w-[200px]">Debe</TableHead>
+                  <TableHead className="w-[200px]">Haber</TableHead>
                   <TableHead>Glosa línea</TableHead>
                   <TableHead className="text-right">
                     <Button size="sm" variant="outline" onClick={addLine}>
