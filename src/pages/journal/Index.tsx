@@ -1,0 +1,370 @@
+// src/pages/journal/Index.tsx
+import React, { useState, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { Undo2, Trash2, Save, Plus, Download } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAccounting } from '@/accounting/AccountingProvider';
+import { JournalEntry, JournalLine } from '@/accounting/types';
+import { 
+  todayISO, 
+  toDecimal, 
+  generateEntryId, 
+  cmpDate, 
+  fmt,
+  TYPE_ABBR,
+  signForLine
+} from '@/accounting/utils';
+
+type LineDraft = { 
+  account_id?: string; 
+  debit?: string; 
+  credit?: string; 
+  line_memo?: string; 
+};
+
+export default function JournalPage() {
+  const { accounts, entries, setEntries, adapter } = useAccounting();
+  const [date, setDate] = useState<string>(todayISO());
+  const [memo, setMemo] = useState<string>("");
+  const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
+
+  function addLine() { 
+    setLines(ls => [...ls, {}]); 
+  }
+  
+  function setLine(idx: number, patch: Partial<LineDraft>) { 
+    setLines(ls => ls.map((l, i) => i === idx ? { ...l, ...patch } : l)); 
+  }
+  
+  function removeLine(idx: number) { 
+    setLines(ls => ls.filter((_, i) => i !== idx)); 
+  }
+
+  const totals = useMemo(() => {
+    let d = 0, c = 0;
+    for (const l of lines) {
+      const dv = toDecimal(l.debit);
+      const cv = toDecimal(l.credit);
+      d += dv; c += cv;
+    }
+    return { debit: d, credit: c, diff: +(d - c).toFixed(2) };
+  }, [lines]);
+
+  function validateAndBuildEntry(): JournalEntry | null {
+    const clean: JournalLine[] = [];
+    for (const l of lines) {
+      const acc = l.account_id?.trim(); 
+      const d = toDecimal(l.debit); 
+      const c = toDecimal(l.credit);
+      if (!acc && d === 0 && c === 0) continue;
+      if (!acc) { toast.error("Línea sin cuenta"); return null; }
+      const accExists = accounts.find(a => a.id === acc && a.is_active);
+      if (!accExists) { toast.error(`Cuenta ${acc} no existe o está inactiva`); return null; }
+      if (d > 0 && c > 0) { toast.error("Una línea no puede tener Debe y Haber a la vez"); return null; }
+      if (d === 0 && c === 0) { toast.error("Línea sin importe"); return null; }
+      clean.push({ account_id: acc, debit: d, credit: c, line_memo: l.line_memo?.trim() });
+    }
+    if (clean.length < 2) { toast.error("El asiento necesita al menos 2 líneas"); return null; }
+    const sumD = clean.reduce((s, l) => s + l.debit, 0); 
+    const sumC = clean.reduce((s, l) => s + l.credit, 0);
+    if (+sumD.toFixed(2) !== +sumC.toFixed(2)) { toast.error("El asiento no cuadra (Debe ≠ Haber)"); return null; }
+    const id = generateEntryId(date, entries);
+    return { id, date, memo: memo.trim() || undefined, lines: clean };
+  }
+
+  async function saveEntry() {
+    const je = validateAndBuildEntry(); 
+    if (!je) return;
+    try { 
+      await adapter.saveEntry(je); 
+      setEntries(await adapter.loadEntries()); 
+      toast.success(`Asiento ${je.id} guardado`); 
+      setMemo(""); 
+      setLines([{}, {}, {}]); 
+    }
+    catch(e: any) { 
+      toast.error(e.message || "Error guardando asiento"); 
+    }
+  }
+
+  async function deleteEntry(id: string) { 
+    try { 
+      await adapter.deleteEntry(id); 
+      setEntries(await adapter.loadEntries()); 
+      toast.success("Asiento eliminado"); 
+    } catch(e: any) { 
+      toast.error(e.message || "No se pudo eliminar asiento"); 
+    } 
+  }
+
+  async function voidEntry(orig: JournalEntry) {
+    const inv: JournalEntry = { 
+      id: generateEntryId(orig.date, entries), 
+      date: orig.date, 
+      memo: (orig.memo ? `${orig.memo} ` : "") + "(ANULACIÓN)", 
+      void_of: orig.id, 
+      lines: orig.lines.map(l => ({ 
+        account_id: l.account_id, 
+        debit: l.credit, 
+        credit: l.debit, 
+        line_memo: l.line_memo 
+      })) 
+    };
+    try { 
+      await adapter.saveEntry(inv); 
+      setEntries(await adapter.loadEntries()); 
+      toast.success(`Asiento ${orig.id} anulado con ${inv.id}`); 
+    } catch(e: any) { 
+      toast.error(e.message || "No se pudo anular"); 
+    }
+  }
+
+  function exportJournal() {
+    const rows = [["ID", "Fecha", "Glosa", "Cuenta", "Debe", "Haber", "Glosa línea"]];
+    for (const e of entries) { 
+      for (const l of e.lines) { 
+        rows.push([
+          e.id, 
+          e.date, 
+          e.memo || "", 
+          l.account_id, 
+          String(l.debit), 
+          String(l.credit), 
+          l.line_memo || ""
+        ]); 
+      } 
+    }
+    const csv = rows.map(r => r.map(x => `"${(x ?? "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob); 
+    const a = document.createElement('a'); 
+    a.href = url; 
+    a.download = "libro_diario.csv"; 
+    a.click(); 
+    URL.revokeObjectURL(url);
+  }
+
+  // Helper para mostrar etiqueta con abreviación y signo
+  function AccountLabel({ accountId, line }: { accountId: string; line?: { debit?: string | number; credit?: string | number } }) {
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) return <span className="text-muted-foreground">--</span>;
+    
+    const abbr = TYPE_ABBR[account.type];
+    const sign = line ? signForLine(account, line) : "";
+    
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              {abbr}
+              {sign && <span className={sign === "+" ? "text-green-600" : "text-red-600"}>{sign}</span>}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{accountId}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Libro Diario</h1>
+        <Button variant="outline" onClick={exportJournal}>
+          <Download className="w-4 h-4 mr-2" />
+          Exportar Diario
+        </Button>
+      </div>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Nuevo Asiento</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-6 gap-3">
+            <div>
+              <Label>Fecha</Label>
+              <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div className="col-span-5">
+              <Label>Glosa</Label>
+              <Input 
+                value={memo} 
+                onChange={e => setMemo(e.target.value)} 
+                placeholder="Descripción del asiento" 
+              />
+            </div>
+          </div>
+
+          <div className="border rounded-xl">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[140px]">Cuenta</TableHead>
+                  <TableHead>Debe</TableHead>
+                  <TableHead>Haber</TableHead>
+                  <TableHead>Glosa línea</TableHead>
+                  <TableHead className="text-right">
+                    <Button size="sm" variant="outline" onClick={addLine}>
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lines.map((l, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Select 
+                          value={l.account_id} 
+                          onValueChange={(v) => setLine(idx, { account_id: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona cuenta" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-80">
+                            {accounts.filter(a => a.is_active).map(a => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.id} — {a.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        value={l.debit || ""} 
+                        onChange={e => setLine(idx, { debit: e.target.value, credit: "" })} 
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        value={l.credit || ""} 
+                        onChange={e => setLine(idx, { credit: e.target.value, debit: "" })} 
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input 
+                        value={l.line_memo || ""} 
+                        onChange={e => setLine(idx, { line_memo: e.target.value })} 
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => removeLine(idx)} 
+                        title="Eliminar fila"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow>
+                  <TableCell className="text-right font-medium">Totales</TableCell>
+                  <TableCell className="font-semibold">{fmt(totals.debit)}</TableCell>
+                  <TableCell className="font-semibold">{fmt(totals.credit)}</TableCell>
+                  <TableCell colSpan={2} className={"text-right font-semibold " + (totals.diff === 0 ? "text-green-600" : "text-red-600")}>
+                    {totals.diff === 0 ? "Cuadra" : `Diferencia: ${fmt(totals.diff)}`}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={saveEntry}>
+              <Save className="w-4 h-4 mr-2" />
+              Guardar asiento
+            </Button>
+            <Button variant="outline" onClick={() => { setMemo(""); setLines([{}, {}, {}]); }}>
+              Limpiar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Asientos registrados</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-xl overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Glosa</TableHead>
+                  <TableHead>Detalle</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.sort((a, b) => cmpDate(b.date, a.date)).map(e => (
+                  <TableRow key={e.id}>
+                    <TableCell className="font-mono">{e.id}</TableCell>
+                    <TableCell>{e.date}</TableCell>
+                    <TableCell>{e.memo}</TableCell>
+                    <TableCell>
+                      <div className="text-sm space-y-1">
+                        {e.lines.map((l, i) => {
+                          const a = accounts.find(x => x.id === l.account_id);
+                          return (
+                            <div key={i} className="flex gap-2 items-center">
+                              <span className="font-mono w-24">{l.account_id}</span>
+                              <AccountLabel accountId={l.account_id} line={l} />
+                              <span className="flex-1">{a?.name}</span>
+                              <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
+                              <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => voidEntry(e)} 
+                        title="Anular"
+                      >
+                        <Undo2 className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => deleteEntry(e.id)} 
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
