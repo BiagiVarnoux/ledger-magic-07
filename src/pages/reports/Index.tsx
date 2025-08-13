@@ -75,25 +75,45 @@ export default function ReportsPage() {
   }, [accounts, entries, isFrom, isTo]);
 
   const balanceSheet = useMemo(() => {
-    const sums = { activo: 0, pasivo: 0, patrimonio: 0 } as any;
-    for (const a of accounts) {
-      let bal = 0;
-      for (const e of entries) { 
-        if (e.date > bsDate) continue; 
-        for (const l of e.lines) { 
-          if (l.account_id !== a.id) continue; 
-          bal += signedBalanceFor(l.debit, l.credit, a.normal_side); 
-        } 
-      }
-      if (a.type === 'ACTIVO') sums.activo += bal;
-      if (a.type === 'PASIVO') sums.pasivo += bal;
-      if (a.type === 'PATRIMONIO') sums.patrimonio += bal;
+  const sums = { activo: 0, pasivo: 0, patrimonio: 0 } as any;
+
+  // Saldos por tipo de cuenta hasta la fecha del balance (bsDate)
+  for (const a of accounts) {
+    let bal = 0;
+    for (const e of entries) { 
+      if (e.date > bsDate) continue; 
+      for (const l of e.lines) { 
+        if (l.account_id !== a.id) continue; 
+        bal += signedBalanceFor(l.debit, l.credit, a.normal_side); 
+      } 
     }
-    return { 
-      ...sums, 
-      check: +(sums.activo - (sums.pasivo + sums.patrimonio)).toFixed(2) 
-    };
-  }, [accounts, entries, bsDate]);
+    if (a.type === 'ACTIVO')      sums.activo      += bal;
+    if (a.type === 'PASIVO')      sums.pasivo      += bal;
+    if (a.type === 'PATRIMONIO')  sums.patrimonio  += bal;
+  }
+
+  // Utilidad acumulada (ingresos - gastos) hasta bsDate
+  let ingresos = 0, gastos = 0;
+  for (const e of entries) {
+    if (e.date > bsDate) continue;
+    for (const l of e.lines) {
+      const a = accounts.find(x => x.id === l.account_id);
+      if (!a) continue;
+      if (a.type === 'INGRESO') { ingresos += (l.credit - l.debit); }
+      if (a.type === 'GASTO')   { gastos   += (l.debit  - l.credit); }
+    }
+  }
+  const utilidad = ingresos - gastos;
+
+  // Patrimonio = patrimonio contable + utilidad acumulada
+  sums.patrimonio += utilidad;
+
+  return { 
+    ...sums, 
+    check: +(sums.activo - (sums.pasivo + sums.patrimonio)).toFixed(2) 
+  };
+}, [accounts, entries, bsDate]);
+
 
   return (
     <div className="space-y-6">
