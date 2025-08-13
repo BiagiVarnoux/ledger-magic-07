@@ -7,13 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { Undo2, Trash2, Save, Plus, Download } from 'lucide-react';
+import { Undo2, Trash2, Save, Plus, Download, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { JournalEntry, JournalLine } from '@/accounting/types';
 import { 
   todayISO, 
   toDecimal, 
+  formatDecimal,
   generateEntryId, 
   cmpDate, 
   fmt,
@@ -33,6 +34,7 @@ export default function JournalPage() {
   const [date, setDate] = useState<string>(todayISO());
   const [memo, setMemo] = useState<string>("");
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
+  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
 
   function addLine() { 
     setLines(ls => [...ls, {}]); 
@@ -74,7 +76,7 @@ export default function JournalPage() {
     const sumD = clean.reduce((s, l) => s + l.debit, 0); 
     const sumC = clean.reduce((s, l) => s + l.credit, 0);
     if (+sumD.toFixed(2) !== +sumC.toFixed(2)) { toast.error("El asiento no cuadra (Debe ≠ Haber)"); return null; }
-    const id = generateEntryId(date, entries);
+    const id = editingEntry ? editingEntry.id : generateEntryId(date, entries);
     return { id, date, memo: memo.trim() || undefined, lines: clean };
   }
 
@@ -84,13 +86,34 @@ export default function JournalPage() {
     try { 
       await adapter.saveEntry(je); 
       setEntries(await adapter.loadEntries()); 
-      toast.success(`Asiento ${je.id} guardado`); 
-      setMemo(""); 
-      setLines([{}, {}, {}]); 
+      toast.success(`Asiento ${je.id} ${editingEntry ? 'actualizado' : 'guardado'}`); 
+      clearForm();
     }
     catch(e: any) { 
       toast.error(e.message || "Error guardando asiento"); 
     }
+  }
+
+  function clearForm() {
+    setMemo(""); 
+    setLines([{}, {}, {}]); 
+    setEditingEntry(null);
+  }
+
+  function editEntry(entry: JournalEntry) {
+    if (entry.void_of) {
+      toast.error("No se puede editar un asiento de anulación");
+      return;
+    }
+    setDate(entry.date);
+    setMemo(entry.memo || "");
+    setLines(entry.lines.map(l => ({
+      account_id: l.account_id,
+      debit: formatDecimal(l.debit),
+      credit: formatDecimal(l.credit),
+      line_memo: l.line_memo
+    })));
+    setEditingEntry(entry);
   }
 
   async function deleteEntry(id: string) { 
@@ -187,7 +210,7 @@ export default function JournalPage() {
 
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Nuevo Asiento</CardTitle>
+          <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-6 gap-3">
@@ -243,24 +266,22 @@ export default function JournalPage() {
                         {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        value={l.debit || ""} 
-                        onChange={e => setLine(idx, { debit: e.target.value, credit: "" })} 
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        value={l.credit || ""} 
-                        onChange={e => setLine(idx, { credit: e.target.value, debit: "" })} 
-                      />
-                    </TableCell>
+                     <TableCell>
+                       <Input 
+                         type="text" 
+                         value={l.debit || ""} 
+                         onChange={e => setLine(idx, { debit: e.target.value, credit: "" })} 
+                         placeholder="0,00"
+                       />
+                     </TableCell>
+                     <TableCell>
+                       <Input 
+                         type="text" 
+                         value={l.credit || ""} 
+                         onChange={e => setLine(idx, { credit: e.target.value, debit: "" })} 
+                         placeholder="0,00"
+                       />
+                     </TableCell>
                     <TableCell>
                       <Input 
                         value={l.line_memo || ""} 
@@ -293,10 +314,10 @@ export default function JournalPage() {
           <div className="flex gap-2">
             <Button onClick={saveEntry}>
               <Save className="w-4 h-4 mr-2" />
-              Guardar asiento
+              {editingEntry ? "Actualizar asiento" : "Guardar asiento"}
             </Button>
-            <Button variant="outline" onClick={() => { setMemo(""); setLines([{}, {}, {}]); }}>
-              Limpiar
+            <Button variant="outline" onClick={clearForm}>
+              {editingEntry ? "Cancelar edición" : "Limpiar"}
             </Button>
           </div>
         </CardContent>
@@ -320,45 +341,62 @@ export default function JournalPage() {
               </TableHeader>
               <TableBody>
                 {entries.sort((a, b) => cmpDate(b.date, a.date)).map(e => (
-                  <TableRow key={e.id}>
-                    <TableCell className="font-mono">{e.id}</TableCell>
-                    <TableCell>{e.date}</TableCell>
-                    <TableCell>{e.memo}</TableCell>
-                    <TableCell>
-                      <div className="text-sm space-y-1">
-                        {e.lines.map((l, i) => {
-                          const a = accounts.find(x => x.id === l.account_id);
-                          return (
-                            <div key={i} className="flex gap-2 items-center">
-                              <span className="font-mono w-24">{l.account_id}</span>
-                              <AccountLabel accountId={l.account_id} line={l} />
-                              <span className="flex-1">{a?.name}</span>
-                              <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
-                              <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => voidEntry(e)} 
-                        title="Anular"
-                      >
-                        <Undo2 className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => deleteEntry(e.id)} 
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <React.Fragment key={e.id}>
+                    <TableRow>
+                      <TableCell className="font-mono">{e.id}</TableCell>
+                      <TableCell>{e.date}</TableCell>
+                      <TableCell></TableCell>
+                      <TableCell>
+                        <div className="text-sm space-y-1">
+                          {e.lines.map((l, i) => {
+                            const a = accounts.find(x => x.id === l.account_id);
+                            return (
+                              <div key={i} className="flex gap-2 items-center">
+                                <AccountLabel accountId={l.account_id} line={l} />
+                                <span className="flex-1">{a?.name}</span>
+                                <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
+                                <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => editEntry(e)} 
+                          title="Editar"
+                          disabled={!!e.void_of}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => voidEntry(e)} 
+                          title="Anular"
+                        >
+                          <Undo2 className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => deleteEntry(e.id)} 
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {e.memo && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-muted-foreground italic text-sm pl-8">
+                          {e.memo}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 ))}
               </TableBody>
             </Table>

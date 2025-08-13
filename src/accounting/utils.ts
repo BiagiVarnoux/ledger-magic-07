@@ -15,12 +15,17 @@ export function yyyymm(date: string) {
 
 export function toDecimal(val?: string) {
   if (!val) return 0;
-  // Permite "1.234,56" o "1,234.56" y espacios
+  // Permite "1.234,56" o "1234,56" (coma como decimal)
   const s = val.replace(/\s+/g, "");
   // Si hay coma, se asume decimal: quita puntos de miles y cambia coma por punto
   const normalized = s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s;
   const n = parseFloat(normalized);
   return isNaN(n) ? 0 : n;
+}
+
+export function formatDecimal(n: number): string {
+  // Formatea número para input usando coma como decimal
+  return n === 0 ? "" : n.toString().replace(".", ",");
 }
 
 export function cmpDate(a: string, b: string) { 
