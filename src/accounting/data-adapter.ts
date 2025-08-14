@@ -1,31 +1,12 @@
 // src/accounting/data-adapter.ts
 import { Account, JournalEntry, seedAccounts } from './types';
 import { cmpDate } from './utils';
+import { supabase } from '@/integrations/supabase/client';
 
 type MaybeSupa = import("@supabase/supabase-js").SupabaseClient | null;
 
-const readEnv = () => ({
-  url:
-    (typeof window !== "undefined" && (window as any).env?.NEXT_PUBLIC_SUPABASE_URL) ||
-    (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_SUPABASE_URL) ||
-    "",
-  key:
-    (typeof window !== "undefined" && (window as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
-    (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
-    "",
-});
-
-let supabasePromise: Promise<MaybeSupa> | null = null;
 async function getSupabase(): Promise<MaybeSupa> {
-  const { url, key } = readEnv();
-  if (!url || !key) return null;
-  if (!supabasePromise) {
-    supabasePromise = (async () => {
-      const { createClient } = await import("@supabase/supabase-js");
-      return createClient(url, key, { auth: { persistSession: false } });
-    })();
-  }
-  return supabasePromise;
+  return supabase;
 }
 
 export interface IDataAdapter {
@@ -82,7 +63,10 @@ export const SupaAdapter: IDataAdapter = {
   },
   async upsertAccount(a){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAccount(a);
-    const { error } = await supa.from("accounts").upsert(a);
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+    const accountWithUser = { ...a, user_id: user.id };
+    const { error } = await supa.from("accounts").upsert(accountWithUser);
     if (error) throw error;
   },
   async deleteAccount(id){
@@ -103,7 +87,9 @@ export const SupaAdapter: IDataAdapter = {
   },
   async saveEntry(e){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
-    const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null });
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+    const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id });
     if (e1) throw e1;
     const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
     if (eDel) throw eDel;

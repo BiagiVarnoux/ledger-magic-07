@@ -22,6 +22,7 @@ export type Database = {
           name: string
           normal_side: string
           type: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -30,6 +31,7 @@ export type Database = {
           name: string
           normal_side: string
           type: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -38,6 +40,7 @@ export type Database = {
           name?: string
           normal_side?: string
           type?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -47,6 +50,7 @@ export type Database = {
           date: string
           id: string
           memo: string | null
+          user_id: string | null
           void_of: string | null
         }
         Insert: {
@@ -54,6 +58,7 @@ export type Database = {
           date: string
           id: string
           memo?: string | null
+          user_id?: string | null
           void_of?: string | null
         }
         Update: {
@@ -61,6 +66,7 @@ export type Database = {
           date?: string
           id?: string
           memo?: string | null
+          user_id?: string | null
           void_of?: string | null
         }
         Relationships: [

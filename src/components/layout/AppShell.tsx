@@ -2,9 +2,11 @@
 import React from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 export function AppShell() {
   const location = useLocation();
+  const { signOut } = useAuth();
 
   const navItems = [
     { path: '/accounts', label: 'Plan de Cuentas' },
@@ -33,6 +35,14 @@ export function AppShell() {
                 <Link to={item.path}>{item.label}</Link>
               </Button>
             ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => signOut()}
+              className="ml-4"
+            >
+              Cerrar Sesión
+            </Button>
           </nav>
         </div>
       </header>
