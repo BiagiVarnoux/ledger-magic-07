@@ -1,17 +1,12 @@
 // src/integrations/supabase/client.ts
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
-const url =
-  (typeof window !== "undefined" && (window as any).env?.NEXT_PUBLIC_SUPABASE_URL) ||
-  (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_SUPABASE_URL) ||
-  "";
+const supabaseUrl = "https://glhflhqpsjlyrymquzsn.supabase.co";
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaGZsaHFwc2pseXJ5bXF1enNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUwMDU2NzIsImV4cCI6MjA3MDU4MTY3Mn0.3SyI1bpqEPIi6IjQtcMNYpbFsdBWZ8ntxQwaj5Soe5Q";
 
-const key =
-  (typeof window !== "undefined" && (window as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
-  (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
-  "";
-
-// Exporta null si faltan envs; Index.tsx ya hace fallback a LocalStorage
-export const supabase: SupabaseClient | null = (url && key)
-  ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } })
-  : null;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
