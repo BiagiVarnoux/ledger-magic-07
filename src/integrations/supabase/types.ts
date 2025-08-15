@@ -22,7 +22,7 @@ export type Database = {
           name: string
           normal_side: string
           type: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           created_at?: string
@@ -31,7 +31,7 @@ export type Database = {
           name: string
           normal_side: string
           type: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           created_at?: string
@@ -40,7 +40,7 @@ export type Database = {
           name?: string
           normal_side?: string
           type?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -105,13 +105,6 @@ export type Database = {
           line_memo?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "journal_lines_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "journal_lines_entry_id_fkey"
             columns: ["entry_id"]
