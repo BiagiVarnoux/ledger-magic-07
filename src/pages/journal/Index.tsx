@@ -340,7 +340,7 @@ export default function JournalPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.sort((a, b) => cmpDate(a.date, b.date)).map(e => (
+                {entries.sort((a, b) => a.id.localeCompare(b.id)).map(e => (
                   <React.Fragment key={e.id}>
                     <TableRow>
                       <TableCell className="font-mono">{e.id}</TableCell>
