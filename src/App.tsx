@@ -2,10 +2,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/components/auth/AuthProvider";
 import { AuthForm } from "@/components/auth/AuthForm";
-import Index from "./pages/Index";
+import { AccountingProvider } from "./accounting/AccountingProvider";
+import { AppShell } from "./components/layout/AppShell";
+import AccountsPage from "./pages/accounts/Index";
+import JournalPage from "./pages/journal/Index";
+import LedgerPage from "./pages/ledger/Index";
+import ReportsPage from "./pages/reports/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,11 +32,18 @@ function AppContent() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Index />} />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <AccountingProvider>
+        <Routes>
+          <Route path="/" element={<AppShell />}>
+            <Route index element={<Navigate to="/accounts" replace />} />
+            <Route path="accounts" element={<AccountsPage />} />
+            <Route path="journal" element={<JournalPage />} />
+            <Route path="ledger" element={<LedgerPage />} />
+            <Route path="reports" element={<ReportsPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </AccountingProvider>
     </BrowserRouter>
   );
 }
