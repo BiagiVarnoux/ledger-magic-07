@@ -1,5 +1,5 @@
 // src/pages/journal/Index.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { Undo2, Trash2, Save, Plus, Download, Pencil } from 'lucide-react';
+import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { JournalEntry, JournalLine } from '@/accounting/types';
@@ -35,6 +35,14 @@ export default function JournalPage() {
   const [memo, setMemo] = useState<string>("");
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
+    return localStorage.getItem('journal-show-line-memos') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('journal-show-line-memos', showLineMemos.toString());
+  }, [showLineMemos]);
 
   function addLine() { 
     setLines(ls => [...ls, {}]); 
@@ -325,7 +333,27 @@ export default function JournalPage() {
 
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Asientos registrados</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Asientos registrados</CardTitle>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              >
+                <ArrowUpDown className="w-4 h-4 mr-2" />
+                {sortOrder === 'asc' ? 'Más antiguo' : 'Más reciente'}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowLineMemos(!showLineMemos)}
+              >
+                {showLineMemos ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+                {showLineMemos ? 'Ocultar glosas' : 'Mostrar glosas'}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="border rounded-xl overflow-hidden">
@@ -340,7 +368,7 @@ export default function JournalPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.sort((a, b) => a.id.localeCompare(b.id)).map(e => (
+                {entries.sort((a, b) => sortOrder === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)).map(e => (
                   <React.Fragment key={e.id}>
                     <TableRow>
                       <TableCell className="font-mono">{e.id}</TableCell>
@@ -348,17 +376,24 @@ export default function JournalPage() {
                       <TableCell></TableCell>
                       <TableCell>
                         <div className="text-sm space-y-1">
-                          {e.lines.map((l, i) => {
-                            const a = accounts.find(x => x.id === l.account_id);
-                            return (
-                              <div key={i} className="flex gap-2 items-center">
-                                <AccountLabel accountId={l.account_id} line={l} />
-                                <span className="flex-1">{a?.name}</span>
-                                <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
-                                <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
-                              </div>
-                            );
-                          })}
+                           {e.lines.map((l, i) => {
+                             const a = accounts.find(x => x.id === l.account_id);
+                             return (
+                               <div key={i} className="space-y-1">
+                                 <div className="flex gap-2 items-center">
+                                   <AccountLabel accountId={l.account_id} line={l} />
+                                   <span className="flex-1">{a?.name}</span>
+                                   <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
+                                   <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
+                                 </div>
+                                 {showLineMemos && l.line_memo && (
+                                   <div className="text-xs text-muted-foreground italic pl-6">
+                                     {l.line_memo}
+                                   </div>
+                                 )}
+                               </div>
+                             );
+                           })}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
