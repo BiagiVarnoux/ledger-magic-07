@@ -218,17 +218,7 @@ export default function JournalPage() {
 
       <Card className="shadow-sm">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setShowLineMemos(!showLineMemos)}
-            >
-              {showLineMemos ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-              {showLineMemos ? 'Ocultar glosas' : 'Mostrar glosas'}
-            </Button>
-          </div>
+          <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-6 gap-3">
@@ -338,6 +328,13 @@ export default function JournalPage() {
             </Button>
             <Button variant="outline" onClick={clearForm}>
               {editingEntry ? "Cancelar edición" : "Limpiar"}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowLineMemos(!showLineMemos)}
+            >
+              {showLineMemos ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+              {showLineMemos ? 'Ocultar glosas en línea' : 'Mostrar glosas en línea'}
             </Button>
           </div>
         </CardContent>
