@@ -35,8 +35,6 @@ export default function JournalPage() {
   const [memo, setMemo] = useState<string>("");
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [showLineMemos, setShowLineMemos] = useState<boolean>(true);
 
   function addLine() { 
     setLines(ls => [...ls, {}]); 
@@ -237,12 +235,12 @@ export default function JournalPage() {
                   <TableHead className="w-[250px]">Cuenta</TableHead>
                   <TableHead className="w-[200px]">Debe</TableHead>
                   <TableHead className="w-[200px]">Haber</TableHead>
-                   {showLineMemos && <TableHead>Glosa línea</TableHead>}
-                   <TableHead className="text-right">
-                     <Button size="sm" variant="outline" onClick={addLine}>
-                       <Plus className="w-4 h-4" />
-                     </Button>
-                   </TableHead>
+                  <TableHead>Glosa línea</TableHead>
+                  <TableHead className="text-right">
+                    <Button size="sm" variant="outline" onClick={addLine}>
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -255,9 +253,7 @@ export default function JournalPage() {
                           onValueChange={(v) => setLine(idx, { account_id: v })}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Selecciona cuenta">
-                              {l.account_id && accounts.find(a => a.id === l.account_id)?.name}
-                            </SelectValue>
+                            <SelectValue placeholder="Selecciona cuenta" />
                           </SelectTrigger>
                           <SelectContent className="max-h-80">
                             {accounts.filter(a => a.is_active).map(a => (
@@ -286,15 +282,13 @@ export default function JournalPage() {
                          placeholder="0,00"
                        />
                      </TableCell>
-                     {showLineMemos && (
-                       <TableCell>
-                         <Input 
-                           value={l.line_memo || ""} 
-                           onChange={e => setLine(idx, { line_memo: e.target.value })} 
-                         />
-                       </TableCell>
-                     )}
-                     <TableCell className="text-right">
+                    <TableCell>
+                      <Input 
+                        value={l.line_memo || ""} 
+                        onChange={e => setLine(idx, { line_memo: e.target.value })} 
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
                       <Button 
                         size="sm" 
                         variant="ghost" 
@@ -306,14 +300,14 @@ export default function JournalPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                 <TableRow>
-                   <TableCell className="text-right font-medium">Totales</TableCell>
-                   <TableCell className="font-semibold">{fmt(totals.debit)}</TableCell>
-                   <TableCell className="font-semibold">{fmt(totals.credit)}</TableCell>
-                   <TableCell colSpan={showLineMemos ? 2 : 1} className={"text-right font-semibold " + (totals.diff === 0 ? "text-green-600" : "text-red-600")}>
-                     {totals.diff === 0 ? "Cuadra" : `Diferencia: ${fmt(totals.diff)}`}
-                   </TableCell>
-                 </TableRow>
+                <TableRow>
+                  <TableCell className="text-right font-medium">Totales</TableCell>
+                  <TableCell className="font-semibold">{fmt(totals.debit)}</TableCell>
+                  <TableCell className="font-semibold">{fmt(totals.credit)}</TableCell>
+                  <TableCell colSpan={2} className={"text-right font-semibold " + (totals.diff === 0 ? "text-green-600" : "text-red-600")}>
+                    {totals.diff === 0 ? "Cuadra" : `Diferencia: ${fmt(totals.diff)}`}
+                  </TableCell>
+                </TableRow>
               </TableBody>
             </Table>
           </div>
@@ -325,28 +319,13 @@ export default function JournalPage() {
             <Button variant="outline" onClick={clearForm}>
               {editingEntry ? "Cancelar edición" : "Limpiar"}
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowLineMemos(!showLineMemos)}
-            >
-              {showLineMemos ? "Ocultar glosas" : "Mostrar glosas"}
-            </Button>
           </div>
         </CardContent>
       </Card>
 
       <Card className="shadow-sm">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Asientos registrados</CardTitle>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            >
-              {sortOrder === 'asc' ? 'Más antiguo primero' : 'Más reciente primero'}
-            </Button>
-          </div>
+          <CardTitle>Asientos registrados</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="border rounded-xl overflow-hidden">
@@ -361,9 +340,7 @@ export default function JournalPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.sort((a, b) => 
-                  sortOrder === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)
-                ).map(e => (
+                {entries.sort((a, b) => a.id.localeCompare(b.id)).map(e => (
                   <React.Fragment key={e.id}>
                     <TableRow>
                       <TableCell className="font-mono">{e.id}</TableCell>

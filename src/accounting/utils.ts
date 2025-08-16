@@ -33,9 +33,9 @@ export function cmpDate(a: string, b: string) {
 }
 
 export function generateEntryId(date: string, existing: JournalEntry[]) {
-  const monthPrefix = date.slice(5,7); // mm
-  const count = existing.filter(e => e.date.slice(5,7) === monthPrefix).length + 1;
-  return `${monthPrefix}-${String(count).padStart(5,'0')}`;
+  const prefix = date.slice(0,7); // yyyy-mm
+  const count = existing.filter(e => e.date.slice(0,7) === prefix).length + 1;
+  return `${prefix}-${String(count).padStart(5,'0')}`;
 }
 
 export function signedBalanceFor(deb: number, hab: number, side: Side) {
