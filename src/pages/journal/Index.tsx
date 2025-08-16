@@ -266,10 +266,10 @@ export default function JournalPage() {
                   <TableRow key={idx}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Select 
-                          value={l.account_id} 
-                          onValueChange={(v) => setLine(idx, { account_id: v })}
-                        >
+                         <Select 
+                           value={l.account_id || ""} 
+                           onValueChange={(v) => setLine(idx, { account_id: v })}
+                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona cuenta" />
                           </SelectTrigger>
