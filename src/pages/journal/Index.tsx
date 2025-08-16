@@ -218,7 +218,17 @@ export default function JournalPage() {
 
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowLineMemos(!showLineMemos)}
+            >
+              {showLineMemos ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+              {showLineMemos ? 'Ocultar glosas' : 'Mostrar glosas'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-6 gap-3">
@@ -239,17 +249,17 @@ export default function JournalPage() {
           <div className="border rounded-xl">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[250px]">Cuenta</TableHead>
-                  <TableHead className="w-[200px]">Debe</TableHead>
-                  <TableHead className="w-[200px]">Haber</TableHead>
-                  <TableHead>Glosa línea</TableHead>
-                  <TableHead className="text-right">
-                    <Button size="sm" variant="outline" onClick={addLine}>
-                      <Plus className="w-4 h-4" />
-                    </Button>
-                  </TableHead>
-                </TableRow>
+                 <TableRow>
+                   <TableHead className="w-[250px]">Cuenta</TableHead>
+                   <TableHead className="w-[200px]">Debe</TableHead>
+                   <TableHead className="w-[200px]">Haber</TableHead>
+                   {showLineMemos && <TableHead>Glosa línea</TableHead>}
+                   <TableHead className="text-right">
+                     <Button size="sm" variant="outline" onClick={addLine}>
+                       <Plus className="w-4 h-4" />
+                     </Button>
+                   </TableHead>
+                 </TableRow>
               </TableHeader>
               <TableBody>
                 {lines.map((l, idx) => (
@@ -290,12 +300,14 @@ export default function JournalPage() {
                          placeholder="0,00"
                        />
                      </TableCell>
-                    <TableCell>
-                      <Input 
-                        value={l.line_memo || ""} 
-                        onChange={e => setLine(idx, { line_memo: e.target.value })} 
-                      />
-                    </TableCell>
+                     {showLineMemos && (
+                       <TableCell>
+                         <Input 
+                           value={l.line_memo || ""} 
+                           onChange={e => setLine(idx, { line_memo: e.target.value })} 
+                         />
+                       </TableCell>
+                     )}
                     <TableCell className="text-right">
                       <Button 
                         size="sm" 
@@ -308,14 +320,14 @@ export default function JournalPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                <TableRow>
-                  <TableCell className="text-right font-medium">Totales</TableCell>
-                  <TableCell className="font-semibold">{fmt(totals.debit)}</TableCell>
-                  <TableCell className="font-semibold">{fmt(totals.credit)}</TableCell>
-                  <TableCell colSpan={2} className={"text-right font-semibold " + (totals.diff === 0 ? "text-green-600" : "text-red-600")}>
-                    {totals.diff === 0 ? "Cuadra" : `Diferencia: ${fmt(totals.diff)}`}
-                  </TableCell>
-                </TableRow>
+                 <TableRow>
+                   <TableCell className="text-right font-medium">Totales</TableCell>
+                   <TableCell className="font-semibold">{fmt(totals.debit)}</TableCell>
+                   <TableCell className="font-semibold">{fmt(totals.credit)}</TableCell>
+                   <TableCell colSpan={showLineMemos ? 2 : 1} className={"text-right font-semibold " + (totals.diff === 0 ? "text-green-600" : "text-red-600")}>
+                     {totals.diff === 0 ? "Cuadra" : `Diferencia: ${fmt(totals.diff)}`}
+                   </TableCell>
+                 </TableRow>
               </TableBody>
             </Table>
           </div>
@@ -335,24 +347,14 @@ export default function JournalPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Asientos registrados</CardTitle>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              >
-                <ArrowUpDown className="w-4 h-4 mr-2" />
-                {sortOrder === 'asc' ? 'Más antiguo' : 'Más reciente'}
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setShowLineMemos(!showLineMemos)}
-              >
-                {showLineMemos ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-                {showLineMemos ? 'Ocultar glosas' : 'Mostrar glosas'}
-              </Button>
-            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            >
+              <ArrowUpDown className="w-4 h-4 mr-2" />
+              {sortOrder === 'asc' ? 'Más antiguo' : 'Más reciente'}
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -379,18 +381,11 @@ export default function JournalPage() {
                            {e.lines.map((l, i) => {
                              const a = accounts.find(x => x.id === l.account_id);
                              return (
-                               <div key={i} className="space-y-1">
-                                 <div className="flex gap-2 items-center">
-                                   <AccountLabel accountId={l.account_id} line={l} />
-                                   <span className="flex-1">{a?.name}</span>
-                                   <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
-                                   <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
-                                 </div>
-                                 {showLineMemos && l.line_memo && (
-                                   <div className="text-xs text-muted-foreground italic pl-6">
-                                     {l.line_memo}
-                                   </div>
-                                 )}
+                               <div key={i} className="flex gap-2 items-center">
+                                 <AccountLabel accountId={l.account_id} line={l} />
+                                 <span className="flex-1">{a?.name}</span>
+                                 <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
+                                 <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
                                </div>
                              );
                            })}
