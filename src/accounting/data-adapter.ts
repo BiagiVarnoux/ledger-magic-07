@@ -1,5 +1,5 @@
 // src/accounting/data-adapter.ts
-import { Account, JournalEntry, seedAccounts } from './types';
+import { Account, JournalEntry, seedAccounts, TrialRow, IncomeStatement, BalanceSheet } from './types';
 import { cmpDate } from './utils';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -16,6 +16,9 @@ export interface IDataAdapter {
   loadEntries(): Promise<JournalEntry[]>;
   saveEntry(e: JournalEntry): Promise<void>;
   deleteEntry(id: string): Promise<void>;
+  loadTrialBalance(period: string): Promise<TrialRow[]>;
+  loadIncomeStatement(from: string, to: string): Promise<IncomeStatement>;
+  loadBalanceSheet(asOfDate: string): Promise<BalanceSheet>;
 }
 
 const LS_ACCOUNTS = "acc_es_v1";
@@ -53,6 +56,9 @@ export const LocalAdapter: IDataAdapter = {
     const list = await this.loadEntries(); 
     localStorage.setItem(LS_ENTRIES, JSON.stringify(list.filter(e=>e.id!==id))); 
   },
+  async loadTrialBalance(period) { return []; },
+  async loadIncomeStatement(from, to) { return { ingresos: 0, gastos: 0, utilidad: 0 }; },
+  async loadBalanceSheet(asOfDate) { return { activo: 0, pasivo: 0, patrimonio: 0, check: 0 }; }
 };
 
 export const SupaAdapter: IDataAdapter = {
@@ -103,6 +109,35 @@ export const SupaAdapter: IDataAdapter = {
     if (e1) throw e1;
     const { error: e2 } = await supa.from("journal_entries").delete().eq("id", id);
     if (e2) throw e2;
+  },
+
+  // Nuevos métodos para llamar a las funciones RPC
+  async loadTrialBalance(period){
+    const supa = await getSupabase(); if (!supa) throw new Error("Supabase no disponible");
+    const { data, error } = await supa.rpc("get_trial_balance", { period });
+    if (error) throw error;
+    return (data || []) as TrialRow[];
+  },
+
+  async loadIncomeStatement(from, to){
+    const supa = await getSupabase(); if (!supa) throw new Error("Supabase no disponible");
+    const { data, error } = await supa.rpc("get_income_statement", { from_date: from, to_date: to });
+    if (error) throw error;
+    return (data?.[0] || { ingresos: 0, gastos: 0, utilidad: 0 }) as IncomeStatement;
+  },
+
+  async loadBalanceSheet(asOfDate){
+    const supa = await getSupabase(); if (!supa) throw new Error("Supabase no disponible");
+    const { data, error } = await supa.rpc("get_balance_sheet", { as_of_date: asOfDate });
+    if (error) throw error;
+    const result = { activo: 0, pasivo: 0, patrimonio: 0, check: 0 }
+    for (const row of data || []) {
+        if(row.tipo === "ACTIVO") result.activo = Number(row.saldo);
+        if(row.tipo === "PASIVO") result.pasivo = Number(row.saldo);
+        if(row.tipo === "PATRIMONIO") result.patrimonio = Number(row.saldo);
+    }
+    result.check = Number((result.activo - (result.pasivo + result.patrimonio)).toFixed(2));
+    return result;
   },
 };
 
