@@ -28,28 +28,6 @@ export interface JournalEntry {
   void_of?: string; 
 }
 
-// Nuevas interfaces para los reportes
-export interface TrialRow {
-  id: string;
-  name: string;
-  debit: number;
-  credit: number;
-  balance: number;
-}
-
-export interface IncomeStatement {
-  ingresos: number;
-  gastos: number;
-  utilidad: number;
-}
-
-export interface BalanceSheet {
-  activo: number;
-  pasivo: number;
-  patrimonio: number;
-  check: number;
-}
-
 // Seeds (ES)
 export const seedAccounts: Account[] = [
   { id: "A.1",  name: "Banco MN",            type: "ACTIVO",      normal_side: "DEBE",  is_active: true },
