@@ -119,7 +119,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_balance_sheet: {
+        Args: { as_of_date: string }
+        Returns: {
+          saldo: number
+          tipo: string
+        }[]
+      }
+      get_income_statement: {
+        Args: { from_date: string; to_date: string }
+        Returns: {
+          gastos: number
+          ingresos: number
+          utilidad: number
+        }[]
+      }
+      get_trial_balance: {
+        Args: { period: string }
+        Returns: {
+          balance: number
+          credit: number
+          debit: number
+          id: string
+          name: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
