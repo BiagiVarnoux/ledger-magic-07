@@ -28,6 +28,15 @@ export interface JournalEntry {
   void_of?: string; 
 }
 
+export interface AuxiliaryLedgerEntry {
+  id: string;
+  client_name: string;
+  account_id: string;  // A.5 o P.1
+  initial_amount: number;
+  paid_amount: number;
+  total_balance: number;  // calculated: initial_amount - paid_amount
+}
+
 // Seeds (ES)
 export const seedAccounts: Account[] = [
   { id: "A.1",  name: "Banco MN",            type: "ACTIVO",      normal_side: "DEBE",  is_active: true },

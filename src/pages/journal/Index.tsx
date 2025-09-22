@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff } from 'lucide-react';
+import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff, Users } from 'lucide-react';
+import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { JournalEntry, JournalLine } from '@/accounting/types';
@@ -39,6 +40,19 @@ export default function JournalPage() {
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
   });
+  const [auxiliaryModal, setAuxiliaryModal] = useState<{
+    isOpen: boolean;
+    accountId: string;
+    lineAmount: number;
+    isIncrease: boolean;
+    lineIndex: number;
+  }>({
+    isOpen: false,
+    accountId: '',
+    lineAmount: 0,
+    isIncrease: false,
+    lineIndex: -1
+  });
 
   useEffect(() => {
     localStorage.setItem('journal-show-line-memos', showLineMemos.toString());
@@ -54,6 +68,40 @@ export default function JournalPage() {
   
   function removeLine(idx: number) { 
     setLines(ls => ls.filter((_, i) => i !== idx)); 
+  }
+
+  function openAuxiliaryModal(lineIndex: number) {
+    const line = lines[lineIndex];
+    if (!line.account_id) {
+      toast.error('Selecciona una cuenta primero');
+      return;
+    }
+
+    const account = accounts.find(a => a.id === line.account_id);
+    if (!account || (account.id !== 'A.5' && account.id !== 'P.1')) {
+      toast.error('Esta función solo está disponible para Cuentas por Cobrar y Cuentas por Pagar');
+      return;
+    }
+
+    const debitAmount = parseFloat(line.debit || '0');
+    const creditAmount = parseFloat(line.credit || '0');
+    const lineAmount = debitAmount || creditAmount;
+
+    if (lineAmount <= 0) {
+      toast.error('Ingresa un monto en la línea primero');
+      return;
+    }
+
+    // Determinar si es aumento o disminución según el tipo de cuenta y el lado
+    const isIncrease = (account.id === 'A.5' && debitAmount > 0) || (account.id === 'P.1' && creditAmount > 0);
+
+    setAuxiliaryModal({
+      isOpen: true,
+      accountId: account.id,
+      lineAmount,
+      isIncrease,
+      lineIndex
+    });
   }
 
   const totals = useMemo(() => {
@@ -271,7 +319,17 @@ export default function JournalPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
+                         {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
+                         {l.account_id && (l.account_id === 'A.5' || l.account_id === 'P.1') && (
+                           <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => openAuxiliaryModal(idx)}
+                             title="Gestionar libro auxiliar"
+                           >
+                             <Users className="w-4 h-4" />
+                           </Button>
+                         )}
                       </div>
                     </TableCell>
                      <TableCell>
@@ -430,6 +488,18 @@ export default function JournalPage() {
           </div>
         </CardContent>
       </Card>
+
+      <AuxiliaryLedgerModal
+        isOpen={auxiliaryModal.isOpen}
+        onClose={() => setAuxiliaryModal(prev => ({ ...prev, isOpen: false }))}
+        accountId={auxiliaryModal.accountId}
+        lineAmount={auxiliaryModal.lineAmount}
+        isIncrease={auxiliaryModal.isIncrease}
+        onSave={() => {
+          // Los movimientos ya se guardaron en el modal
+          setAuxiliaryModal(prev => ({ ...prev, isOpen: false }));
+        }}
+      />
     </div>
   );
 }

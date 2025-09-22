@@ -11,6 +11,7 @@ export function AppShell() {
   const navItems = [
     { path: '/accounts', label: 'Plan de Cuentas' },
     { path: '/journal', label: 'Libro Diario' },
+    { path: '/auxiliary-ledgers', label: 'Libros Auxiliares' },
     { path: '/ledger', label: 'Libro Mayor' },
     { path: '/reports', label: 'Reportes' },
   ];
