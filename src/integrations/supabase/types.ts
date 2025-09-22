@@ -44,6 +44,42 @@ export type Database = {
         }
         Relationships: []
       }
+      auxiliary_ledger: {
+        Row: {
+          account_id: string
+          client_name: string
+          created_at: string
+          id: string
+          initial_amount: number
+          paid_amount: number
+          total_balance: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          client_name: string
+          created_at?: string
+          id: string
+          initial_amount?: number
+          paid_amount?: number
+          total_balance?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          client_name?: string
+          created_at?: string
+          id?: string
+          initial_amount?: number
+          paid_amount?: number
+          total_balance?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       journal_entries: {
         Row: {
           created_at: string
@@ -119,7 +155,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_balance_sheet: {
+        Args: { as_of_date: string }
+        Returns: {
+          saldo: number
+          tipo: string
+        }[]
+      }
+      get_income_statement: {
+        Args: { from_date: string; to_date: string }
+        Returns: {
+          gastos: number
+          ingresos: number
+          utilidad: number
+        }[]
+      }
+      get_trial_balance: {
+        Args: { period: string }
+        Returns: {
+          balance: number
+          credit: number
+          debit: number
+          id: string
+          name: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
