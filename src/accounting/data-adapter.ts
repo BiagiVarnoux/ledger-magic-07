@@ -132,7 +132,9 @@ export const SupaAdapter: IDataAdapter = {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryEntry(a);
     const { data: { user } } = await supa.auth.getUser();
     if (!user) throw new Error("Usuario no autenticado");
-    const auxWithUser = { ...a, user_id: user.id };
+    // Remove total_balance from the object as it's a generated column
+    const { total_balance, ...auxData } = a;
+    const auxWithUser = { ...auxData, user_id: user.id };
     const { error } = await supa.from("auxiliary_ledger").upsert(auxWithUser);
     if (error) throw error;
   },

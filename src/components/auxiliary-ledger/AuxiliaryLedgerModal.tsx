@@ -124,7 +124,7 @@ export function AuxiliaryLedgerModal({
             account_id: accountId,
             initial_amount: isIncrease ? movement.amount : 0,
             paid_amount: isIncrease ? 0 : movement.amount,
-            total_balance: isIncrease ? movement.amount : -movement.amount
+            total_balance: isIncrease ? movement.amount : -movement.amount // This will be removed in the adapter
           };
           await adapter.upsertAuxiliaryEntry(newEntry);
         } else {
@@ -141,7 +141,7 @@ export function AuxiliaryLedgerModal({
                 existingEntry.initial_amount,
               total_balance: isIncrease ?
                 existingEntry.total_balance + movement.amount :
-                existingEntry.total_balance - movement.amount
+                existingEntry.total_balance - movement.amount // This will be removed in the adapter
             };
             await adapter.upsertAuxiliaryEntry(updatedEntry);
           }

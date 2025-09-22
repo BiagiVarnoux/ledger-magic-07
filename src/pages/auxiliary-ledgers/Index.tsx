@@ -98,7 +98,7 @@ export default function AuxiliaryLedgersPage() {
       account_id: selectedAccount,
       initial_amount: initialAmount,
       paid_amount: paidAmount,
-      total_balance: initialAmount - paidAmount
+      total_balance: initialAmount - paidAmount // This will be removed in the adapter
     };
 
     try {
