@@ -40,18 +40,14 @@ export default function JournalPage() {
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
   });
-  const [auxiliaryModal, setAuxiliaryModal] = useState<{
+  const [auxiliaryModalState, setAuxiliaryModalState] = useState<{
     isOpen: boolean;
-    accountId: string;
-    lineAmount: number;
-    isIncrease: boolean;
-    lineIndex: number;
+    linesToProcess: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }>;
+    originalEntry: JournalEntry | null;
   }>({
     isOpen: false,
-    accountId: '',
-    lineAmount: 0,
-    isIncrease: false,
-    lineIndex: -1
+    linesToProcess: [],
+    originalEntry: null
   });
 
   useEffect(() => {
@@ -70,38 +66,27 @@ export default function JournalPage() {
     setLines(ls => ls.filter((_, i) => i !== idx)); 
   }
 
-  function openAuxiliaryModal(lineIndex: number) {
-    const line = lines[lineIndex];
-    if (!line.account_id) {
-      toast.error('Selecciona una cuenta primero');
-      return;
-    }
-
-    const account = accounts.find(a => a.id === line.account_id);
-    if (!account || (account.id !== 'A.5' && account.id !== 'P.1')) {
-      toast.error('Esta función solo está disponible para Cuentas por Cobrar y Cuentas por Pagar');
-      return;
-    }
-
-    const debitAmount = parseFloat(line.debit || '0');
-    const creditAmount = parseFloat(line.credit || '0');
-    const lineAmount = debitAmount || creditAmount;
-
-    if (lineAmount <= 0) {
-      toast.error('Ingresa un monto en la línea primero');
-      return;
-    }
-
-    // Determinar si es aumento o disminución según el tipo de cuenta y el lado
-    const isIncrease = (account.id === 'A.5' && debitAmount > 0) || (account.id === 'P.1' && creditAmount > 0);
-
-    setAuxiliaryModal({
-      isOpen: true,
-      accountId: account.id,
-      lineAmount,
-      isIncrease,
-      lineIndex
+  function detectAuxiliaryLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
+    const auxiliaryLines: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> = [];
+    
+    je.lines.forEach((line, index) => {
+      if (line.account_id === 'A.5' || line.account_id === 'P.1') {
+        const lineDraft = lines[index];
+        const lineAmount = line.debit || line.credit;
+        // Determinar si es aumento o disminución según el tipo de cuenta y el lado
+        const isIncrease = (line.account_id === 'A.5' && line.debit > 0) || (line.account_id === 'P.1' && line.credit > 0);
+        
+        auxiliaryLines.push({
+          lineDraft,
+          lineIndex: index,
+          accountId: line.account_id,
+          lineAmount,
+          isIncrease
+        });
+      }
     });
+    
+    return auxiliaryLines;
   }
 
   const totals = useMemo(() => {
@@ -139,6 +124,24 @@ export default function JournalPage() {
   async function saveEntry() {
     const je = validateAndBuildEntry(); 
     if (!je) return;
+    
+    // Detectar líneas que requieren gestión auxiliar
+    const auxiliaryLines = detectAuxiliaryLines(je);
+    
+    if (auxiliaryLines.length === 0) {
+      // No hay líneas auxiliares, guardar directamente
+      await handleAuxiliarySave(je);
+    } else {
+      // Hay líneas auxiliares, abrir el modal
+      setAuxiliaryModalState({
+        isOpen: true,
+        linesToProcess: auxiliaryLines,
+        originalEntry: je
+      });
+    }
+  }
+
+  async function handleAuxiliarySave(je: JournalEntry) {
     try { 
       await adapter.saveEntry(je); 
       setEntries(await adapter.loadEntries()); 
@@ -320,16 +323,6 @@ export default function JournalPage() {
                           </SelectContent>
                         </Select>
                          {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
-                         {l.account_id && (l.account_id === 'A.5' || l.account_id === 'P.1') && (
-                           <Button
-                             size="sm"
-                             variant="outline"
-                             onClick={() => openAuxiliaryModal(idx)}
-                             title="Gestionar libro auxiliar"
-                           >
-                             <Users className="w-4 h-4" />
-                           </Button>
-                         )}
                       </div>
                     </TableCell>
                      <TableCell>
@@ -490,15 +483,11 @@ export default function JournalPage() {
       </Card>
 
       <AuxiliaryLedgerModal
-        isOpen={auxiliaryModal.isOpen}
-        onClose={() => setAuxiliaryModal(prev => ({ ...prev, isOpen: false }))}
-        accountId={auxiliaryModal.accountId}
-        lineAmount={auxiliaryModal.lineAmount}
-        isIncrease={auxiliaryModal.isIncrease}
-        onSave={() => {
-          // Los movimientos ya se guardaron en el modal
-          setAuxiliaryModal(prev => ({ ...prev, isOpen: false }));
-        }}
+        isOpen={auxiliaryModalState.isOpen}
+        onClose={() => setAuxiliaryModalState({ ...auxiliaryModalState, isOpen: false })}
+        linesToProcess={auxiliaryModalState.linesToProcess}
+        originalEntry={auxiliaryModalState.originalEntry}
+        onSave={handleAuxiliarySave}
       />
     </div>
   );

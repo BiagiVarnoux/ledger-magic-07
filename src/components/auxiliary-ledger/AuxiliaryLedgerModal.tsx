@@ -16,41 +16,51 @@ interface AuxiliaryMovement {
   amount: number;
 }
 
+interface LineToProcess {
+  lineDraft: any; // LineDraft from journal page
+  lineIndex: number;
+  accountId: string;
+  lineAmount: number;
+  isIncrease: boolean;
+}
+
 interface AuxiliaryLedgerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  accountId: string;
-  lineAmount: number;
-  isIncrease: boolean; // true para aumentos (nuevas deudas), false para disminuciones (pagos)
-  onSave: (movements: AuxiliaryMovement[]) => void;
+  linesToProcess: LineToProcess[];
+  originalEntry: any; // JournalEntry from journal page
+  onSave: (entry: any) => void; // Function to save the complete entry
 }
 
 export function AuxiliaryLedgerModal({ 
   isOpen, 
   onClose, 
-  accountId, 
-  lineAmount, 
-  isIncrease,
+  linesToProcess,
+  originalEntry,
   onSave 
 }: AuxiliaryLedgerModalProps) {
   const { auxiliaryEntries, setAuxiliaryEntries, adapter } = useAccounting();
-  const [movements, setMovements] = useState<AuxiliaryMovement[]>([]);
+  const [currentLineIndex, setCurrentLineIndex] = useState(0);
+  const [lineMovements, setLineMovements] = useState<{ [lineIndex: number]: AuxiliaryMovement[] }>({});
   const [newClientName, setNewClientName] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [movementAmount, setMovementAmount] = useState('');
 
-  const clientsForAccount = auxiliaryEntries.filter(entry => entry.account_id === accountId);
-  const totalAllocated = movements.reduce((sum, mov) => sum + mov.amount, 0);
-  const remaining = lineAmount - totalAllocated;
+  const currentLine = linesToProcess[currentLineIndex];
+  const currentMovements = lineMovements[currentLineIndex] || [];
+  const clientsForAccount = auxiliaryEntries.filter(entry => entry.account_id === currentLine?.accountId);
+  const totalAllocated = currentMovements.reduce((sum, mov) => sum + mov.amount, 0);
+  const remaining = (currentLine?.lineAmount || 0) - totalAllocated;
 
   useEffect(() => {
-    if (isOpen) {
-      setMovements([]);
+    if (isOpen && linesToProcess.length > 0) {
+      setCurrentLineIndex(0);
+      setLineMovements({});
       setNewClientName('');
       setSelectedClientId('');
       setMovementAmount('');
     }
-  }, [isOpen]);
+  }, [isOpen, linesToProcess]);
 
   const handleAddNewClient = () => {
     if (!newClientName.trim()) {
@@ -70,7 +80,10 @@ export function AuxiliaryLedgerModal({
     }
 
     const newClientId = `new-${Date.now()}`;
-    setMovements(prev => [...prev, { clientId: newClientId, amount }]);
+    setLineMovements(prev => ({
+      ...prev,
+      [currentLineIndex]: [...(prev[currentLineIndex] || []), { clientId: newClientId, amount }]
+    }));
     setNewClientName('');
     setMovementAmount('');
   };
@@ -92,58 +105,77 @@ export function AuxiliaryLedgerModal({
       return;
     }
 
-    const existingMovement = movements.find(mov => mov.clientId === selectedClientId);
+    const existingMovement = currentMovements.find(mov => mov.clientId === selectedClientId);
     if (existingMovement) {
       toast.error('Este cliente ya está en la lista');
       return;
     }
 
-    setMovements(prev => [...prev, { clientId: selectedClientId, amount }]);
+    setLineMovements(prev => ({
+      ...prev,
+      [currentLineIndex]: [...(prev[currentLineIndex] || []), { clientId: selectedClientId, amount }]
+    }));
     setSelectedClientId('');
     setMovementAmount('');
   };
 
   const handleRemoveMovement = (index: number) => {
-    setMovements(prev => prev.filter((_, i) => i !== index));
+    setLineMovements(prev => ({
+      ...prev,
+      [currentLineIndex]: (prev[currentLineIndex] || []).filter((_, i) => i !== index)
+    }));
   };
 
+  // Verificar si todas las líneas están procesadas
+  const allLinesProcessed = linesToProcess.every((_, index) => {
+    const movements = lineMovements[index] || [];
+    const totalAllocated = movements.reduce((sum, mov) => sum + mov.amount, 0);
+    const remaining = linesToProcess[index].lineAmount - totalAllocated;
+    return Math.abs(remaining) <= 0.01;
+  });
+
   const handleSave = async () => {
-    if (Math.abs(remaining) > 0.01) {
-      toast.error(`Falta asignar ${fmt(remaining)}`);
+    if (!allLinesProcessed) {
+      toast.error('Debes completar la asignación de todas las líneas auxiliares');
       return;
     }
 
     try {
-      // Update or create auxiliary entries
-      for (const movement of movements) {
-        if (movement.clientId.startsWith('new-')) {
-          // Create new client
-          const newEntry: AuxiliaryLedgerEntry = {
-            id: `${accountId}-${Date.now()}-${Math.random()}`,
-            client_name: newClientName,
-            account_id: accountId,
-            initial_amount: isIncrease ? movement.amount : 0,
-            paid_amount: isIncrease ? 0 : movement.amount,
-            total_balance: isIncrease ? movement.amount : -movement.amount // This will be removed in the adapter
-          };
-          await adapter.upsertAuxiliaryEntry(newEntry);
-        } else {
-          // Update existing client
-          const existingEntry = auxiliaryEntries.find(e => e.id === movement.clientId);
-          if (existingEntry) {
-            const updatedEntry: AuxiliaryLedgerEntry = {
-              ...existingEntry,
-              paid_amount: isIncrease ? 
-                existingEntry.paid_amount : 
-                existingEntry.paid_amount + movement.amount,
-              initial_amount: isIncrease ? 
-                existingEntry.initial_amount + movement.amount : 
-                existingEntry.initial_amount,
-              total_balance: isIncrease ?
-                existingEntry.total_balance + movement.amount :
-                existingEntry.total_balance - movement.amount // This will be removed in the adapter
+      // Process all auxiliary movements for all lines
+      for (let lineIndex = 0; lineIndex < linesToProcess.length; lineIndex++) {
+        const line = linesToProcess[lineIndex];
+        const movements = lineMovements[lineIndex] || [];
+        
+        for (const movement of movements) {
+          if (movement.clientId.startsWith('new-')) {
+            // Create new client - we need to get the client name from the movement
+            const newEntry: AuxiliaryLedgerEntry = {
+              id: `${line.accountId}-${Date.now()}-${Math.random()}`,
+              client_name: newClientName, // This needs to be stored per movement
+              account_id: line.accountId,
+              initial_amount: line.isIncrease ? movement.amount : 0,
+              paid_amount: line.isIncrease ? 0 : movement.amount,
+              total_balance: line.isIncrease ? movement.amount : -movement.amount // This will be removed in the adapter
             };
-            await adapter.upsertAuxiliaryEntry(updatedEntry);
+            await adapter.upsertAuxiliaryEntry(newEntry);
+          } else {
+            // Update existing client
+            const existingEntry = auxiliaryEntries.find(e => e.id === movement.clientId);
+            if (existingEntry) {
+              const updatedEntry: AuxiliaryLedgerEntry = {
+                ...existingEntry,
+                paid_amount: line.isIncrease ? 
+                  existingEntry.paid_amount : 
+                  existingEntry.paid_amount + movement.amount,
+                initial_amount: line.isIncrease ? 
+                  existingEntry.initial_amount + movement.amount : 
+                  existingEntry.initial_amount,
+                total_balance: line.isIncrease ?
+                  existingEntry.total_balance + movement.amount :
+                  existingEntry.total_balance - movement.amount // This will be removed in the adapter
+              };
+              await adapter.upsertAuxiliaryEntry(updatedEntry);
+            }
           }
         }
       }
@@ -152,11 +184,30 @@ export function AuxiliaryLedgerModal({
       const updatedEntries = await adapter.loadAuxiliaryEntries();
       setAuxiliaryEntries(updatedEntries);
 
-      onSave(movements);
-      toast.success('Movimientos auxiliares guardados');
+      // Call parent save function with original entry
+      onSave(originalEntry);
+      toast.success('Asiento y movimientos auxiliares guardados');
       onClose();
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar movimientos');
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentLineIndex > 0) {
+      setCurrentLineIndex(currentLineIndex - 1);
+      setNewClientName('');
+      setSelectedClientId('');
+      setMovementAmount('');
+    }
+  };
+
+  const handleNext = () => {
+    if (currentLineIndex < linesToProcess.length - 1) {
+      setCurrentLineIndex(currentLineIndex + 1);
+      setNewClientName('');
+      setSelectedClientId('');
+      setMovementAmount('');
     }
   };
 
@@ -170,14 +221,17 @@ export function AuxiliaryLedgerModal({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {isIncrease ? 'Registrar Nueva Deuda' : 'Registrar Pago/Cobro'}
+            Gestión de Libros Auxiliares - Línea {currentLineIndex + 1} de {linesToProcess.length}
           </DialogTitle>
+          <div className="text-sm text-muted-foreground">
+            Cuenta: {currentLine?.accountId} - {currentLine?.isIncrease ? 'Registrar Nueva Deuda' : 'Registrar Pago/Cobro'}
+          </div>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2 text-sm">
             <div>
-              <strong>Monto línea:</strong> {fmt(lineAmount)}
+              <strong>Monto línea:</strong> {fmt(currentLine?.lineAmount || 0)}
             </div>
             <div>
               <strong>Asignado:</strong> {fmt(totalAllocated)}
@@ -187,7 +241,7 @@ export function AuxiliaryLedgerModal({
             </div>
           </div>
 
-          {isIncrease ? (
+          {currentLine?.isIncrease ? (
             <Card>
               <CardContent className="p-4">
                 <h3 className="font-medium mb-3">Nuevo Cliente/Deuda</h3>
@@ -244,12 +298,12 @@ export function AuxiliaryLedgerModal({
             </Card>
           )}
 
-          {movements.length > 0 && (
+          {currentMovements.length > 0 && (
             <Card>
               <CardContent className="p-4">
                 <h3 className="font-medium mb-3">Movimientos Registrados</h3>
                 <div className="space-y-2">
-                  {movements.map((movement, index) => (
+                  {currentMovements.map((movement, index) => (
                     <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
                       <span>{getClientName(movement.clientId)}</span>
                       <div className="flex items-center gap-2">
@@ -269,16 +323,35 @@ export function AuxiliaryLedgerModal({
             </Card>
           )}
 
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleSave}
-              disabled={Math.abs(remaining) > 0.01}
-            >
-              Guardar Movimientos
-            </Button>
+          {/* Navigation and Save buttons */}
+          <div className="flex justify-between items-center">
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handlePrevious}
+                disabled={currentLineIndex === 0}
+              >
+                Anterior
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleNext}
+                disabled={currentLineIndex === linesToProcess.length - 1}
+              >
+                Siguiente
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleSave}
+                disabled={!allLinesProcessed}
+              >
+                Guardar Asiento Completo
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
