@@ -22,6 +22,7 @@ import {
   TYPE_ABBR,
   signForLine
 } from '@/accounting/utils';
+import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
 
 type LineDraft = { 
   account_id?: string; 
@@ -37,6 +38,7 @@ export default function JournalPage() {
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
   });
@@ -49,6 +51,15 @@ export default function JournalPage() {
     linesToProcess: [],
     originalEntry: null
   });
+
+  // Filter entries by selected quarter
+  const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
+  const filteredEntries = useMemo(() => {
+    return entries.filter(entry => isDateInQuarter(entry.date, currentQuarter));
+  }, [entries, currentQuarter]);
+
+  // Available quarters for selection
+  const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
 
   useEffect(() => {
     localStorage.setItem('journal-show-line-memos', showLineMemos.toString());
@@ -269,6 +280,26 @@ export default function JournalPage() {
 
       <Card className="shadow-sm">
         <CardHeader>
+          <div className="flex items-center gap-4">
+            <Label htmlFor="quarter-select">Trimestre:</Label>
+            <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Seleccionar trimestre" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableQuarters.map((quarter) => (
+                  <SelectItem key={`${quarter.year}-Q${quarter.quarter}`} value={quarter.label}>
+                    {quarter.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
           <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -418,7 +449,14 @@ export default function JournalPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.sort((a, b) => sortOrder === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)).map(e => (
+                {filteredEntries.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      No hay asientos registrados para {selectedQuarter}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredEntries.sort((a, b) => sortOrder === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)).map(e => (
                   <React.Fragment key={e.id}>
                     <TableRow>
                       <TableCell className="font-mono">{e.id}</TableCell>
@@ -475,7 +513,8 @@ export default function JournalPage() {
                       </TableRow>
                     )}
                   </React.Fragment>
-                ))}
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

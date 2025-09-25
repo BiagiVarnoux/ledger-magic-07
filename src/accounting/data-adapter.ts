@@ -19,6 +19,8 @@ export interface IDataAdapter {
   loadAuxiliaryEntries(): Promise<AuxiliaryLedgerEntry[]>;
   upsertAuxiliaryEntry(a: AuxiliaryLedgerEntry): Promise<void>;
   deleteAuxiliaryEntry(id: string): Promise<void>;
+  loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>>;
+  saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void>;
 }
 
 const LS_ACCOUNTS = "acc_es_v1";
@@ -71,6 +73,43 @@ export const LocalAdapter: IDataAdapter = {
   async deleteAuxiliaryEntry(id){ 
     const list = await this.loadAuxiliaryEntries(); 
     localStorage.setItem(LS_AUXILIARY, JSON.stringify(list.filter(a=>a.id!==id))); 
+  },
+  async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
+    const raw = localStorage.getItem(`closures_${quarterEndDate}`);
+    if (raw) return JSON.parse(raw);
+    
+    // Calculate balances if no closure exists
+    const entries = await this.loadEntries();
+    const accounts = await this.loadAccounts();
+    const balances: Record<string, number> = {};
+    
+    // Filter entries up to quarter end date
+    const relevantEntries = entries.filter(e => e.date <= quarterEndDate);
+    
+    for (const account of accounts) {
+      let debit = 0;
+      let credit = 0;
+      
+      for (const entry of relevantEntries) {
+        for (const line of entry.lines) {
+          if (line.account_id === account.id) {
+            debit += line.debit;
+            credit += line.credit;
+          }
+        }
+      }
+      
+      // Calculate signed balance based on account normal side
+      const balance = account.normal_side === "DEBE" ? (debit - credit) : (credit - debit);
+      if (balance !== 0) {
+        balances[account.id] = balance;
+      }
+    }
+    
+    return balances;
+  },
+  async saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void> {
+    localStorage.setItem(`closures_${quarterEndDate}`, JSON.stringify(balances));
   },
 };
 
@@ -141,6 +180,62 @@ export const SupaAdapter: IDataAdapter = {
   async deleteAuxiliaryEntry(id){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryEntry(id);
     const { error } = await supa.from("auxiliary_ledger").delete().eq("id", id);
+    if (error) throw error;
+  },
+  async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadClosingBalances(quarterEndDate);
+    
+    const { data, error } = await supa
+      .from("quarterly_closures")
+      .select("balances")
+      .eq("closure_date", quarterEndDate)
+      .maybeSingle();
+    
+    if (error) throw error;
+    if (data) return data.balances as Record<string, number>;
+    
+    // If no closure exists, calculate from entries
+    const entries = await this.loadEntries();
+    const accounts = await this.loadAccounts();
+    const balances: Record<string, number> = {};
+    
+    // Filter entries up to quarter end date
+    const relevantEntries = entries.filter(e => e.date <= quarterEndDate);
+    
+    for (const account of accounts) {
+      let debit = 0;
+      let credit = 0;
+      
+      for (const entry of relevantEntries) {
+        for (const line of entry.lines) {
+          if (line.account_id === account.id) {
+            debit += line.debit;
+            credit += line.credit;
+          }
+        }
+      }
+      
+      // Calculate signed balance based on account normal side
+      const balance = account.normal_side === "DEBE" ? (debit - credit) : (credit - debit);
+      if (balance !== 0) {
+        balances[account.id] = balance;
+      }
+    }
+    
+    return balances;
+  },
+  async saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void> {
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.saveClosingBalances(quarterEndDate, balances);
+    
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+    
+    const { error } = await supa.from("quarterly_closures").upsert({
+      user_id: user.id,
+      closure_date: quarterEndDate,
+      balances
+    });
+    
     if (error) throw error;
   },
 };

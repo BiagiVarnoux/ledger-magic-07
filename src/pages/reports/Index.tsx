@@ -3,18 +3,23 @@ import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { todayISO, yyyymm, signedBalanceFor, fmt } from '@/accounting/utils';
 import { AccountType, Side } from '@/accounting/types';
+import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
 
 export default function ReportsPage() {
-  const { accounts, entries } = useAccounting();
-  const [trialPeriod, setTrialPeriod] = useState<string>(todayISO().slice(0, 7)); // yyyy-mm
-  const [isFrom, setIsFrom] = useState<string>(todayISO().slice(0, 8) + "01");
-  const [isTo, setIsTo] = useState<string>(todayISO());
+  const { accounts, entries, adapter } = useAccounting();
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   const [bsDate, setBsDate] = useState<string>(todayISO());
+  
+  // Available quarters for selection
+  const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
+  const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
 
+  // Balance de Comprobación para el trimestre seleccionado
   const trialRows = useMemo(() => {
     const map = new Map<string, { 
       id: string; 
@@ -37,7 +42,7 @@ export default function ReportsPage() {
     }
     
     for (const e of entries) { 
-      if (yyyymm(e.date) !== trialPeriod) continue; 
+      if (!isDateInQuarter(e.date, currentQuarter)) continue; 
       for (const l of e.lines) { 
         const r = map.get(l.account_id); 
         if (!r) continue; 
@@ -54,12 +59,13 @@ export default function ReportsPage() {
     }, { debit: 0, credit: 0 });
     
     return { rows, totals };
-  }, [accounts, entries, trialPeriod]);
+  }, [accounts, entries, currentQuarter]);
 
+  // Estado de Resultados para el trimestre seleccionado
   const incomeStatement = useMemo(() => {
     let ingresos = 0, gastos = 0;
     for (const e of entries) {
-      if (e.date < isFrom || e.date > isTo) continue;
+      if (!isDateInQuarter(e.date, currentQuarter)) continue;
       for (const l of e.lines) {
         const a = accounts.find(x => x.id === l.account_id); 
         if (!a) continue;
@@ -72,7 +78,7 @@ export default function ReportsPage() {
       }
     }
     return { ingresos, gastos, utilidad: ingresos - gastos };
-  }, [accounts, entries, isFrom, isTo]);
+  }, [accounts, entries, currentQuarter]);
 
   const balanceSheet = useMemo(() => {
   const sums = { activo: 0, pasivo: 0, patrimonio: 0 } as any;
@@ -127,12 +133,19 @@ export default function ReportsPage() {
           <CardContent className="space-y-4">
             <div className="flex items-end gap-3">
               <div>
-                <Label>Periodo</Label>
-                <Input 
-                  type="month" 
-                  value={trialPeriod} 
-                  onChange={e => setTrialPeriod(e.target.value)} 
-                />
+                <Label>Trimestre:</Label>
+                <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Seleccionar trimestre" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableQuarters.map((quarter) => (
+                      <SelectItem key={`${quarter.year}-Q${quarter.quarter}`} value={quarter.label}>
+                        {quarter.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="border rounded-xl overflow-hidden">
@@ -190,23 +203,10 @@ export default function ReportsPage() {
             <CardTitle>Estado de resultados</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Desde</Label>
-                <Input 
-                  type="date" 
-                  value={isFrom} 
-                  onChange={e => setIsFrom(e.target.value)} 
-                />
-              </div>
-              <div>
-                <Label>Hasta</Label>
-                <Input 
-                  type="date" 
-                  value={isTo} 
-                  onChange={e => setIsTo(e.target.value)} 
-                />
-              </div>
+            <div>
+              <p className="text-sm text-muted-foreground">
+                Período: {currentQuarter.startDate} - {currentQuarter.endDate}
+              </p>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">

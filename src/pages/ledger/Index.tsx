@@ -1,5 +1,5 @@
 // src/pages/ledger/Index.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,32 +9,58 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Download } from 'lucide-react';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { todayISO, cmpDate, signedBalanceFor, fmt } from '@/accounting/utils';
+import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter, getPreviousQuarter } from '@/accounting/quarterly-utils';
 
 export default function LedgerPage() {
-  const { accounts, entries } = useAccounting();
+  const { accounts, entries, adapter } = useAccounting();
   const [ledgerAccount, setLedgerAccount] = useState<string>("A.1");
-  const [ledgerFrom, setLedgerFrom] = useState<string>(todayISO().slice(0, 8) + "01");
-  const [ledgerTo, setLedgerTo] = useState<string>(todayISO());
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
+  
+  // Available quarters for selection
+  const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
+  const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
 
-  const ledgerData = useMemo(() => {
+  // Ledger data with quarterly support
+  const [ledgerState, setLedgerState] = useState<{
+    rows: any[];
+    opening: number;
+    closing: number;
+  }>({ rows: [], opening: 0, closing: 0 });
+
+  const ledgerData = useMemo(async () => {
     const acc = accounts.find(a => a.id === ledgerAccount);
-    if (!acc) return { rows: [], opening: 0, closing: 0 } as any;
+    if (!acc) return { rows: [], opening: 0, closing: 0 };
+
+    // Get previous quarter's closing balance
+    const previousQuarter = getPreviousQuarter(currentQuarter.year, currentQuarter.quarter);
+    let initialBalance = 0;
     
-    const before = entries.filter(e => e.date < ledgerFrom);
-    const inRange = entries.filter(e => e.date >= ledgerFrom && e.date <= ledgerTo)
+    try {
+      const closingBalances = await adapter.loadClosingBalances(previousQuarter.endDate);
+      initialBalance = closingBalances[ledgerAccount] || 0;
+    } catch (error) {
+      console.error('Error loading closing balances:', error);
+      // Calculate initial balance manually if closure doesn't exist
+      entries.forEach(entry => {
+        if (entry.date < currentQuarter.startDate) {
+          entry.lines.forEach(line => {
+            if (line.account_id === ledgerAccount) {
+              initialBalance += signedBalanceFor(line.debit, line.credit, acc.normal_side);
+            }
+          });
+        }
+      });
+    }
+
+    // Filter entries for current quarter
+    const inRange = entries
+      .filter(e => isDateInQuarter(e.date, currentQuarter))
       .flatMap(e => e.lines.map(l => ({ e, l })))
       .filter(x => x.l.account_id === ledgerAccount)
       .sort((a, b) => cmpDate(a.e.date, b.e.date));
 
-    const openBal = before.reduce((bal, e) => { 
-      for (const l of e.lines) { 
-        if (l.account_id !== ledgerAccount) continue; 
-        bal += signedBalanceFor(l.debit, l.credit, acc.normal_side); 
-      } 
-      return bal; 
-    }, 0);
-    
-    let running = openBal;
+    // Build ledger entries with running balance
+    let running = initialBalance;
     const rows = inRange.map(({ e, l }) => { 
       const delta = signedBalanceFor(l.debit, l.credit, acc.normal_side); 
       running += delta; 
@@ -48,18 +74,23 @@ export default function LedgerPage() {
       }; 
     });
     
-    return { rows, opening: openBal, closing: running };
-  }, [accounts, entries, ledgerAccount, ledgerFrom, ledgerTo]);
+    return { rows, opening: initialBalance, closing: running };
+  }, [accounts, entries, ledgerAccount, currentQuarter, adapter]);
+
+  // Handle async ledger data
+  useEffect(() => {
+    ledgerData.then(setLedgerState);
+  }, [ledgerData]);
 
   function exportLedger() {
     const rows = [
-      ["Cuenta", "Desde", "Hasta"],
-      [ledgerAccount, ledgerFrom, ledgerTo],
+      ["Cuenta", "Trimestre"],
+      [ledgerAccount, selectedQuarter],
       ["Fecha", "Asiento", "Glosa", "Debe", "Haber", "Saldo"]
     ];
     rows.push(["", "", "", "", "", ""]);
-    rows.push(["Saldo Inicial", "", "", "", "", String(ledgerData.opening)]);
-    for (const r of ledgerData.rows) { 
+    rows.push(["Saldo Inicial", "", "", "", "", String(ledgerState.opening)]);
+    for (const r of ledgerState.rows) {
       rows.push([
         r.date, 
         r.id, 
@@ -70,7 +101,7 @@ export default function LedgerPage() {
       ]); 
     }
     rows.push(["", "", "", "", "", ""]);
-    rows.push(["Saldo Final", "", "", "", "", String(ledgerData.closing)]);
+    rows.push(["Saldo Final", "", "", "", "", String(ledgerState.closing)]);
     
     const csv = rows.map(r => r.map(x => `"${(x ?? "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -114,27 +145,26 @@ export default function LedgerPage() {
               </Select>
             </div>
             <div>
-              <Label>Desde</Label>
-              <Input 
-                type="date" 
-                value={ledgerFrom} 
-                onChange={e => setLedgerFrom(e.target.value)} 
-              />
-            </div>
-            <div>
-              <Label>Hasta</Label>
-              <Input 
-                type="date" 
-                value={ledgerTo} 
-                onChange={e => setLedgerTo(e.target.value)} 
-              />
+              <Label>Trimestre:</Label>
+              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Seleccionar trimestre" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableQuarters.map((quarter) => (
+                    <SelectItem key={`${quarter.year}-Q${quarter.quarter}`} value={quarter.label}>
+                      {quarter.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="col-span-2 text-right">
               <div className="text-sm text-muted-foreground">
-                Saldo inicial: <span className="font-semibold">{fmt(ledgerData.opening)}</span>
+                Saldo inicial: <span className="font-semibold">{fmt(ledgerState.opening)}</span>
               </div>
               <div className="text-sm text-muted-foreground">
-                Saldo final: <span className="font-semibold">{fmt(ledgerData.closing)}</span>
+                Saldo final: <span className="font-semibold">{fmt(ledgerState.closing)}</span>
               </div>
             </div>
           </div>
@@ -156,10 +186,17 @@ export default function LedgerPage() {
                     Saldo Inicial
                   </TableCell>
                   <TableCell className="text-right font-semibold">
-                    {fmt(ledgerData.opening)}
+                    {fmt(ledgerState.opening)}
                   </TableCell>
                 </TableRow>
-                {ledgerData.rows.map((r, i) => (
+                {ledgerState.rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      No hay movimientos en el trimestre seleccionado
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  ledgerState.rows.map((r, i) => (
                   <TableRow key={i}>
                     <TableCell>{r.date}</TableCell>
                     <TableCell className="font-mono">{r.id}</TableCell>
@@ -174,7 +211,8 @@ export default function LedgerPage() {
                       {fmt(r.balance)}
                     </TableCell>
                   </TableRow>
-                ))}
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

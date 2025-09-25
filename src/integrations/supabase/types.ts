@@ -150,6 +150,33 @@ export type Database = {
           },
         ]
       }
+      quarterly_closures: {
+        Row: {
+          balances: Json
+          closure_date: string
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balances?: Json
+          closure_date: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balances?: Json
+          closure_date?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
