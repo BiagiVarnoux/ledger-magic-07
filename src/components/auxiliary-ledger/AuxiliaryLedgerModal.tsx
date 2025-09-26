@@ -14,6 +14,7 @@ import { fmt } from '@/accounting/utils';
 interface AuxiliaryMovement {
   clientId: string;
   amount: number;
+  client_name?: string; // Store client name for new clients
 }
 
 interface LineToProcess {
@@ -82,7 +83,7 @@ export function AuxiliaryLedgerModal({
     const newClientId = `new-${Date.now()}`;
     setLineMovements(prev => ({
       ...prev,
-      [currentLineIndex]: [...(prev[currentLineIndex] || []), { clientId: newClientId, amount }]
+      [currentLineIndex]: [...(prev[currentLineIndex] || []), { clientId: newClientId, amount, client_name: newClientName }]
     }));
     setNewClientName('');
     setMovementAmount('');
@@ -148,10 +149,10 @@ export function AuxiliaryLedgerModal({
         
         for (const movement of movements) {
           if (movement.clientId.startsWith('new-')) {
-            // Create new client - we need to get the client name from the movement
+            // Create new client - get the client name from the movement
             const newEntry: AuxiliaryLedgerEntry = {
               id: `${line.accountId}-${Date.now()}-${Math.random()}`,
-              client_name: newClientName, // This needs to be stored per movement
+              client_name: movement.client_name!, // Get client name from movement
               account_id: line.accountId,
               initial_amount: line.isIncrease ? movement.amount : 0,
               paid_amount: line.isIncrease ? 0 : movement.amount,
@@ -211,8 +212,8 @@ export function AuxiliaryLedgerModal({
     }
   };
 
-  const getClientName = (clientId: string) => {
-    if (clientId.startsWith('new-')) return newClientName;
+  const getClientName = (clientId: string, movement?: AuxiliaryMovement) => {
+    if (clientId.startsWith('new-') && movement?.client_name) return movement.client_name;
     return auxiliaryEntries.find(e => e.id === clientId)?.client_name || 'Cliente desconocido';
   };
 
@@ -305,7 +306,7 @@ export function AuxiliaryLedgerModal({
                 <div className="space-y-2">
                   {currentMovements.map((movement, index) => (
                     <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
-                      <span>{getClientName(movement.clientId)}</span>
+                      <span>{getClientName(movement.clientId, movement)}</span>
                       <div className="flex items-center gap-2">
                         <span>{fmt(movement.amount)}</span>
                         <Button
