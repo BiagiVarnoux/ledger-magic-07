@@ -346,10 +346,16 @@ export function AuxiliaryLedgerModal({
                 Cancelar
               </Button>
               <Button 
+                variant="secondary"
+                onClick={() => onSave(originalEntry)}
+              >
+                Omitir Asignación y Guardar Asiento
+              </Button>
+              <Button 
                 onClick={handleSave}
                 disabled={!allLinesProcessed}
               >
-                Guardar Asiento Completo
+                Guardar Movimientos
               </Button>
             </div>
           </div>

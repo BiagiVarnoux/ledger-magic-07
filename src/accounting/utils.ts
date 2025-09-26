@@ -33,9 +33,33 @@ export function cmpDate(a: string, b: string) {
 }
 
 export function generateEntryId(date: string, existing: JournalEntry[]) {
-  const prefix = date.slice(0,7); // yyyy-mm
-  const count = existing.filter(e => e.date.slice(0,7) === prefix).length + 1;
-  return `${prefix}-${String(count).padStart(5,'0')}`;
+  // Import getQuarterIdentifier dynamically to avoid circular dependency
+  const { getQuarterIdentifier } = require('./quarterly-utils');
+  
+  const quarterIdentifier = getQuarterIdentifier(date);
+  
+  // Filter existing entries for the same quarter
+  const quarterEntries = existing.filter(e => {
+    // Check if the entry ID ends with the same quarter identifier
+    return e.id.endsWith(`-${quarterIdentifier}`);
+  });
+  
+  // Find the highest sequential number for this quarter
+  let maxSequence = 0;
+  quarterEntries.forEach(entry => {
+    // Extract sequence number from ID format: XXX-QX-YY
+    const match = entry.id.match(/^(\d{3})-/);
+    if (match) {
+      const sequence = parseInt(match[1], 10);
+      if (sequence > maxSequence) {
+        maxSequence = sequence;
+      }
+    }
+  });
+  
+  // Generate next sequential number with 3-digit padding
+  const nextSequence = maxSequence + 1;
+  return `${String(nextSequence).padStart(3, '0')}-${quarterIdentifier}`;
 }
 
 export function signedBalanceFor(deb: number, hab: number, side: Side) {

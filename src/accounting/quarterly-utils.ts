@@ -88,3 +88,13 @@ export function parseQuarterString(quarterString: string): Quarter {
 export function isDateInQuarter(date: string, quarter: Quarter): boolean {
   return date >= quarter.startDate && date <= quarter.endDate;
 }
+
+export function getQuarterIdentifier(date: string): string {
+  const dateObj = new Date(date);
+  const year = dateObj.getFullYear();
+  const month = dateObj.getMonth() + 1; // getMonth() returns 0-11
+  const quarter = Math.ceil(month / 3);
+  const shortYear = year.toString().slice(-2); // Last 2 digits of year
+  
+  return `Q${quarter}-${shortYear}`;
+}
