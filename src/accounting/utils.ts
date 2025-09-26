@@ -1,5 +1,6 @@
 // src/accounting/utils.ts
 import { AccountType, Side, Account, JournalEntry } from './types';
+import { getQuarterIdentifier } from './quarterly-utils';
 
 export function fmt(n: number) { 
   return n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); 
@@ -33,9 +34,6 @@ export function cmpDate(a: string, b: string) {
 }
 
 export function generateEntryId(date: string, existing: JournalEntry[]) {
-  // Import getQuarterIdentifier dynamically to avoid circular dependency
-  const { getQuarterIdentifier } = require('./quarterly-utils');
-  
   const quarterIdentifier = getQuarterIdentifier(date);
   
   // Filter existing entries for the same quarter
