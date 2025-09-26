@@ -219,7 +219,7 @@ export function AuxiliaryLedgerModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             Gestión de Libros Auxiliares - Línea {currentLineIndex + 1} de {linesToProcess.length}
@@ -348,7 +348,10 @@ export function AuxiliaryLedgerModal({
               </Button>
               <Button 
                 variant="secondary"
-                onClick={() => onSave(originalEntry)}
+                onClick={() => {
+                  onSave(originalEntry);
+                  onClose();
+                }}
               >
                 Omitir Asignación y Guardar Asiento
               </Button>
