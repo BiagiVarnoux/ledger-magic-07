@@ -1,5 +1,5 @@
 // src/accounting/data-adapter.ts
-import { Account, JournalEntry, AuxiliaryLedgerEntry, seedAccounts } from './types';
+import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryMovementDetail, seedAccounts } from './types';
 import { cmpDate } from './utils';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -19,6 +19,8 @@ export interface IDataAdapter {
   loadAuxiliaryEntries(): Promise<AuxiliaryLedgerEntry[]>;
   upsertAuxiliaryEntry(a: AuxiliaryLedgerEntry): Promise<void>;
   deleteAuxiliaryEntry(id: string): Promise<void>;
+  loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]>;
+  upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void>;
   loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>>;
   saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void>;
 }
@@ -26,6 +28,7 @@ export interface IDataAdapter {
 const LS_ACCOUNTS = "acc_es_v1";
 const LS_ENTRIES  = "je_es_v1";
 const LS_AUXILIARY = "aux_ledger_v1";
+const LS_AUX_MOVEMENTS = "aux_movements_v1";
 
 export const LocalAdapter: IDataAdapter = {
   async loadAccounts(){ 
@@ -61,18 +64,50 @@ export const LocalAdapter: IDataAdapter = {
   },
   async loadAuxiliaryEntries(){ 
     const raw = localStorage.getItem(LS_AUXILIARY); 
-    return raw ? JSON.parse(raw) : []; 
+    const entries = raw ? JSON.parse(raw) : [];
+    
+    // Calculate total_balance from movements for each entry
+    const movementsRaw = localStorage.getItem(LS_AUX_MOVEMENTS);
+    const allMovements: AuxiliaryMovementDetail[] = movementsRaw ? JSON.parse(movementsRaw) : [];
+    
+    return entries.map((entry: AuxiliaryLedgerEntry) => {
+      const entryMovements = allMovements.filter(m => m.aux_entry_id === entry.id);
+      const total_balance = entryMovements.reduce((sum, m) => {
+        return sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount);
+      }, 0);
+      return { ...entry, total_balance };
+    });
   },
   async upsertAuxiliaryEntry(a){ 
     const list = await this.loadAuxiliaryEntries(); 
     const i = list.findIndex(x=>x.id===a.id); 
-    if (i>=0) list[i]=a; else list.push(a); 
+    const { total_balance, ...entryData } = a; // Remove calculated field
+    if (i>=0) list[i]={...list[i], ...entryData}; else list.push(entryData); 
     list.sort((x,y)=>x.client_name.localeCompare(y.client_name)); 
     localStorage.setItem(LS_AUXILIARY, JSON.stringify(list)); 
   },
   async deleteAuxiliaryEntry(id){ 
     const list = await this.loadAuxiliaryEntries(); 
     localStorage.setItem(LS_AUXILIARY, JSON.stringify(list.filter(a=>a.id!==id))); 
+  },
+  async loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]> {
+    const raw = localStorage.getItem(LS_AUX_MOVEMENTS);
+    const allMovements: AuxiliaryMovementDetail[] = raw ? JSON.parse(raw) : [];
+    return allMovements
+      .filter(m => m.aux_entry_id === auxEntryId)
+      .sort((a, b) => b.movement_date.localeCompare(a.movement_date));
+  },
+  async upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void> {
+    const raw = localStorage.getItem(LS_AUX_MOVEMENTS);
+    const allMovements: AuxiliaryMovementDetail[] = raw ? JSON.parse(raw) : [];
+    
+    for (const detail of details) {
+      const i = allMovements.findIndex(m => m.id === detail.id);
+      if (i >= 0) allMovements[i] = detail;
+      else allMovements.push(detail);
+    }
+    
+    localStorage.setItem(LS_AUX_MOVEMENTS, JSON.stringify(allMovements));
   },
   async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
     const raw = localStorage.getItem(`closures_${quarterEndDate}`);
@@ -164,14 +199,28 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
-    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,initial_amount,paid_amount,total_balance").order("client_name");
-    if (error) throw error; return (data||[]) as AuxiliaryLedgerEntry[];
+    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id").order("client_name");
+    if (error) throw error;
+    
+    // Calculate total_balance from movements for each entry
+    const entries = data || [];
+    const result: AuxiliaryLedgerEntry[] = [];
+    
+    for (const entry of entries) {
+      const movements = await this.loadAuxiliaryDetails(entry.id);
+      const total_balance = movements.reduce((sum, m) => {
+        return sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount);
+      }, 0);
+      result.push({ ...entry, total_balance });
+    }
+    
+    return result;
   },
   async upsertAuxiliaryEntry(a){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryEntry(a);
     const { data: { user } } = await supa.auth.getUser();
     if (!user) throw new Error("Usuario no autenticado");
-    // Remove total_balance from the object as it's a generated column
+    // Remove total_balance from the object as it's a calculated field
     const { total_balance, ...auxData } = a;
     const auxWithUser = { ...auxData, user_id: user.id };
     const { error } = await supa.from("auxiliary_ledger").upsert(auxWithUser);
@@ -180,6 +229,25 @@ export const SupaAdapter: IDataAdapter = {
   async deleteAuxiliaryEntry(id){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryEntry(id);
     const { error } = await supa.from("auxiliary_ledger").delete().eq("id", id);
+    if (error) throw error;
+  },
+  async loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]> {
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDetails(auxEntryId);
+    const { data, error } = await supa
+      .from("auxiliary_movement_details")
+      .select("id,aux_entry_id,journal_entry_id,movement_date,amount,movement_type")
+      .eq("aux_entry_id", auxEntryId)
+      .order("movement_date", { ascending: false });
+    if (error) throw error;
+    return (data || []) as AuxiliaryMovementDetail[];
+  },
+  async upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void> {
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryMovementDetails(details);
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+    
+    const payload = details.map(d => ({ ...d, user_id: user.id }));
+    const { error } = await supa.from("auxiliary_movement_details").insert(payload);
     if (error) throw error;
   },
   async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {

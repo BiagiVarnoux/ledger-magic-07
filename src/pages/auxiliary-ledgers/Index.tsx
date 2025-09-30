@@ -1,26 +1,27 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { AuxiliaryLedgerEntry } from '@/accounting/types';
+import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/types';
 import { fmt } from '@/accounting/utils';
 
 export default function AuxiliaryLedgersPage() {
-  const { accounts, auxiliaryEntries, setAuxiliaryEntries, adapter } = useAccounting();
+  const { accounts, auxiliaryEntries, setAuxiliaryEntries, adapter, entries: journalEntries } = useAccounting();
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AuxiliaryLedgerEntry | null>(null);
+  const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
+  const [clientMovements, setClientMovements] = useState<Record<string, AuxiliaryMovementDetail[]>>({});
   const [formData, setFormData] = useState({
-    client_name: '',
-    initial_amount: '',
-    paid_amount: ''
+    client_name: ''
   });
 
   // Filter auxiliary accounts (Cuentas por Cobrar and Cuentas por Pagar)
@@ -31,28 +32,34 @@ export default function AuxiliaryLedgersPage() {
   // Filter entries by selected account
   const filteredEntries = useMemo(() => {
     if (!selectedAccount) return [];
-    return auxiliaryEntries
-      .filter(entry => entry.account_id === selectedAccount)
-      .map(entry => ({
-        ...entry,
-        total_balance: entry.initial_amount - entry.paid_amount
-      }));
+    return auxiliaryEntries.filter(entry => entry.account_id === selectedAccount);
   }, [auxiliaryEntries, selectedAccount]);
+
+  // Load movement details when a client row is expanded
+  useEffect(() => {
+    const loadMovements = async () => {
+      if (expandedClientId && !clientMovements[expandedClientId]) {
+        try {
+          const movements = await adapter.loadAuxiliaryDetails(expandedClientId);
+          setClientMovements(prev => ({ ...prev, [expandedClientId]: movements }));
+        } catch (error: any) {
+          toast.error('Error al cargar movimientos del cliente');
+        }
+      }
+    };
+    loadMovements();
+  }, [expandedClientId, adapter, clientMovements]);
 
   const handleOpenModal = (entry?: AuxiliaryLedgerEntry) => {
     if (entry) {
       setEditingEntry(entry);
       setFormData({
-        client_name: entry.client_name,
-        initial_amount: entry.initial_amount.toString(),
-        paid_amount: entry.paid_amount.toString()
+        client_name: entry.client_name
       });
     } else {
       setEditingEntry(null);
       setFormData({
-        client_name: '',
-        initial_amount: '',
-        paid_amount: '0'
+        client_name: ''
       });
     }
     setIsModalOpen(true);
@@ -62,9 +69,7 @@ export default function AuxiliaryLedgersPage() {
     setIsModalOpen(false);
     setEditingEntry(null);
     setFormData({
-      client_name: '',
-      initial_amount: '',
-      paid_amount: '0'
+      client_name: ''
     });
   };
 
@@ -79,26 +84,11 @@ export default function AuxiliaryLedgersPage() {
       return;
     }
 
-    const initialAmount = parseFloat(formData.initial_amount) || 0;
-    const paidAmount = parseFloat(formData.paid_amount) || 0;
-
-    if (initialAmount <= 0) {
-      toast.error('El monto inicial debe ser mayor a 0');
-      return;
-    }
-
-    if (paidAmount < 0) {
-      toast.error('El monto pagado no puede ser negativo');
-      return;
-    }
-
-    const entry: AuxiliaryLedgerEntry = {
+    const entry: any = {
       id: editingEntry?.id || `${selectedAccount}-${Date.now()}`,
       client_name: formData.client_name.trim(),
       account_id: selectedAccount,
-      initial_amount: initialAmount,
-      paid_amount: paidAmount,
-      total_balance: initialAmount - paidAmount // This will be removed in the adapter
+      total_balance: editingEntry?.total_balance || 0
     };
 
     try {
@@ -178,26 +168,9 @@ export default function AuxiliaryLedgersPage() {
                         placeholder="Nombre completo"
                       />
                     </div>
-                    <div>
-                      <Label>Monto Inicial</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.initial_amount}
-                        onChange={(e) => setFormData(prev => ({ ...prev, initial_amount: e.target.value }))}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div>
-                      <Label>Monto Pagado</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formData.paid_amount}
-                        onChange={(e) => setFormData(prev => ({ ...prev, paid_amount: e.target.value }))}
-                        placeholder="0.00"
-                      />
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Los saldos se calculan automáticamente desde los asientos del Libro Diario.
+                    </p>
                     <div className="flex gap-2 justify-end">
                       <Button variant="outline" onClick={handleCloseModal}>
                         Cancelar
@@ -226,9 +199,8 @@ export default function AuxiliaryLedgersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12"></TableHead>
                     <TableHead>Cliente/Proveedor</TableHead>
-                    <TableHead className="text-right">Monto Inicial</TableHead>
-                    <TableHead className="text-right">Pagado</TableHead>
                     <TableHead className="text-right">Saldo Total</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
@@ -236,47 +208,119 @@ export default function AuxiliaryLedgersPage() {
                 <TableBody>
                   {filteredEntries.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <TableCell colSpan={4} className="text-center text-muted-foreground">
                         No hay registros para esta cuenta
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredEntries.map(entry => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="font-medium">
-                          {entry.client_name}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {fmt(entry.initial_amount)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {fmt(entry.paid_amount)}
-                        </TableCell>
-                        <TableCell className={`text-right font-semibold ${
-                          entry.total_balance > 0 ? 'text-orange-600' : 
-                          entry.total_balance < 0 ? 'text-red-600' : 'text-green-600'
-                        }`}>
-                          {fmt(entry.total_balance)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleOpenModal(entry)}
-                            title="Editar"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(entry.id)}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                      <Collapsible
+                        key={entry.id}
+                        open={expandedClientId === entry.id}
+                        onOpenChange={(open) => setExpandedClientId(open ? entry.id : null)}
+                        asChild
+                      >
+                        <>
+                          <TableRow>
+                            <TableCell>
+                              <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  {expandedClientId === entry.id ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </CollapsibleTrigger>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {entry.client_name}
+                            </TableCell>
+                            <TableCell className={`text-right font-semibold ${
+                              entry.total_balance > 0 ? 'text-orange-600' : 
+                              entry.total_balance < 0 ? 'text-red-600' : 'text-green-600'
+                            }`}>
+                              {fmt(entry.total_balance)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleOpenModal(entry)}
+                                title="Editar"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDelete(entry.id)}
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                          <CollapsibleContent asChild>
+                            <TableRow>
+                              <TableCell colSpan={4} className="bg-muted/30 p-4">
+                                <div className="space-y-2">
+                                  <h4 className="font-medium text-sm">Historial de Movimientos</h4>
+                                  {!clientMovements[entry.id] ? (
+                                    <div className="text-sm text-muted-foreground">Cargando...</div>
+                                  ) : clientMovements[entry.id].length === 0 ? (
+                                    <div className="text-sm text-muted-foreground">No hay movimientos registrados</div>
+                                  ) : (
+                                    <div className="border rounded-lg overflow-hidden bg-background">
+                                      <Table>
+                                        <TableHeader>
+                                          <TableRow>
+                                            <TableHead>Fecha</TableHead>
+                                            <TableHead>Asiento</TableHead>
+                                            <TableHead>Glosa</TableHead>
+                                            <TableHead>Tipo</TableHead>
+                                            <TableHead className="text-right">Monto</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {clientMovements[entry.id].map((movement) => {
+                                            const journalEntry = journalEntries.find(je => je.id === movement.journal_entry_id);
+                                            return (
+                                              <TableRow key={movement.id}>
+                                                <TableCell>{movement.movement_date}</TableCell>
+                                                <TableCell className="font-mono text-sm">{movement.journal_entry_id}</TableCell>
+                                                <TableCell className="text-sm">{journalEntry?.memo || '-'}</TableCell>
+                                                <TableCell>
+                                                  <div className="flex items-center gap-1">
+                                                    {movement.movement_type === 'INCREASE' ? (
+                                                      <>
+                                                        <TrendingUp className="w-4 h-4 text-orange-600" />
+                                                        <span className="text-sm text-orange-600">Aumento</span>
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <TrendingDown className="w-4 h-4 text-green-600" />
+                                                        <span className="text-sm text-green-600">Disminución</span>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium">
+                                                  {fmt(movement.amount)}
+                                                </TableCell>
+                                              </TableRow>
+                                            );
+                                          })}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          </CollapsibleContent>
+                        </>
+                      </Collapsible>
                     ))
                   )}
                 </TableBody>

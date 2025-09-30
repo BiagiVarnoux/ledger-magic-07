@@ -32,9 +32,16 @@ export interface AuxiliaryLedgerEntry {
   id: string;
   client_name: string;
   account_id: string;  // A.5 o P.1
-  initial_amount: number;
-  paid_amount: number;
-  total_balance: number;  // calculated: initial_amount - paid_amount
+  total_balance: number;  // calculated from movements
+}
+
+export interface AuxiliaryMovementDetail {
+  id: string;
+  aux_entry_id: string; // ID del cliente en auxiliary_ledger
+  journal_entry_id: string; // ID del asiento de diario
+  movement_date: string;
+  amount: number;
+  movement_type: 'INCREASE' | 'DECREASE'; // Aumento o Disminución
 }
 
 // Seeds (ES)

@@ -142,43 +142,44 @@ export function AuxiliaryLedgerModal({
     }
 
     try {
+      const movementDetails: any[] = [];
+      
       // Process all auxiliary movements for all lines
       for (let lineIndex = 0; lineIndex < linesToProcess.length; lineIndex++) {
         const line = linesToProcess[lineIndex];
         const movements = lineMovements[lineIndex] || [];
         
         for (const movement of movements) {
+          let clientId = movement.clientId;
+          
           if (movement.clientId.startsWith('new-')) {
-            // Create new client - get the client name from the movement
-            const newEntry: AuxiliaryLedgerEntry = {
-              id: `${line.accountId}-${Date.now()}-${Math.random()}`,
-              client_name: movement.client_name!, // Get client name from movement
+            // Create new client entry
+            clientId = `${line.accountId}-${Date.now()}-${Math.random()}`;
+            const newEntry: any = {
+              id: clientId,
+              client_name: movement.client_name!,
               account_id: line.accountId,
-              initial_amount: line.isIncrease ? movement.amount : 0,
-              paid_amount: line.isIncrease ? 0 : movement.amount,
-              total_balance: line.isIncrease ? movement.amount : -movement.amount // This will be removed in the adapter
+              total_balance: 0 // Will be calculated from movements
             };
             await adapter.upsertAuxiliaryEntry(newEntry);
-          } else {
-            // Update existing client
-            const existingEntry = auxiliaryEntries.find(e => e.id === movement.clientId);
-            if (existingEntry) {
-              const updatedEntry: AuxiliaryLedgerEntry = {
-                ...existingEntry,
-                paid_amount: line.isIncrease ? 
-                  existingEntry.paid_amount : 
-                  existingEntry.paid_amount + movement.amount,
-                initial_amount: line.isIncrease ? 
-                  existingEntry.initial_amount + movement.amount : 
-                  existingEntry.initial_amount,
-                total_balance: line.isIncrease ?
-                  existingEntry.total_balance + movement.amount :
-                  existingEntry.total_balance - movement.amount // This will be removed in the adapter
-              };
-              await adapter.upsertAuxiliaryEntry(updatedEntry);
-            }
           }
+          
+          // Create movement detail for this transaction
+          const movementDetail: any = {
+            id: `${clientId}-${originalEntry.id}-${Date.now()}-${Math.random()}`,
+            aux_entry_id: clientId,
+            journal_entry_id: originalEntry.id,
+            movement_date: originalEntry.date,
+            amount: movement.amount,
+            movement_type: line.isIncrease ? 'INCREASE' : 'DECREASE'
+          };
+          movementDetails.push(movementDetail);
         }
+      }
+
+      // Save all movement details
+      if (movementDetails.length > 0) {
+        await adapter.upsertAuxiliaryMovementDetails(movementDetails);
       }
 
       // Reload auxiliary entries

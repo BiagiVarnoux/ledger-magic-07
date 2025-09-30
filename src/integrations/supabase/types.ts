@@ -80,6 +80,54 @@ export type Database = {
         }
         Relationships: []
       }
+      auxiliary_movement_details: {
+        Row: {
+          amount: number
+          aux_entry_id: string
+          created_at: string
+          id: string
+          journal_entry_id: string
+          movement_date: string
+          movement_type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          aux_entry_id: string
+          created_at?: string
+          id?: string
+          journal_entry_id: string
+          movement_date: string
+          movement_type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          aux_entry_id?: string
+          created_at?: string
+          id?: string
+          journal_entry_id?: string
+          movement_date?: string
+          movement_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_aux_entry"
+            columns: ["aux_entry_id"]
+            isOneToOne: false
+            referencedRelation: "auxiliary_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_journal_entry"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       journal_entries: {
         Row: {
           created_at: string
