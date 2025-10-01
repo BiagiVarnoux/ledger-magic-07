@@ -11,7 +11,7 @@ import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDo
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/types';
-import { fmt } from '@/accounting/utils';
+import { fmt, todayISO, toDecimal } from '@/accounting/utils';
 
 export default function AuxiliaryLedgersPage() {
   const { accounts, auxiliaryEntries, setAuxiliaryEntries, adapter, entries: journalEntries } = useAccounting();
@@ -21,7 +21,9 @@ export default function AuxiliaryLedgersPage() {
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [clientMovements, setClientMovements] = useState<Record<string, AuxiliaryMovementDetail[]>>({});
   const [formData, setFormData] = useState({
-    client_name: ''
+    client_name: '',
+    initial_amount: '0',
+    movement_type: 'INCREASE' as 'INCREASE' | 'DECREASE'
   });
 
   // Filter auxiliary accounts (Cuentas por Cobrar and Cuentas por Pagar)
@@ -54,12 +56,16 @@ export default function AuxiliaryLedgersPage() {
     if (entry) {
       setEditingEntry(entry);
       setFormData({
-        client_name: entry.client_name
+        client_name: entry.client_name,
+        initial_amount: '0',
+        movement_type: 'INCREASE'
       });
     } else {
       setEditingEntry(null);
       setFormData({
-        client_name: ''
+        client_name: '',
+        initial_amount: '0',
+        movement_type: 'INCREASE'
       });
     }
     setIsModalOpen(true);
@@ -69,7 +75,9 @@ export default function AuxiliaryLedgersPage() {
     setIsModalOpen(false);
     setEditingEntry(null);
     setFormData({
-      client_name: ''
+      client_name: '',
+      initial_amount: '0',
+      movement_type: 'INCREASE'
     });
   };
 
@@ -92,7 +100,23 @@ export default function AuxiliaryLedgersPage() {
     };
 
     try {
+      // Save the auxiliary entry
       await adapter.upsertAuxiliaryEntry(entry);
+      
+      // If adding a new client with initial balance, create initial movement
+      if (!editingEntry && toDecimal(formData.initial_amount) > 0) {
+        const initialMovement: AuxiliaryMovementDetail = {
+          id: `${entry.id}-INITIAL`,
+          aux_entry_id: entry.id,
+          journal_entry_id: 'INITIAL_BALANCE',
+          movement_date: todayISO(),
+          amount: toDecimal(formData.initial_amount),
+          movement_type: formData.movement_type
+        };
+        
+        await adapter.upsertAuxiliaryMovementDetails([initialMovement]);
+      }
+      
       const updatedEntries = await adapter.loadAuxiliaryEntries();
       setAuxiliaryEntries(updatedEntries);
       toast.success(`Cliente ${editingEntry ? 'actualizado' : 'agregado'} exitosamente`);
@@ -168,9 +192,52 @@ export default function AuxiliaryLedgersPage() {
                         placeholder="Nombre completo"
                       />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Los saldos se calculan automáticamente desde los asientos del Libro Diario.
-                    </p>
+                    
+                    {!editingEntry && (
+                      <>
+                        <div>
+                          <Label>Saldo Inicial</Label>
+                          <Input
+                            type="text"
+                            value={formData.initial_amount}
+                            onChange={(e) => setFormData(prev => ({ ...prev, initial_amount: e.target.value }))}
+                            placeholder="0,00"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Ingrese el saldo inicial de apertura (opcional)
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <Label>Tipo de Movimiento Inicial</Label>
+                          <Select 
+                            value={formData.movement_type} 
+                            onValueChange={(value: 'INCREASE' | 'DECREASE') => 
+                              setFormData(prev => ({ ...prev, movement_type: value }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="INCREASE">
+                                DEBE (Aumento de Activo, Disminución de Pasivo)
+                              </SelectItem>
+                              <SelectItem value="DECREASE">
+                                HABER (Disminución de Activo, Aumento de Pasivo)
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
+                    
+                    {editingEntry && (
+                      <p className="text-sm text-muted-foreground">
+                        Los saldos se calculan automáticamente desde los asientos del Libro Diario.
+                      </p>
+                    )}
+                    
                     <div className="flex gap-2 justify-end">
                       <Button variant="outline" onClick={handleCloseModal}>
                         Cancelar
@@ -284,12 +351,19 @@ export default function AuxiliaryLedgersPage() {
                                         </TableHeader>
                                         <TableBody>
                                           {clientMovements[entry.id].map((movement) => {
-                                            const journalEntry = journalEntries.find(je => je.id === movement.journal_entry_id);
+                                            const isInitialBalance = movement.journal_entry_id === 'INITIAL_BALANCE';
+                                            const journalEntry = isInitialBalance 
+                                              ? null 
+                                              : journalEntries.find(je => je.id === movement.journal_entry_id);
+                                            const memo = isInitialBalance 
+                                              ? 'Saldo inicial de apertura' 
+                                              : (journalEntry?.memo || '-');
+                                            
                                             return (
                                               <TableRow key={movement.id}>
                                                 <TableCell>{movement.movement_date}</TableCell>
                                                 <TableCell className="font-mono text-sm">{movement.journal_entry_id}</TableCell>
-                                                <TableCell className="text-sm">{journalEntry?.memo || '-'}</TableCell>
+                                                <TableCell className="text-sm">{memo}</TableCell>
                                                 <TableCell>
                                                   <div className="flex items-center gap-1">
                                                     {movement.movement_type === 'INCREASE' ? (
