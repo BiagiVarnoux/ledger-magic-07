@@ -49,6 +49,7 @@ export type Database = {
           account_id: string
           client_name: string
           created_at: string
+          definition_id: string | null
           id: string
           updated_at: string
           user_id: string
@@ -57,6 +58,7 @@ export type Database = {
           account_id: string
           client_name: string
           created_at?: string
+          definition_id?: string | null
           id: string
           updated_at?: string
           user_id: string
@@ -65,8 +67,41 @@ export type Database = {
           account_id?: string
           client_name?: string
           created_at?: string
+          definition_id?: string | null
           id?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auxiliary_ledger_definition_id_fkey"
+            columns: ["definition_id"]
+            isOneToOne: false
+            referencedRelation: "auxiliary_ledger_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      auxiliary_ledger_definitions: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          name?: string
           user_id?: string
         }
         Relationships: []

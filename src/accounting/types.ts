@@ -28,10 +28,17 @@ export interface JournalEntry {
   void_of?: string; 
 }
 
+export interface AuxiliaryLedgerDefinition {
+  id: string;
+  name: string;
+  account_id: string;
+}
+
 export interface AuxiliaryLedgerEntry {
   id: string;
   client_name: string;
-  account_id: string;  // A.5 o P.1
+  account_id: string;  // Mantener por compatibilidad
+  definition_id?: string;  // Nuevo: FK a AuxiliaryLedgerDefinition
   total_balance: number;  // calculated from movements
 }
 

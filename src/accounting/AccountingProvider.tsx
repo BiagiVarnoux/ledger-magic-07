@@ -1,6 +1,6 @@
 // src/accounting/AccountingProvider.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Account, JournalEntry, AuxiliaryLedgerEntry } from './types';
+import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition } from './types';
 import { IDataAdapter, LocalAdapter, pickAdapter } from './data-adapter';
 import { toast } from 'sonner';
 
@@ -8,9 +8,11 @@ interface AccountingContextType {
   accounts: Account[];
   entries: JournalEntry[];
   auxiliaryEntries: AuxiliaryLedgerEntry[];
+  auxiliaryDefinitions: AuxiliaryLedgerDefinition[];
   setAccounts: React.Dispatch<React.SetStateAction<Account[]>>;
   setEntries: React.Dispatch<React.SetStateAction<JournalEntry[]>>;
   setAuxiliaryEntries: React.Dispatch<React.SetStateAction<AuxiliaryLedgerEntry[]>>;
+  setAuxiliaryDefinitions: React.Dispatch<React.SetStateAction<AuxiliaryLedgerDefinition[]>>;
   adapter: IDataAdapter;
 }
 
@@ -32,6 +34,7 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [auxiliaryEntries, setAuxiliaryEntries] = useState<AuxiliaryLedgerEntry[]>([]);
+  const [auxiliaryDefinitions, setAuxiliaryDefinitions] = useState<AuxiliaryLedgerDefinition[]>([]);
   const [adapter, setAdapter] = useState<IDataAdapter>(LocalAdapter);
 
   useEffect(() => { 
@@ -45,6 +48,8 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
         setEntries(es);
         const aux = await db.loadAuxiliaryEntries();
         setAuxiliaryEntries(aux);
+        const defs = await db.loadAuxiliaryDefinitions();
+        setAuxiliaryDefinitions(defs);
       } catch(e: any) { 
         console.error(e); 
         toast.error(e.message || "Error cargando datos"); 
@@ -57,9 +62,11 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
       accounts,
       entries,
       auxiliaryEntries,
+      auxiliaryDefinitions,
       setAccounts,
       setEntries,
       setAuxiliaryEntries,
+      setAuxiliaryDefinitions,
       adapter
     }}>
       {children}

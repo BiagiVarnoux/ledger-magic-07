@@ -7,16 +7,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/types';
 import { fmt, todayISO, toDecimal } from '@/accounting/utils';
+import { AuxiliaryDefinitionsModal } from '@/components/auxiliary-ledger/AuxiliaryDefinitionsModal';
 
 export default function AuxiliaryLedgersPage() {
-  const { accounts, auxiliaryEntries, setAuxiliaryEntries, adapter, entries: journalEntries } = useAccounting();
-  const [selectedAccount, setSelectedAccount] = useState<string>('');
+  const { 
+    accounts, 
+    auxiliaryEntries, 
+    auxiliaryDefinitions,
+    setAuxiliaryEntries, 
+    adapter, 
+    entries: journalEntries 
+  } = useAccounting();
+  const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDefinitionsModalOpen, setIsDefinitionsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AuxiliaryLedgerEntry | null>(null);
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   const [clientMovements, setClientMovements] = useState<Record<string, AuxiliaryMovementDetail[]>>({});
@@ -26,16 +35,16 @@ export default function AuxiliaryLedgersPage() {
     movement_type: 'INCREASE' as 'INCREASE' | 'DECREASE'
   });
 
-  // Filter auxiliary accounts (Cuentas por Cobrar and Cuentas por Pagar)
-  const auxiliaryAccounts = accounts.filter(acc => 
-    acc.id === 'A.5' || acc.id === 'P.1'
-  );
+  const selectedDefinition = auxiliaryDefinitions.find(d => d.id === selectedDefinitionId);
+  const selectedAccountId = selectedDefinition?.account_id || '';
 
-  // Filter entries by selected account
+  // Filter entries by selected definition
   const filteredEntries = useMemo(() => {
-    if (!selectedAccount) return [];
-    return auxiliaryEntries.filter(entry => entry.account_id === selectedAccount);
-  }, [auxiliaryEntries, selectedAccount]);
+    if (!selectedDefinitionId || !selectedDefinition) return [];
+    return auxiliaryEntries.filter(entry => 
+      entry.definition_id === selectedDefinitionId || entry.account_id === selectedDefinition.account_id
+    );
+  }, [auxiliaryEntries, selectedDefinitionId, selectedDefinition]);
 
   // Load movement details when a client row is expanded
   useEffect(() => {
@@ -82,8 +91,8 @@ export default function AuxiliaryLedgersPage() {
   };
 
   const handleSave = async () => {
-    if (!selectedAccount) {
-      toast.error('Selecciona una cuenta auxiliar');
+    if (!selectedDefinitionId) {
+      toast.error('Selecciona un libro auxiliar');
       return;
     }
 
@@ -93,9 +102,10 @@ export default function AuxiliaryLedgersPage() {
     }
 
     const entry: any = {
-      id: editingEntry?.id || `${selectedAccount}-${Date.now()}`,
+      id: editingEntry?.id || `${selectedDefinitionId}-${Date.now()}`,
       client_name: formData.client_name.trim(),
-      account_id: selectedAccount,
+      account_id: selectedAccountId,
+      definition_id: selectedDefinitionId,
       total_balance: editingEntry?.total_balance || 0
     };
 
@@ -137,41 +147,60 @@ export default function AuxiliaryLedgersPage() {
     }
   };
 
-  const selectedAccountName = auxiliaryAccounts.find(acc => acc.id === selectedAccount)?.name || '';
+  const selectedAccountName = selectedDefinition ? 
+    `${selectedDefinition.name} (${selectedDefinition.account_id})` : '';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Libros Auxiliares</h1>
+        <Button variant="outline" onClick={() => setIsDefinitionsModalOpen(true)}>
+          <Settings className="w-4 h-4 mr-2" />
+          Gestionar Libros Auxiliares
+        </Button>
       </div>
 
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Seleccionar Cuenta Auxiliar</CardTitle>
+          <CardTitle>Seleccionar Libro Auxiliar</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Cuenta</Label>
-              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+              <Label>Libro Auxiliar</Label>
+              <Select value={selectedDefinitionId} onValueChange={setSelectedDefinitionId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una cuenta auxiliar" />
+                  <SelectValue placeholder="Selecciona un libro auxiliar" />
                 </SelectTrigger>
                 <SelectContent>
-                  {auxiliaryAccounts.map(acc => (
-                    <SelectItem key={acc.id} value={acc.id}>
-                      {acc.id} — {acc.name}
+                  {auxiliaryDefinitions.length === 0 ? (
+                    <SelectItem value="_empty" disabled>
+                      No hay libros auxiliares configurados
                     </SelectItem>
-                  ))}
+                  ) : (
+                    auxiliaryDefinitions.map(def => {
+                      const account = accounts.find(a => a.id === def.account_id);
+                      return (
+                        <SelectItem key={def.id} value={def.id}>
+                          {def.name} — {def.account_id} ({account?.name || 'N/A'})
+                        </SelectItem>
+                      );
+                    })
+                  )}
                 </SelectContent>
               </Select>
+              {auxiliaryDefinitions.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Primero debes crear libros auxiliares usando el botón "Gestionar Libros Auxiliares"
+                </p>
+              )}
             </div>
             <div className="flex items-end">
               <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                 <DialogTrigger asChild>
                   <Button 
                     onClick={() => handleOpenModal()} 
-                    disabled={!selectedAccount}
+                    disabled={!selectedDefinitionId}
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Agregar Cliente
@@ -254,7 +283,7 @@ export default function AuxiliaryLedgersPage() {
         </CardContent>
       </Card>
 
-      {selectedAccount && (
+      {selectedDefinitionId && (
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle>
@@ -403,6 +432,11 @@ export default function AuxiliaryLedgersPage() {
           </CardContent>
         </Card>
       )}
+
+      <AuxiliaryDefinitionsModal
+        isOpen={isDefinitionsModalOpen}
+        onClose={() => setIsDefinitionsModalOpen(false)}
+      />
     </div>
   );
 }

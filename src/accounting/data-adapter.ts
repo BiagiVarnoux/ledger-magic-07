@@ -1,5 +1,5 @@
 // src/accounting/data-adapter.ts
-import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryMovementDetail, seedAccounts } from './types';
+import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, seedAccounts } from './types';
 import { cmpDate } from './utils';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -16,6 +16,9 @@ export interface IDataAdapter {
   loadEntries(): Promise<JournalEntry[]>;
   saveEntry(e: JournalEntry): Promise<void>;
   deleteEntry(id: string): Promise<void>;
+  loadAuxiliaryDefinitions(): Promise<AuxiliaryLedgerDefinition[]>;
+  upsertAuxiliaryDefinition(d: AuxiliaryLedgerDefinition): Promise<void>;
+  deleteAuxiliaryDefinition(id: string): Promise<void>;
   loadAuxiliaryEntries(): Promise<AuxiliaryLedgerEntry[]>;
   upsertAuxiliaryEntry(a: AuxiliaryLedgerEntry): Promise<void>;
   deleteAuxiliaryEntry(id: string): Promise<void>;
@@ -27,6 +30,7 @@ export interface IDataAdapter {
 
 const LS_ACCOUNTS = "acc_es_v1";
 const LS_ENTRIES  = "je_es_v1";
+const LS_AUX_DEFINITIONS = "aux_definitions_v1";
 const LS_AUXILIARY = "aux_ledger_v1";
 const LS_AUX_MOVEMENTS = "aux_movements_v1";
 
@@ -62,7 +66,22 @@ export const LocalAdapter: IDataAdapter = {
     const list = await this.loadEntries(); 
     localStorage.setItem(LS_ENTRIES, JSON.stringify(list.filter(e=>e.id!==id))); 
   },
-  async loadAuxiliaryEntries(){ 
+  async loadAuxiliaryDefinitions(){ 
+    const raw = localStorage.getItem(LS_AUX_DEFINITIONS); 
+    return raw ? JSON.parse(raw) : []; 
+  },
+  async upsertAuxiliaryDefinition(d){ 
+    const list = await this.loadAuxiliaryDefinitions(); 
+    const i = list.findIndex(x=>x.id===d.id); 
+    if (i>=0) list[i]=d; else list.push(d); 
+    list.sort((x,y)=>x.name.localeCompare(y.name)); 
+    localStorage.setItem(LS_AUX_DEFINITIONS, JSON.stringify(list)); 
+  },
+  async deleteAuxiliaryDefinition(id){ 
+    const list = await this.loadAuxiliaryDefinitions(); 
+    localStorage.setItem(LS_AUX_DEFINITIONS, JSON.stringify(list.filter(d=>d.id!==id))); 
+  },
+  async loadAuxiliaryEntries(){
     const raw = localStorage.getItem(LS_AUXILIARY); 
     const entries = raw ? JSON.parse(raw) : [];
     
@@ -197,9 +216,27 @@ export const SupaAdapter: IDataAdapter = {
     const { error: e2 } = await supa.from("journal_entries").delete().eq("id", id);
     if (e2) throw e2;
   },
+  async loadAuxiliaryDefinitions(){
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDefinitions();
+    const { data, error } = await supa.from("auxiliary_ledger_definitions").select("id,name,account_id").order("name");
+    if (error) throw error; return (data||[]) as AuxiliaryLedgerDefinition[];
+  },
+  async upsertAuxiliaryDefinition(d){
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryDefinition(d);
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+    const defWithUser = { ...d, user_id: user.id };
+    const { error } = await supa.from("auxiliary_ledger_definitions").upsert(defWithUser);
+    if (error) throw error;
+  },
+  async deleteAuxiliaryDefinition(id){
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryDefinition(id);
+    const { error } = await supa.from("auxiliary_ledger_definitions").delete().eq("id", id);
+    if (error) throw error;
+  },
   async loadAuxiliaryEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
-    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id").order("client_name");
+    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id").order("client_name");
     if (error) throw error;
     
     // Calculate total_balance from movements for each entry

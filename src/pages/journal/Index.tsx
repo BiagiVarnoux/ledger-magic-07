@@ -32,7 +32,7 @@ type LineDraft = {
 };
 
 export default function JournalPage() {
-  const { accounts, entries, setEntries, adapter } = useAccounting();
+  const { accounts, entries, setEntries, adapter, auxiliaryDefinitions } = useAccounting();
   const [date, setDate] = useState<string>(todayISO());
   const [memo, setMemo] = useState<string>("");
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
@@ -80,12 +80,16 @@ export default function JournalPage() {
   function detectAuxiliaryLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
     const auxiliaryLines: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> = [];
     
+    // Get all auxiliary account IDs from definitions
+    const auxiliaryAccountIds = auxiliaryDefinitions.map(d => d.account_id);
+    
     je.lines.forEach((line, index) => {
-      if (line.account_id === 'A.5' || line.account_id === 'P.1') {
+      if (auxiliaryAccountIds.includes(line.account_id)) {
         const lineDraft = lines[index];
         const lineAmount = line.debit || line.credit;
         // Determinar si es aumento o disminución según el tipo de cuenta y el lado
-        const isIncrease = (line.account_id === 'A.5' && line.debit > 0) || (line.account_id === 'P.1' && line.credit > 0);
+        const account = accounts.find(a => a.id === line.account_id);
+        const isIncrease = account?.normal_side === 'DEBE' ? line.debit > 0 : line.credit > 0;
         
         auxiliaryLines.push({
           lineDraft,
