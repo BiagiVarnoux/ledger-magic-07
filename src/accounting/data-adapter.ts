@@ -99,14 +99,8 @@ export const LocalAdapter: IDataAdapter = {
   },
   async upsertAuxiliaryEntry(a){ 
     const list = await this.loadAuxiliaryEntries(); 
+    const i = list.findIndex(x=>x.id===a.id); 
     const { total_balance, ...entryData } = a; // Remove calculated field
-    
-    // Generate UUID if creating new entry
-    if (!entryData.id || entryData.id.includes('-')) {
-      entryData.id = crypto.randomUUID();
-    }
-    
-    const i = list.findIndex(x=>x.id===entryData.id); 
     if (i>=0) list[i]={...list[i], ...entryData}; else list.push(entryData); 
     list.sort((x,y)=>x.client_name.localeCompare(y.client_name)); 
     localStorage.setItem(LS_AUXILIARY, JSON.stringify(list)); 
@@ -127,11 +121,6 @@ export const LocalAdapter: IDataAdapter = {
     const allMovements: AuxiliaryMovementDetail[] = raw ? JSON.parse(raw) : [];
     
     for (const detail of details) {
-      // Generate UUID if creating new movement
-      if (!detail.id || detail.id.includes('-')) {
-        detail.id = crypto.randomUUID();
-      }
-      
       const i = allMovements.findIndex(m => m.id === detail.id);
       if (i >= 0) allMovements[i] = detail;
       else allMovements.push(detail);
@@ -270,13 +259,6 @@ export const SupaAdapter: IDataAdapter = {
     if (!user) throw new Error("Usuario no autenticado");
     // Remove total_balance from the object as it's a calculated field
     const { total_balance, ...auxData } = a;
-    
-    // For new entries, let the database generate the UUID
-    const isNew = !auxData.id || auxData.id.includes('-');
-    if (isNew) {
-      delete auxData.id;
-    }
-    
     const auxWithUser = { ...auxData, user_id: user.id };
     const { error } = await supa.from("auxiliary_ledger").upsert(auxWithUser);
     if (error) throw error;
@@ -301,15 +283,7 @@ export const SupaAdapter: IDataAdapter = {
     const { data: { user } } = await supa.auth.getUser();
     if (!user) throw new Error("Usuario no autenticado");
     
-    const payload = details.map(d => {
-      const detailCopy = { ...d, user_id: user.id };
-      // For new movements, let the database generate the UUID
-      if (!detailCopy.id || detailCopy.id.includes('-')) {
-        delete detailCopy.id;
-      }
-      return detailCopy;
-    });
-    
+    const payload = details.map(d => ({ ...d, user_id: user.id }));
     const { error } = await supa.from("auxiliary_movement_details").insert(payload);
     if (error) throw error;
   },

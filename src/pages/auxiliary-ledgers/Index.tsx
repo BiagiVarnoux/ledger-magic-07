@@ -102,7 +102,7 @@ export default function AuxiliaryLedgersPage() {
     }
 
     const entry: any = {
-      id: editingEntry?.id || crypto.randomUUID(),
+      id: editingEntry?.id || `${selectedDefinitionId}-${Date.now()}`,
       client_name: formData.client_name.trim(),
       account_id: selectedAccountId,
       definition_id: selectedDefinitionId,
@@ -113,18 +113,11 @@ export default function AuxiliaryLedgersPage() {
       // Save the auxiliary entry
       await adapter.upsertAuxiliaryEntry(entry);
       
-      // Reload entries to get the correct ID from database
-      let updatedEntries = await adapter.loadAuxiliaryEntries();
-      const savedEntry = updatedEntries.find(e => 
-        e.client_name === entry.client_name && 
-        e.definition_id === entry.definition_id
-      );
-      
       // If adding a new client with initial balance, create initial movement
-      if (!editingEntry && toDecimal(formData.initial_amount) > 0 && savedEntry) {
+      if (!editingEntry && toDecimal(formData.initial_amount) > 0) {
         const initialMovement: AuxiliaryMovementDetail = {
-          id: crypto.randomUUID(),
-          aux_entry_id: savedEntry.id,
+          id: `${entry.id}-INITIAL`,
+          aux_entry_id: entry.id,
           journal_entry_id: 'INITIAL_BALANCE',
           movement_date: todayISO(),
           amount: toDecimal(formData.initial_amount),
@@ -132,10 +125,9 @@ export default function AuxiliaryLedgersPage() {
         };
         
         await adapter.upsertAuxiliaryMovementDetails([initialMovement]);
-        // Reload again to get updated balances
-        updatedEntries = await adapter.loadAuxiliaryEntries();
       }
       
+      const updatedEntries = await adapter.loadAuxiliaryEntries();
       setAuxiliaryEntries(updatedEntries);
       toast.success(`Cliente ${editingEntry ? 'actualizado' : 'agregado'} exitosamente`);
       handleCloseModal();
