@@ -154,19 +154,18 @@ export function AuxiliaryLedgerModal({
           
           if (movement.clientId.startsWith('new-')) {
             // Create new client entry
-            clientId = `${line.accountId}-${Date.now()}-${Math.random()}`;
             const newEntry: any = {
-              id: clientId,
+              id: crypto.randomUUID(),
               client_name: movement.client_name!,
               account_id: line.accountId,
               total_balance: 0 // Will be calculated from movements
             };
-            await adapter.upsertAuxiliaryEntry(newEntry);
+            const savedEntry = await adapter.upsertAuxiliaryEntry(newEntry);
+            clientId = savedEntry.id; // Use the ID returned from database
           }
           
           // Create movement detail for this transaction
           const movementDetail: any = {
-            id: `${clientId}-${originalEntry.id}-${Date.now()}-${Math.random()}`,
             aux_entry_id: clientId,
             journal_entry_id: originalEntry.id,
             movement_date: originalEntry.date,
