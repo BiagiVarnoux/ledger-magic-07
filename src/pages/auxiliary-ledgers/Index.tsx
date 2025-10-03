@@ -110,18 +110,11 @@ export default function AuxiliaryLedgersPage() {
     };
 
     try {
-      // Save the auxiliary entry
-      await adapter.upsertAuxiliaryEntry(entry);
-      
-      // Reload entries to get the correct ID from database
-      let updatedEntries = await adapter.loadAuxiliaryEntries();
-      const savedEntry = updatedEntries.find(e => 
-        e.client_name === entry.client_name && 
-        e.definition_id === entry.definition_id
-      );
+      // Save the auxiliary entry and get the saved object with ID
+      const savedEntry = await adapter.upsertAuxiliaryEntry(entry);
       
       // If adding a new client with initial balance, create initial movement
-      if (!editingEntry && toDecimal(formData.initial_amount) > 0 && savedEntry) {
+      if (!editingEntry && toDecimal(formData.initial_amount) > 0) {
         const initialMovement: AuxiliaryMovementDetail = {
           id: crypto.randomUUID(),
           aux_entry_id: savedEntry.id,
@@ -132,10 +125,10 @@ export default function AuxiliaryLedgersPage() {
         };
         
         await adapter.upsertAuxiliaryMovementDetails([initialMovement]);
-        // Reload again to get updated balances
-        updatedEntries = await adapter.loadAuxiliaryEntries();
       }
       
+      // Reload all entries to get updated balances
+      const updatedEntries = await adapter.loadAuxiliaryEntries();
       setAuxiliaryEntries(updatedEntries);
       toast.success(`Cliente ${editingEntry ? 'actualizado' : 'agregado'} exitosamente`);
       handleCloseModal();

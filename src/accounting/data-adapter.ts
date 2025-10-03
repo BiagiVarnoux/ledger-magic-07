@@ -20,7 +20,7 @@ export interface IDataAdapter {
   upsertAuxiliaryDefinition(d: AuxiliaryLedgerDefinition): Promise<void>;
   deleteAuxiliaryDefinition(id: string): Promise<void>;
   loadAuxiliaryEntries(): Promise<AuxiliaryLedgerEntry[]>;
-  upsertAuxiliaryEntry(a: AuxiliaryLedgerEntry): Promise<void>;
+  upsertAuxiliaryEntry(a: AuxiliaryLedgerEntry): Promise<AuxiliaryLedgerEntry>;
   deleteAuxiliaryEntry(id: string): Promise<void>;
   loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]>;
   upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void>;
@@ -110,6 +110,9 @@ export const LocalAdapter: IDataAdapter = {
     if (i>=0) list[i]={...list[i], ...entryData}; else list.push(entryData); 
     list.sort((x,y)=>x.client_name.localeCompare(y.client_name)); 
     localStorage.setItem(LS_AUXILIARY, JSON.stringify(list)); 
+    
+    // Return the saved entry with calculated total_balance
+    return list.find(x => x.id === entryData.id)!;
   },
   async deleteAuxiliaryEntry(id){ 
     const list = await this.loadAuxiliaryEntries(); 
@@ -268,18 +271,50 @@ export const SupaAdapter: IDataAdapter = {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryEntry(a);
     const { data: { user } } = await supa.auth.getUser();
     if (!user) throw new Error("Usuario no autenticado");
-    // Remove total_balance from the object as it's a calculated field
-    const { total_balance, ...auxData } = a;
+    
+    // Extract only the fields needed for database (exclude calculated total_balance)
+    const auxData = {
+      id: a.id,
+      client_name: a.client_name,
+      account_id: a.account_id,
+      definition_id: a.definition_id
+    };
     
     // For new entries, let the database generate the UUID
     const isNew = !auxData.id || auxData.id.includes('-');
-    if (isNew) {
-      delete auxData.id;
-    }
     
     const auxWithUser = { ...auxData, user_id: user.id };
-    const { error } = await supa.from("auxiliary_ledger").upsert(auxWithUser);
-    if (error) throw error;
+    
+    let savedEntry;
+    if (isNew) {
+      // INSERT: omit id and use .insert().select().single()
+      const { id, ...insertData } = auxWithUser;
+      const { data, error } = await supa
+        .from("auxiliary_ledger")
+        .insert(insertData)
+        .select("id,client_name,account_id,definition_id")
+        .single();
+      if (error) throw error;
+      savedEntry = data;
+    } else {
+      // UPDATE: use .update().select().single()
+      const { data, error } = await supa
+        .from("auxiliary_ledger")
+        .update(auxWithUser)
+        .eq("id", auxData.id)
+        .select("id,client_name,account_id,definition_id")
+        .single();
+      if (error) throw error;
+      savedEntry = data;
+    }
+    
+    // Calculate total_balance from movements
+    const movements = await this.loadAuxiliaryDetails(savedEntry.id);
+    const calculatedBalance = movements.reduce((sum, m) => {
+      return sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount);
+    }, 0);
+    
+    return { ...savedEntry, total_balance: calculatedBalance } as AuxiliaryLedgerEntry;
   },
   async deleteAuxiliaryEntry(id){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.deleteAuxiliaryEntry(id);
