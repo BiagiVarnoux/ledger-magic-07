@@ -280,18 +280,20 @@ export const SupaAdapter: IDataAdapter = {
       definition_id: a.definition_id
     };
     
-    // For new entries, let the database generate the UUID
+    // For new entries, generate UUID explicitly since DB doesn't have default
     const isNew = !auxData.id || auxData.id.includes('-');
+    if (isNew) {
+      auxData.id = crypto.randomUUID();
+    }
     
     const auxWithUser = { ...auxData, user_id: user.id };
     
     let savedEntry;
     if (isNew) {
-      // INSERT: omit id and use .insert().select().single()
-      const { id, ...insertData } = auxWithUser;
+      // INSERT: include the generated id
       const { data, error } = await supa
         .from("auxiliary_ledger")
-        .insert(insertData)
+        .insert(auxWithUser)
         .select("id,client_name,account_id,definition_id")
         .single();
       if (error) throw error;
