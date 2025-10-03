@@ -145,13 +145,6 @@ export type Database = {
             referencedRelation: "auxiliary_ledger"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "fk_journal_entry"
-            columns: ["journal_entry_id"]
-            isOneToOne: false
-            referencedRelation: "journal_entries"
-            referencedColumns: ["id"]
-          },
         ]
       }
       journal_entries: {
