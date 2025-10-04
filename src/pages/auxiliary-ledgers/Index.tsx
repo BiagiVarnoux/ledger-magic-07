@@ -151,6 +151,11 @@ export default function AuxiliaryLedgersPage() {
   const selectedAccountName = selectedDefinition ? 
     `${selectedDefinition.name} (${selectedDefinition.account_id})` : '';
 
+  // Calculate total sum of balances
+  const totalBalance = useMemo(() => {
+    return filteredEntries.reduce((sum, entry) => sum + entry.total_balance, 0);
+  }, [filteredEntries]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -310,122 +315,133 @@ export default function AuxiliaryLedgersPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredEntries.map(entry => (
-                      <Collapsible
-                        key={entry.id}
-                        open={expandedClientId === entry.id}
-                        onOpenChange={(open) => setExpandedClientId(open ? entry.id : null)}
-                        asChild
-                      >
-                        <>
-                          <TableRow>
-                            <TableCell>
-                              <CollapsibleTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  {expandedClientId === entry.id ? (
-                                    <ChevronDown className="h-4 w-4" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </CollapsibleTrigger>
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {entry.client_name}
-                            </TableCell>
-                            <TableCell className={`text-right font-semibold ${
-                              entry.total_balance > 0 ? 'text-orange-600' : 
-                              entry.total_balance < 0 ? 'text-red-600' : 'text-green-600'
-                            }`}>
-                              {fmt(entry.total_balance)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleOpenModal(entry)}
-                                title="Editar"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDelete(entry.id)}
-                                title="Eliminar"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                          <CollapsibleContent asChild>
+                    <>
+                      {filteredEntries.map(entry => (
+                        <Collapsible
+                          key={entry.id}
+                          open={expandedClientId === entry.id}
+                          onOpenChange={(open) => setExpandedClientId(open ? entry.id : null)}
+                          asChild
+                        >
+                          <>
                             <TableRow>
-                              <TableCell colSpan={4} className="bg-muted/30 p-4">
-                                <div className="space-y-2">
-                                  <h4 className="font-medium text-sm">Historial de Movimientos</h4>
-                                  {!clientMovements[entry.id] ? (
-                                    <div className="text-sm text-muted-foreground">Cargando...</div>
-                                  ) : clientMovements[entry.id].length === 0 ? (
-                                    <div className="text-sm text-muted-foreground">No hay movimientos registrados</div>
-                                  ) : (
-                                    <div className="border rounded-lg overflow-hidden bg-background">
-                                      <Table>
-                                        <TableHeader>
-                                          <TableRow>
-                                            <TableHead>Fecha</TableHead>
-                                            <TableHead>Asiento</TableHead>
-                                            <TableHead>Glosa</TableHead>
-                                            <TableHead>Tipo</TableHead>
-                                            <TableHead className="text-right">Monto</TableHead>
-                                          </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                          {clientMovements[entry.id].map((movement) => {
-                                            const isInitialBalance = movement.journal_entry_id === 'INITIAL_BALANCE';
-                                            const journalEntry = isInitialBalance 
-                                              ? null 
-                                              : journalEntries.find(je => je.id === movement.journal_entry_id);
-                                            const memo = isInitialBalance 
-                                              ? 'Saldo inicial de apertura' 
-                                              : (journalEntry?.memo || '-');
-                                            
-                                            return (
-                                              <TableRow key={movement.id}>
-                                                <TableCell>{movement.movement_date}</TableCell>
-                                                <TableCell className="font-mono text-sm">{movement.journal_entry_id}</TableCell>
-                                                <TableCell className="text-sm">{memo}</TableCell>
-                                                <TableCell>
-                                                  <div className="flex items-center gap-1">
-                                                    {movement.movement_type === 'INCREASE' ? (
-                                                      <>
-                                                        <TrendingUp className="w-4 h-4 text-orange-600" />
-                                                        <span className="text-sm text-orange-600">Aumento</span>
-                                                      </>
-                                                    ) : (
-                                                      <>
-                                                        <TrendingDown className="w-4 h-4 text-green-600" />
-                                                        <span className="text-sm text-green-600">Disminución</span>
-                                                      </>
-                                                    )}
-                                                  </div>
-                                                </TableCell>
-                                                <TableCell className="text-right font-medium">
-                                                  {fmt(movement.amount)}
-                                                </TableCell>
-                                              </TableRow>
-                                            );
-                                          })}
-                                        </TableBody>
-                                      </Table>
-                                    </div>
-                                  )}
-                                </div>
+                              <TableCell>
+                                <CollapsibleTrigger asChild>
+                                  <Button variant="ghost" size="sm">
+                                    {expandedClientId === entry.id ? (
+                                      <ChevronDown className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </CollapsibleTrigger>
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {entry.client_name}
+                              </TableCell>
+                              <TableCell className={`text-right font-semibold ${
+                                entry.total_balance > 0 ? 'text-orange-600' : 
+                                entry.total_balance < 0 ? 'text-red-600' : 'text-green-600'
+                              }`}>
+                                {fmt(entry.total_balance)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleOpenModal(entry)}
+                                  title="Editar"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDelete(entry.id)}
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </TableCell>
                             </TableRow>
-                          </CollapsibleContent>
-                        </>
-                      </Collapsible>
-                    ))
+                            <CollapsibleContent asChild>
+                              <TableRow>
+                                <TableCell colSpan={4} className="bg-muted/30 p-4">
+                                  <div className="space-y-2">
+                                    <h4 className="font-medium text-sm">Historial de Movimientos</h4>
+                                    {!clientMovements[entry.id] ? (
+                                      <div className="text-sm text-muted-foreground">Cargando...</div>
+                                    ) : clientMovements[entry.id].length === 0 ? (
+                                      <div className="text-sm text-muted-foreground">No hay movimientos registrados</div>
+                                    ) : (
+                                      <div className="border rounded-lg overflow-hidden bg-background">
+                                        <Table>
+                                          <TableHeader>
+                                            <TableRow>
+                                              <TableHead>Fecha</TableHead>
+                                              <TableHead>Asiento</TableHead>
+                                              <TableHead>Glosa</TableHead>
+                                              <TableHead>Tipo</TableHead>
+                                              <TableHead className="text-right">Monto</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {clientMovements[entry.id].map((movement) => {
+                                              const isInitialBalance = movement.journal_entry_id === 'INITIAL_BALANCE';
+                                              const journalEntry = isInitialBalance 
+                                                ? null 
+                                                : journalEntries.find(je => je.id === movement.journal_entry_id);
+                                              const memo = isInitialBalance 
+                                                ? 'Saldo inicial de apertura' 
+                                                : (journalEntry?.memo || '-');
+                                              
+                                              return (
+                                                <TableRow key={movement.id}>
+                                                  <TableCell>{movement.movement_date}</TableCell>
+                                                  <TableCell className="font-mono text-sm">{movement.journal_entry_id}</TableCell>
+                                                  <TableCell className="text-sm">{memo}</TableCell>
+                                                  <TableCell>
+                                                    {movement.movement_type === 'INCREASE' ? (
+                                                      <span className="inline-flex items-center gap-1 text-green-600">
+                                                        <TrendingUp className="w-3 h-3" />
+                                                        DEBE
+                                                      </span>
+                                                    ) : (
+                                                      <span className="inline-flex items-center gap-1 text-blue-600">
+                                                        <TrendingDown className="w-3 h-3" />
+                                                        HABER
+                                                      </span>
+                                                    )}
+                                                  </TableCell>
+                                                  <TableCell className="text-right font-mono text-sm">
+                                                    {fmt(movement.amount)}
+                                                  </TableCell>
+                                                </TableRow>
+                                              );
+                                            })}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            </CollapsibleContent>
+                          </>
+                        </Collapsible>
+                      ))}
+                      <TableRow className="bg-muted/50 font-bold hover:bg-muted/50">
+                        <TableCell></TableCell>
+                        <TableCell className="font-bold">TOTAL DE SALDOS</TableCell>
+                        <TableCell className={`text-right font-bold ${
+                          totalBalance > 0 ? 'text-orange-600' : 
+                          totalBalance < 0 ? 'text-red-600' : 'text-green-600'
+                        }`}>
+                          {fmt(totalBalance)}
+                        </TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    </>
                   )}
                 </TableBody>
               </Table>
