@@ -406,101 +406,118 @@ export default function ReportsPage() {
                 Al: {bsDate}
               </div>
               
-              <div className="border rounded-xl overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Cuenta</TableHead>
-                      <TableHead className="text-right">Saldo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {/* ACTIVOS */}
-                    <TableRow className="bg-muted/30">
-                      <TableCell colSpan={3} className="font-semibold">
-                        ACTIVOS
-                      </TableCell>
-                    </TableRow>
-                    {balanceSheet.activosDetalle.map(act => (
-                      <TableRow key={act.id}>
-                        <TableCell className="font-mono">{act.id}</TableCell>
-                        <TableCell>{act.name}</TableCell>
-                        <TableCell className="text-right">{fmt(act.balance)}</TableCell>
+              {/* Layout de dos columnas */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Columna Izquierda: ACTIVOS */}
+                <div className="border rounded-xl overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Cuenta</TableHead>
+                        <TableHead className="text-right">Saldo</TableHead>
                       </TableRow>
-                    ))}
-                    <TableRow className="bg-muted/50">
-                      <TableCell colSpan={2} className="text-right font-semibold">
-                        Total Activos
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {fmt(balanceSheet.totalActivo)}
-                      </TableCell>
-                    </TableRow>
-                    
-                    {/* PASIVOS */}
-                    <TableRow className="bg-muted/30">
-                      <TableCell colSpan={3} className="font-semibold">
-                        PASIVOS
-                      </TableCell>
-                    </TableRow>
-                    {balanceSheet.pasivosDetalle.map(pas => (
-                      <TableRow key={pas.id}>
-                        <TableCell className="font-mono">{pas.id}</TableCell>
-                        <TableCell>{pas.name}</TableCell>
-                        <TableCell className="text-right">{fmt(pas.balance)}</TableCell>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow className="bg-muted/30">
+                        <TableCell colSpan={3} className="font-semibold">
+                          ACTIVOS
+                        </TableCell>
                       </TableRow>
-                    ))}
-                    <TableRow className="bg-muted/50">
-                      <TableCell colSpan={2} className="text-right font-semibold">
-                        Total Pasivos
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {fmt(balanceSheet.totalPasivo)}
-                      </TableCell>
-                    </TableRow>
-                    
-                    {/* PATRIMONIO */}
-                    <TableRow className="bg-muted/30">
-                      <TableCell colSpan={3} className="font-semibold">
-                        PATRIMONIO
-                      </TableCell>
-                    </TableRow>
-                    {balanceSheet.patrimonioDetalle.map(pat => (
-                      <TableRow key={pat.id}>
-                        <TableCell className="font-mono">{pat.id}</TableCell>
-                        <TableCell>{pat.name}</TableCell>
-                        <TableCell className="text-right">{fmt(pat.balance)}</TableCell>
+                      {balanceSheet.activosDetalle.map(act => (
+                        <TableRow key={act.id}>
+                          <TableCell className="font-mono text-xs">{act.id}</TableCell>
+                          <TableCell className="text-sm">{act.name}</TableCell>
+                          <TableCell className="text-right text-sm">{fmt(act.balance)}</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="bg-muted">
+                        <TableCell colSpan={2} className="text-right font-bold">
+                          Total Activos
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          {fmt(balanceSheet.totalActivo)}
+                        </TableCell>
                       </TableRow>
-                    ))}
-                    {/* Utilidad Acumulada */}
-                    <TableRow>
-                      <TableCell className="font-mono">—</TableCell>
-                      <TableCell className="font-medium">Utilidad/Pérdida Acumulada</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {fmt(balanceSheet.utilidadAcumulada)}
-                      </TableCell>
-                    </TableRow>
-                    <TableRow className="bg-muted/50">
-                      <TableCell colSpan={2} className="text-right font-semibold">
-                        Total Patrimonio
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {fmt(balanceSheet.totalPatrimonio)}
-                      </TableCell>
-                    </TableRow>
-                    
-                    {/* Total Pasivo + Patrimonio */}
-                    <TableRow className="bg-muted">
-                      <TableCell colSpan={2} className="text-right font-bold">
-                        Total Pasivo + Patrimonio
-                      </TableCell>
-                      <TableCell className="text-right font-bold">
-                        {fmt(balanceSheet.totalPasivo + balanceSheet.totalPatrimonio)}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Columna Derecha: PASIVOS + PATRIMONIO */}
+                <div className="border rounded-xl overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Cuenta</TableHead>
+                        <TableHead className="text-right">Saldo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {/* PASIVOS */}
+                      <TableRow className="bg-muted/30">
+                        <TableCell colSpan={3} className="font-semibold">
+                          PASIVOS
+                        </TableCell>
+                      </TableRow>
+                      {balanceSheet.pasivosDetalle.map(pas => (
+                        <TableRow key={pas.id}>
+                          <TableCell className="font-mono text-xs">{pas.id}</TableCell>
+                          <TableCell className="text-sm">{pas.name}</TableCell>
+                          <TableCell className="text-right text-sm">{fmt(pas.balance)}</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="bg-muted/50">
+                        <TableCell colSpan={2} className="text-right font-semibold">
+                          Total Pasivos
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {fmt(balanceSheet.totalPasivo)}
+                        </TableCell>
+                      </TableRow>
+                      
+                      {/* PATRIMONIO */}
+                      <TableRow className="bg-muted/30">
+                        <TableCell colSpan={3} className="font-semibold">
+                          PATRIMONIO
+                        </TableCell>
+                      </TableRow>
+                      {balanceSheet.patrimonioDetalle.map(pat => (
+                        <TableRow key={pat.id}>
+                          <TableCell className="font-mono text-xs">{pat.id}</TableCell>
+                          <TableCell className="text-sm">{pat.name}</TableCell>
+                          <TableCell className="text-right text-sm">{fmt(pat.balance)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {/* Utilidad Acumulada */}
+                      <TableRow>
+                        <TableCell className="font-mono text-xs">—</TableCell>
+                        <TableCell className="font-medium text-sm">Utilidad/Pérdida Acumulada</TableCell>
+                        <TableCell className="text-right font-medium text-sm">
+                          {fmt(balanceSheet.utilidadAcumulada)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className="bg-muted/50">
+                        <TableCell colSpan={2} className="text-right font-semibold">
+                          Total Patrimonio
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {fmt(balanceSheet.totalPatrimonio)}
+                        </TableCell>
+                      </TableRow>
+                      
+                      {/* Total Pasivo + Patrimonio */}
+                      <TableRow className="bg-muted">
+                        <TableCell colSpan={2} className="text-right font-bold">
+                          Total Pasivo + Patrimonio
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          {fmt(balanceSheet.totalPasivo + balanceSheet.totalPatrimonio)}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
               
               <div className={"text-sm font-medium " + (balanceSheet.check === 0 ? "text-green-600" : "text-red-600")}>
