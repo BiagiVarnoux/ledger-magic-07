@@ -75,12 +75,13 @@ export default function SettingsPage() {
         .from('user_roles')
         .select('role')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       setIsOwner(data?.role === 'owner');
     } catch (error) {
       console.error('Error checking role:', error);
+      setIsOwner(false);
     } finally {
       setLoading(false);
     }

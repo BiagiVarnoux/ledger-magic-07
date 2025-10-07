@@ -147,6 +147,51 @@ export type Database = {
           },
         ]
       }
+      invitation_codes: {
+        Row: {
+          can_view_accounts: boolean
+          can_view_auxiliary: boolean
+          can_view_journal: boolean
+          can_view_ledger: boolean
+          can_view_reports: boolean
+          code: string
+          created_at: string
+          expires_at: string
+          id: string
+          owner_id: string
+          used: boolean
+          used_by: string | null
+        }
+        Insert: {
+          can_view_accounts?: boolean
+          can_view_auxiliary?: boolean
+          can_view_journal?: boolean
+          can_view_ledger?: boolean
+          can_view_reports?: boolean
+          code: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          owner_id: string
+          used?: boolean
+          used_by?: string | null
+        }
+        Update: {
+          can_view_accounts?: boolean
+          can_view_auxiliary?: boolean
+          can_view_journal?: boolean
+          can_view_ledger?: boolean
+          can_view_reports?: boolean
+          code?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          owner_id?: string
+          used?: boolean
+          used_by?: string | null
+        }
+        Relationships: []
+      }
       journal_entries: {
         Row: {
           created_at: string
@@ -244,6 +289,63 @@ export type Database = {
         }
         Relationships: []
       }
+      shared_access: {
+        Row: {
+          can_view_accounts: boolean
+          can_view_auxiliary: boolean
+          can_view_journal: boolean
+          can_view_ledger: boolean
+          can_view_reports: boolean
+          created_at: string
+          id: string
+          owner_id: string
+          viewer_id: string
+        }
+        Insert: {
+          can_view_accounts?: boolean
+          can_view_auxiliary?: boolean
+          can_view_journal?: boolean
+          can_view_ledger?: boolean
+          can_view_reports?: boolean
+          created_at?: string
+          id?: string
+          owner_id: string
+          viewer_id: string
+        }
+        Update: {
+          can_view_accounts?: boolean
+          can_view_auxiliary?: boolean
+          can_view_journal?: boolean
+          can_view_ledger?: boolean
+          can_view_reports?: boolean
+          created_at?: string
+          id?: string
+          owner_id?: string
+          viewer_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -274,9 +376,20 @@ export type Database = {
           name: string
         }[]
       }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      has_shared_access: {
+        Args: { _owner_id: string; _viewer_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "owner" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -403,6 +516,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["owner", "viewer"],
+    },
   },
 } as const
