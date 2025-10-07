@@ -12,6 +12,7 @@ import JournalPage from "./pages/journal/Index";
 import AuxiliaryLedgersPage from "./pages/auxiliary-ledgers/Index";
 import LedgerPage from "./pages/ledger/Index";
 import ReportsPage from "./pages/reports/Index";
+import SettingsPage from "./pages/settings/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ function AppContent() {
             <Route path="auxiliary-ledgers" element={<AuxiliaryLedgersPage />} />
             <Route path="ledger" element={<LedgerPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

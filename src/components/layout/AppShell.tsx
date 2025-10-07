@@ -14,6 +14,7 @@ export function AppShell() {
     { path: '/auxiliary-ledgers', label: 'Libros Auxiliares' },
     { path: '/ledger', label: 'Libro Mayor' },
     { path: '/reports', label: 'Reportes' },
+    { path: '/settings', label: 'Configuración' },
   ];
 
   return (
