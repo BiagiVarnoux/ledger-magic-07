@@ -387,6 +387,10 @@ export type Database = {
         Args: { _owner_id: string; _viewer_id: string }
         Returns: boolean
       }
+      redeem_invitation_code: {
+        Args: { _code: string; _user_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "owner" | "viewer"

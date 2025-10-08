@@ -24,59 +24,36 @@ export function AuthForm() {
         await signIn(email, password);
         toast.success('¡Sesión iniciada exitosamente!');
       } else {
-        // Si hay código de invitación, validarlo primero
-        if (invitationCode) {
-          const { data: codeData, error: codeError } = await supabase
-            .from('invitation_codes')
-            .select('*')
-            .eq('code', invitationCode)
-            .eq('used', false)
-            .gt('expires_at', new Date().toISOString())
-            .maybeSingle();
+        // Crear cuenta
+        await signUp(email, password);
 
-          if (codeError || !codeData) {
-            toast.error('Código de invitación inválido o expirado');
-            setLoading(false);
-            return;
+        // Esperar un momento para que se cree el usuario
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Obtener el ID del nuevo usuario
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          // Si hay código de invitación, validarlo y redimirlo usando la función segura
+          if (invitationCode) {
+            const { data: result, error: redeemError } = await supabase.rpc(
+              'redeem_invitation_code',
+              { 
+                _code: invitationCode.trim(),
+                _user_id: user.id 
+              }
+            );
+
+            if (redeemError || !result?.success) {
+              toast.error(result?.error || 'Error al validar el código de invitación');
+              setLoading(false);
+              return;
+            }
+
+            toast.success('¡Cuenta creada con código de invitación! Revisa tu email para confirmar.');
+          } else {
+            toast.success('¡Cuenta creada exitosamente! Revisa tu email para confirmar.');
           }
-
-          // Crear cuenta
-          await signUp(email, password);
-
-          // Esperar un momento para que se cree el usuario
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          // Obtener el ID del nuevo usuario
-          const { data: { user } } = await supabase.auth.getUser();
-          
-          if (user) {
-            // Marcar código como usado y crear acceso compartido
-            await supabase.from('invitation_codes').update({ 
-              used: true, 
-              used_by: user.id 
-            }).eq('id', codeData.id);
-
-            await supabase.from('shared_access').insert({
-              owner_id: codeData.owner_id,
-              viewer_id: user.id,
-              can_view_accounts: codeData.can_view_accounts,
-              can_view_journal: codeData.can_view_journal,
-              can_view_auxiliary: codeData.can_view_auxiliary,
-              can_view_ledger: codeData.can_view_ledger,
-              can_view_reports: codeData.can_view_reports,
-            });
-
-            // Asignar rol de viewer
-            await supabase.from('user_roles').insert({
-              user_id: user.id,
-              role: 'viewer'
-            });
-          }
-
-          toast.success('¡Cuenta creada con código de invitación! Revisa tu email para confirmar.');
-        } else {
-          await signUp(email, password);
-          toast.success('¡Cuenta creada exitosamente! Revisa tu email para confirmar.');
         }
       }
     } catch (error: any) {
