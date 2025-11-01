@@ -6,6 +6,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from './AuthProvider';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { z } from 'zod';
+
+const authSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email({ message: 'Email inválido' })
+    .max(255, { message: 'Email demasiado largo' }),
+  password: z
+    .string()
+    .min(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
+    .max(72, { message: 'Contraseña demasiado larga' }),
+  invitationCode: z.string().trim().optional(),
+});
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true);
@@ -20,12 +34,28 @@ export function AuthForm() {
     setLoading(true);
 
     try {
+      // Validate inputs
+      const validationResult = authSchema.safeParse({
+        email: email.trim(),
+        password,
+        invitationCode: invitationCode.trim(),
+      });
+
+      if (!validationResult.success) {
+        const firstError = validationResult.error.errors[0];
+        toast.error(firstError.message);
+        setLoading(false);
+        return;
+      }
+
+      const validatedData = validationResult.data;
+
       if (isLogin) {
-        await signIn(email, password);
+        await signIn(validatedData.email, validatedData.password);
         toast.success('¡Sesión iniciada exitosamente!');
       } else {
         // Crear cuenta
-        await signUp(email, password);
+        await signUp(validatedData.email, validatedData.password);
 
         // Esperar un momento para que se cree el usuario
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -35,11 +65,11 @@ export function AuthForm() {
         
         if (user) {
           // Si hay código de invitación, validarlo y redimirlo usando la función segura
-          if (invitationCode) {
+          if (validatedData.invitationCode) {
             const { data: result, error: redeemError } = await supabase.rpc(
               'redeem_invitation_code',
               { 
-                _code: invitationCode.trim(),
+                _code: validatedData.invitationCode,
                 _user_id: user.id 
               }
             );
@@ -57,7 +87,8 @@ export function AuthForm() {
         }
       }
     } catch (error: any) {
-      toast.error(error.message || 'Error en la autenticación');
+      // Sanitized error message - don't expose internal details
+      toast.error('Error en la autenticación. Por favor verifica tus credenciales.');
     } finally {
       setLoading(false);
     }
@@ -99,7 +130,7 @@ export function AuthForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="••••••••"
-                minLength={6}
+                minLength={8}
               />
             </div>
             {!isLogin && (

@@ -198,7 +198,7 @@ export type Database = {
           date: string
           id: string
           memo: string | null
-          user_id: string | null
+          user_id: string
           void_of: string | null
         }
         Insert: {
@@ -206,7 +206,7 @@ export type Database = {
           date: string
           id: string
           memo?: string | null
-          user_id?: string | null
+          user_id: string
           void_of?: string | null
         }
         Update: {
@@ -214,7 +214,7 @@ export type Database = {
           date?: string
           id?: string
           memo?: string | null
-          user_id?: string | null
+          user_id?: string
           void_of?: string | null
         }
         Relationships: [

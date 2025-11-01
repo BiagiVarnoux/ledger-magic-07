@@ -80,7 +80,7 @@ export default function SettingsPage() {
       if (error) throw error;
       setIsOwner(data?.role === 'owner');
     } catch (error) {
-      console.error('Error checking role:', error);
+      // Role check failed - default to non-owner
       setIsOwner(false);
     } finally {
       setLoading(false);
@@ -100,7 +100,7 @@ export default function SettingsPage() {
       if (error) throw error;
       setInvitationCodes(data || []);
     } catch (error) {
-      console.error('Error fetching codes:', error);
+      // Failed to fetch invitation codes
     }
   };
 
@@ -117,7 +117,7 @@ export default function SettingsPage() {
       if (error) throw error;
       setSharedAccess(data || []);
     } catch (error) {
-      console.error('Error fetching shared access:', error);
+      // Failed to fetch shared access
     }
   };
 
