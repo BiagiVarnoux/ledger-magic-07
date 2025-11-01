@@ -15,7 +15,13 @@ import ReportsPage from "./pages/reports/Index";
 import SettingsPage from "./pages/settings/Index";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    },
+  },
+});
 
 function AppContent() {
   const { user, loading } = useAuth();
