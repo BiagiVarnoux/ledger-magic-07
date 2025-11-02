@@ -7,12 +7,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/types';
 import { fmt, todayISO, toDecimal } from '@/accounting/utils';
 import { AuxiliaryDefinitionsModal } from '@/components/auxiliary-ledger/AuxiliaryDefinitionsModal';
+import { KardexCPP } from '@/components/kardex/KardexCPP';
 
 export default function AuxiliaryLedgersPage() {
   const { 
@@ -165,6 +167,19 @@ export default function AuxiliaryLedgersPage() {
           Gestionar Libros Auxiliares
         </Button>
       </div>
+
+      <Tabs defaultValue="auxiliares" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="auxiliares">
+            Libros Auxiliares
+          </TabsTrigger>
+          <TabsTrigger value="kardex">
+            <Package className="w-4 h-4 mr-2" />
+            Kárdex (CPP)
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="auxiliares" className="space-y-6 mt-6">
 
       <Card className="shadow-sm">
         <CardHeader>
@@ -449,6 +464,13 @@ export default function AuxiliaryLedgersPage() {
           </CardContent>
         </Card>
       )}
+
+        </TabsContent>
+
+        <TabsContent value="kardex" className="mt-6">
+          <KardexCPP />
+        </TabsContent>
+      </Tabs>
 
       <AuxiliaryDefinitionsModal
         isOpen={isDefinitionsModalOpen}

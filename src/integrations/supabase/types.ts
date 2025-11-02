@@ -262,6 +262,80 @@ export type Database = {
           },
         ]
       }
+      kardex_entries: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      kardex_movements: {
+        Row: {
+          concepto: string
+          costo_total: number
+          costo_unitario: number
+          created_at: string
+          entrada: number
+          fecha: string
+          id: string
+          kardex_id: string
+          saldo: number
+          saldo_valorado: number
+          salidas: number
+          user_id: string
+        }
+        Insert: {
+          concepto: string
+          costo_total?: number
+          costo_unitario?: number
+          created_at?: string
+          entrada?: number
+          fecha: string
+          id?: string
+          kardex_id: string
+          saldo?: number
+          saldo_valorado?: number
+          salidas?: number
+          user_id: string
+        }
+        Update: {
+          concepto?: string
+          costo_total?: number
+          costo_unitario?: number
+          created_at?: string
+          entrada?: number
+          fecha?: string
+          id?: string
+          kardex_id?: string
+          saldo?: number
+          saldo_valorado?: number
+          salidas?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kardex_movements_kardex_id_fkey"
+            columns: ["kardex_id"]
+            isOneToOne: false
+            referencedRelation: "kardex_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quarterly_closures: {
         Row: {
           balances: Json
