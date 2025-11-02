@@ -51,6 +51,27 @@ export interface AuxiliaryMovementDetail {
   movement_type: 'INCREASE' | 'DECREASE'; // Aumento o Disminución
 }
 
+// Kárdex Types (Costo Promedio Ponderado)
+export interface KardexEntry {
+  id: string;
+  account_id: string;
+  user_id: string;
+}
+
+export interface KardexMovement {
+  id: string;
+  kardex_id: string;
+  user_id: string;
+  fecha: string; // Date in ISO format
+  concepto: string;
+  entrada: number;
+  salidas: number;
+  saldo: number;
+  costo_unitario: number;
+  costo_total: number;
+  saldo_valorado: number;
+}
+
 // Seeds (ES)
 export const seedAccounts: Account[] = [
   { id: "A.1",  name: "Banco MN",            type: "ACTIVO",      normal_side: "DEBE",  is_active: true },

@@ -168,9 +168,10 @@ export default function AuxiliaryLedgersPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="auxiliares" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="auxiliares">
+      <Tabs defaultValue="auxiliary" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="auxiliary">
+            <TrendingUp className="w-4 h-4 mr-2" />
             Libros Auxiliares
           </TabsTrigger>
           <TabsTrigger value="kardex">
@@ -179,8 +180,7 @@ export default function AuxiliaryLedgersPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="auxiliares" className="space-y-6 mt-6">
-
+        <TabsContent value="auxiliary" className="space-y-6 mt-6">
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>Seleccionar Libro Auxiliar</CardTitle>
