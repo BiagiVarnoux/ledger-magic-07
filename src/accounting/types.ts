@@ -52,17 +52,26 @@ export interface AuxiliaryMovementDetail {
 }
 
 // Kárdex Types (Costo Promedio Ponderado)
+export interface KardexDefinition {
+  id: string;
+  name: string;
+  account_id: string;
+  user_id: string;
+  created_at: string;
+}
+
 export interface KardexEntry {
   id: string;
   account_id: string;
   user_id: string;
+  created_at: string;
 }
 
 export interface KardexMovement {
   id: string;
   kardex_id: string;
   user_id: string;
-  fecha: string; // Date in ISO format
+  fecha: string;
   concepto: string;
   entrada: number;
   salidas: number;
@@ -70,6 +79,8 @@ export interface KardexMovement {
   costo_unitario: number;
   costo_total: number;
   saldo_valorado: number;
+  journal_entry_id?: string;
+  created_at: string;
 }
 
 // Seeds (ES)

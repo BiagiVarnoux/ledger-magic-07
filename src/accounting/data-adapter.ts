@@ -1,5 +1,5 @@
 // src/accounting/data-adapter.ts
-import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, seedAccounts } from './types';
+import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, KardexDefinition, seedAccounts } from './types';
 import { cmpDate } from './utils';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -24,6 +24,7 @@ export interface IDataAdapter {
   deleteAuxiliaryEntry(id: string): Promise<void>;
   loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]>;
   upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void>;
+  loadKardexDefinitions(): Promise<KardexDefinition[]>;
   loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>>;
   saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void>;
 }
@@ -141,6 +142,9 @@ export const LocalAdapter: IDataAdapter = {
     }
     
     localStorage.setItem(LS_AUX_MOVEMENTS, JSON.stringify(allMovements));
+  },
+  async loadKardexDefinitions() {
+    return []; // LocalStorage no soporta kárdex definitions
   },
   async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
     const raw = localStorage.getItem(`closures_${quarterEndDate}`);
@@ -349,6 +353,11 @@ export const SupaAdapter: IDataAdapter = {
     
     const { error } = await supa.from("auxiliary_movement_details").insert(payload);
     if (error) throw error;
+  },
+  async loadKardexDefinitions(){
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.loadKardexDefinitions();
+    const { data, error } = await supa.from("kardex_definitions").select("id,name,account_id,user_id,created_at").order("name");
+    if (error) throw error; return (data||[]) as KardexDefinition[];
   },
   async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadClosingBalances(quarterEndDate);

@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff, Users } from 'lucide-react';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
+import { KardexModal } from '@/components/kardex/KardexModal';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { JournalEntry, JournalLine } from '@/accounting/types';
@@ -32,7 +33,7 @@ type LineDraft = {
 };
 
 export default function JournalPage() {
-  const { accounts, entries, setEntries, adapter, auxiliaryDefinitions } = useAccounting();
+  const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions } = useAccounting();
   const [date, setDate] = useState<string>(todayISO());
   const [memo, setMemo] = useState<string>("");
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
@@ -41,6 +42,15 @@ export default function JournalPage() {
   const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
+  });
+  const [kardexModalState, setKardexModalState] = useState<{
+    isOpen: boolean;
+    linesToProcess: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }>;
+    originalEntry: JournalEntry | null;
+  }>({
+    isOpen: false,
+    linesToProcess: [],
+    originalEntry: null
   });
   const [auxiliaryModalState, setAuxiliaryModalState] = useState<{
     isOpen: boolean;
@@ -75,6 +85,32 @@ export default function JournalPage() {
   
   function removeLine(idx: number) { 
     setLines(ls => ls.filter((_, i) => i !== idx)); 
+  }
+
+  function detectKardexLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
+    const kardexLines: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> = [];
+    
+    // Get all kardex account IDs from definitions
+    const kardexAccountIds = kardexDefinitions.map(d => d.account_id);
+    
+    je.lines.forEach((line, index) => {
+      if (kardexAccountIds.includes(line.account_id)) {
+        const lineDraft = lines[index];
+        const lineAmount = line.debit || line.credit;
+        const account = accounts.find(a => a.id === line.account_id);
+        const isIncrease = account?.normal_side === 'DEBE' ? line.debit > 0 : line.credit > 0;
+        
+        kardexLines.push({
+          lineDraft,
+          lineIndex: index,
+          accountId: line.account_id,
+          lineAmount,
+          isIncrease
+        });
+      }
+    });
+    
+    return kardexLines;
   }
 
   function detectAuxiliaryLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
@@ -140,23 +176,58 @@ export default function JournalPage() {
     const je = validateAndBuildEntry(); 
     if (!je) return;
     
-    // Detectar líneas que requieren gestión auxiliar
+    // Detectar líneas que requieren kárdex (PRIMERO)
+    const kardexLines = detectKardexLines(je);
+    
+    if (kardexLines.length > 0) {
+      // Hay líneas de kárdex, abrir el modal de kárdex
+      setKardexModalState({
+        isOpen: true,
+        linesToProcess: kardexLines,
+        originalEntry: je
+      });
+      return;
+    }
+    
+    // Detectar líneas que requieren gestión auxiliar (SEGUNDO)
     const auxiliaryLines = detectAuxiliaryLines(je);
     
-    if (auxiliaryLines.length === 0) {
-      // No hay líneas auxiliares, guardar directamente
-      await handleAuxiliarySave(je);
-    } else {
+    if (auxiliaryLines.length > 0) {
       // Hay líneas auxiliares, abrir el modal
       setAuxiliaryModalState({
         isOpen: true,
         linesToProcess: auxiliaryLines,
         originalEntry: je
       });
+      return;
+    }
+    
+    // No hay líneas especiales, guardar directamente
+    await handleFinalSave(je);
+  }
+
+  async function handleKardexSave(je: JournalEntry) {
+    // Después de guardar kárdex, verificar si hay auxiliares
+    const auxiliaryLines = detectAuxiliaryLines(je);
+    
+    if (auxiliaryLines.length > 0) {
+      // Hay líneas auxiliares, abrir el modal de auxiliares
+      setAuxiliaryModalState({
+        isOpen: true,
+        linesToProcess: auxiliaryLines,
+        originalEntry: je
+      });
+    } else {
+      // No hay auxiliares, guardar directamente
+      await handleFinalSave(je);
     }
   }
 
   async function handleAuxiliarySave(je: JournalEntry) {
+    await handleFinalSave(je);
+  }
+
+  async function handleFinalSave(je: JournalEntry) {
     try { 
       await adapter.saveEntry(je); 
       setEntries(await adapter.loadEntries()); 
@@ -524,6 +595,14 @@ export default function JournalPage() {
           </div>
         </CardContent>
       </Card>
+
+      <KardexModal
+        isOpen={kardexModalState.isOpen}
+        onClose={() => setKardexModalState({ ...kardexModalState, isOpen: false })}
+        linesToProcess={kardexModalState.linesToProcess}
+        originalEntry={kardexModalState.originalEntry}
+        onSave={handleKardexSave}
+      />
 
       <AuxiliaryLedgerModal
         isOpen={auxiliaryModalState.isOpen}

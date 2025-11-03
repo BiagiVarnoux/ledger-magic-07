@@ -12,10 +12,11 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { KardexMovement } from '@/accounting/types';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO } from '@/accounting/utils';
+import { KardexDefinitionsModal } from './KardexDefinitionsModal';
 
 export function KardexCPP() {
-  const { accounts } = useAccounting();
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const { accounts, kardexDefinitions } = useAccounting();
+  const [selectedKardexDefId, setSelectedKardexDefId] = useState<string>('');
   const [kardexId, setKardexId] = useState<string>('');
   const [movements, setMovements] = useState<KardexMovement[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,17 +30,12 @@ export function KardexCPP() {
     costo_total: '0',
   });
 
-  // Filter for active asset accounts only
-  const assetAccounts = useMemo(() => 
-    accounts.filter(a => a.is_active && a.type === 'ACTIVO'),
-    [accounts]
-  );
+  const selectedKardexDef = kardexDefinitions.find(d => d.id === selectedKardexDefId);
+  const selectedAccount = accounts.find(a => a.id === selectedKardexDef?.account_id);
 
-  const selectedAccount = accounts.find(a => a.id === selectedAccountId);
-
-  // Load or create kardex when account is selected
+  // Load or create kardex when definition is selected
   useEffect(() => {
-    if (!selectedAccountId) {
+    if (!selectedKardexDefId || !selectedKardexDef) {
       setKardexId('');
       setMovements([]);
       return;
@@ -55,7 +51,7 @@ export function KardexCPP() {
         const { data: existingKardex, error: kardexError } = await supabase
           .from('kardex_entries')
           .select('id')
-          .eq('account_id', selectedAccountId)
+          .eq('account_id', selectedKardexDef.account_id)
           .eq('user_id', user.id)
           .maybeSingle();
 
@@ -68,7 +64,7 @@ export function KardexCPP() {
           const { data: newKardex, error: createError } = await supabase
             .from('kardex_entries')
             .insert({
-              account_id: selectedAccountId,
+              account_id: selectedKardexDef.account_id,
               user_id: user.id
             })
             .select()
@@ -97,7 +93,7 @@ export function KardexCPP() {
     };
 
     loadKardex();
-  }, [selectedAccountId]);
+  }, [selectedKardexDefId, selectedKardexDef]);
 
   // Calculate CPP for each movement
   const movementsWithCPP = useMemo(() => {
@@ -279,7 +275,7 @@ export function KardexCPP() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `kardex_${selectedAccountId}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `kardex_${selectedKardexDef?.name}_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Kárdex exportado');
@@ -289,33 +285,39 @@ export function KardexCPP() {
     <div className="space-y-6">
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Seleccionar Cuenta para Kárdex</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Seleccionar Kárdex</CardTitle>
+            <KardexDefinitionsModal />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Cuenta de Activo</Label>
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+              <Label>Kárdex Creado</Label>
+              <Select value={selectedKardexDefId} onValueChange={setSelectedKardexDefId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una cuenta de activo" />
+                  <SelectValue placeholder="Selecciona un Kárdex" />
                 </SelectTrigger>
                 <SelectContent>
-                  {assetAccounts.length === 0 ? (
+                  {kardexDefinitions.length === 0 ? (
                     <SelectItem value="_empty" disabled>
-                      No hay cuentas de activo activas
+                      No hay Kárdex creados
                     </SelectItem>
                   ) : (
-                    assetAccounts.map(acc => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        {acc.id} — {acc.name}
-                      </SelectItem>
-                    ))
+                    kardexDefinitions.map(def => {
+                      const account = accounts.find(a => a.id === def.account_id);
+                      return (
+                        <SelectItem key={def.id} value={def.id}>
+                          {def.name} ({def.account_id} — {account?.name})
+                        </SelectItem>
+                      );
+                    })
                   )}
                 </SelectContent>
               </Select>
-              {assetAccounts.length === 0 && (
+              {kardexDefinitions.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Primero debes crear cuentas de activo en el Catálogo de Cuentas
+                  Crea definiciones de Kárdex para comenzar
                 </p>
               )}
             </div>
@@ -324,7 +326,7 @@ export function KardexCPP() {
                 <DialogTrigger asChild>
                   <Button 
                     onClick={handleOpenModal} 
-                    disabled={!selectedAccountId || loading}
+                    disabled={!selectedKardexDefId || loading}
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Agregar Movimiento
@@ -406,7 +408,7 @@ export function KardexCPP() {
               <Button 
                 variant="outline" 
                 onClick={handleExport}
-                disabled={!selectedAccountId || movements.length === 0}
+                disabled={!selectedKardexDefId || movements.length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Exportar
@@ -416,11 +418,11 @@ export function KardexCPP() {
         </CardContent>
       </Card>
 
-      {selectedAccountId && (
+      {selectedKardexDefId && selectedKardexDef && (
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle>
-              Kárdex de {selectedAccount?.name} ({selectedAccount?.id}) — Costo Promedio Ponderado
+              {selectedKardexDef.name} — Kárdex de {selectedAccount?.name} ({selectedAccount?.id}) — Costo Promedio Ponderado
             </CardTitle>
           </CardHeader>
           <CardContent>

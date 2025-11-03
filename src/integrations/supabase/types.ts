@@ -262,6 +262,30 @@ export type Database = {
           },
         ]
       }
+      kardex_definitions: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       kardex_entries: {
         Row: {
           account_id: string
@@ -292,6 +316,7 @@ export type Database = {
           entrada: number
           fecha: string
           id: string
+          journal_entry_id: string | null
           kardex_id: string
           saldo: number
           saldo_valorado: number
@@ -306,6 +331,7 @@ export type Database = {
           entrada?: number
           fecha: string
           id?: string
+          journal_entry_id?: string | null
           kardex_id: string
           saldo?: number
           saldo_valorado?: number
@@ -320,6 +346,7 @@ export type Database = {
           entrada?: number
           fecha?: string
           id?: string
+          journal_entry_id?: string | null
           kardex_id?: string
           saldo?: number
           saldo_valorado?: number
