@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff, Users } from 'lucide-react';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
-import { KardexModal } from '@/components/kardex/KardexModal';
+import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { JournalEntry, JournalLine } from '@/accounting/types';
@@ -24,12 +24,14 @@ import {
   signForLine
 } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { supabase } from '@/integrations/supabase/client';
 
 type LineDraft = { 
   account_id?: string; 
   debit?: string; 
   credit?: string; 
-  line_memo?: string; 
+  line_memo?: string;
+  kardexData?: KardexData;
 };
 
 export default function JournalPage() {
@@ -43,15 +45,13 @@ export default function JournalPage() {
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
   });
-  const [kardexModalState, setKardexModalState] = useState<{
+  const [kardexPopupState, setKardexPopupState] = useState<{
     isOpen: boolean;
-    linesToProcess: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }>;
-    originalEntry: JournalEntry | null;
-  }>({
-    isOpen: false,
-    linesToProcess: [],
-    originalEntry: null
-  });
+    lineIndex: number;
+    accountId: string;
+    lineAmount: number;
+    isIncrease: boolean;
+  } | null>(null);
   const [auxiliaryModalState, setAuxiliaryModalState] = useState<{
     isOpen: boolean;
     linesToProcess: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }>;
@@ -82,36 +82,55 @@ export default function JournalPage() {
   function setLine(idx: number, patch: Partial<LineDraft>) { 
     setLines(ls => ls.map((l, i) => i === idx ? { ...l, ...patch } : l)); 
   }
+
+  function handleAccountChange(idx: number, accountId: string) {
+    const newLine = { ...lines[idx], account_id: accountId };
+    
+    // Check if this account has a kardex definition
+    const hasKardex = kardexDefinitions.some(d => d.account_id === accountId);
+    
+    if (hasKardex) {
+      // Calculate line amount
+      const debitVal = toDecimal(newLine.debit);
+      const creditVal = toDecimal(newLine.credit);
+      const lineAmount = debitVal || creditVal;
+      
+      if (lineAmount > 0) {
+        const account = accounts.find(a => a.id === accountId);
+        const isIncrease = account?.normal_side === 'DEBE' ? debitVal > 0 : creditVal > 0;
+        
+        // Open kardex popup
+        setKardexPopupState({
+          isOpen: true,
+          lineIndex: idx,
+          accountId,
+          lineAmount,
+          isIncrease
+        });
+      }
+    }
+    
+    setLine(idx, { account_id: accountId });
+  }
+
+  function handleKardexPopupSave(kardexData: KardexData) {
+    if (!kardexPopupState) return;
+    
+    const { lineIndex } = kardexPopupState;
+    
+    // Save kardex data with the line and copy concepto to line_memo
+    setLine(lineIndex, {
+      kardexData,
+      line_memo: kardexData.concepto
+    });
+    
+    setKardexPopupState(null);
+  }
   
   function removeLine(idx: number) { 
     setLines(ls => ls.filter((_, i) => i !== idx)); 
   }
 
-  function detectKardexLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
-    const kardexLines: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> = [];
-    
-    // Get all kardex account IDs from definitions
-    const kardexAccountIds = kardexDefinitions.map(d => d.account_id);
-    
-    je.lines.forEach((line, index) => {
-      if (kardexAccountIds.includes(line.account_id)) {
-        const lineDraft = lines[index];
-        const lineAmount = line.debit || line.credit;
-        const account = accounts.find(a => a.id === line.account_id);
-        const isIncrease = account?.normal_side === 'DEBE' ? line.debit > 0 : line.credit > 0;
-        
-        kardexLines.push({
-          lineDraft,
-          lineIndex: index,
-          accountId: line.account_id,
-          lineAmount,
-          isIncrease
-        });
-      }
-    });
-    
-    return kardexLines;
-  }
 
   function detectAuxiliaryLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
     const auxiliaryLines: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> = [];
@@ -176,20 +195,7 @@ export default function JournalPage() {
     const je = validateAndBuildEntry(); 
     if (!je) return;
     
-    // Detectar líneas que requieren kárdex (PRIMERO)
-    const kardexLines = detectKardexLines(je);
-    
-    if (kardexLines.length > 0) {
-      // Hay líneas de kárdex, abrir el modal de kárdex
-      setKardexModalState({
-        isOpen: true,
-        linesToProcess: kardexLines,
-        originalEntry: je
-      });
-      return;
-    }
-    
-    // Detectar líneas que requieren gestión auxiliar (SEGUNDO)
+    // Detectar líneas que requieren gestión auxiliar
     const auxiliaryLines = detectAuxiliaryLines(je);
     
     if (auxiliaryLines.length > 0) {
@@ -206,30 +212,71 @@ export default function JournalPage() {
     await handleFinalSave(je);
   }
 
-  async function handleKardexSave(je: JournalEntry) {
-    // Después de guardar kárdex, verificar si hay auxiliares
-    const auxiliaryLines = detectAuxiliaryLines(je);
-    
-    if (auxiliaryLines.length > 0) {
-      // Hay líneas auxiliares, abrir el modal de auxiliares
-      setAuxiliaryModalState({
-        isOpen: true,
-        linesToProcess: auxiliaryLines,
-        originalEntry: je
-      });
-    } else {
-      // No hay auxiliares, guardar directamente
-      await handleFinalSave(je);
-    }
-  }
-
   async function handleAuxiliarySave(je: JournalEntry) {
     await handleFinalSave(je);
   }
 
   async function handleFinalSave(je: JournalEntry) {
     try { 
-      await adapter.saveEntry(je); 
+      await adapter.saveEntry(je);
+      
+      // Save kardex movements for lines that have kardex data
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (line.kardexData && line.account_id) {
+            const kardexDef = kardexDefinitions.find(d => d.account_id === line.account_id);
+            if (!kardexDef) continue;
+            
+            // Find or create kardex entry
+            const { data: existingKardex, error: kardexError } = await supabase
+              .from('kardex_entries')
+              .select('id')
+              .eq('account_id', line.account_id)
+              .eq('user_id', user.id)
+              .maybeSingle();
+            
+            if (kardexError) throw kardexError;
+            
+            let kardexId = existingKardex?.id;
+            
+            if (!kardexId) {
+              const { data: newKardex, error: createError } = await supabase
+                .from('kardex_entries')
+                .insert({
+                  account_id: line.account_id,
+                  user_id: user.id
+                })
+                .select()
+                .single();
+              
+              if (createError) throw createError;
+              kardexId = newKardex.id;
+            }
+            
+            // Create kardex movement
+            const { error: movError } = await supabase
+              .from('kardex_movements')
+              .insert({
+                kardex_id: kardexId,
+                user_id: user.id,
+                fecha: je.date,
+                concepto: line.kardexData.concepto,
+                entrada: line.kardexData.entrada,
+                salidas: line.kardexData.salidas,
+                costo_total: line.kardexData.costo_total,
+                journal_entry_id: je.id,
+                saldo: 0,
+                costo_unitario: 0,
+                saldo_valorado: 0
+              });
+            
+            if (movError) throw movError;
+          }
+        }
+      }
+      
       setEntries(await adapter.loadEntries()); 
       toast.success(`Asiento ${je.id} ${editingEntry ? 'actualizado' : 'guardado'}`); 
       clearForm();
@@ -415,7 +462,7 @@ export default function JournalPage() {
                       <div className="flex items-center gap-2">
                          <Select 
                            value={l.account_id || ""} 
-                           onValueChange={(v) => setLine(idx, { account_id: v })}
+                           onValueChange={(v) => handleAccountChange(idx, v)}
                          >
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona cuenta" />
@@ -596,13 +643,17 @@ export default function JournalPage() {
         </CardContent>
       </Card>
 
-      <KardexModal
-        isOpen={kardexModalState.isOpen}
-        onClose={() => setKardexModalState({ ...kardexModalState, isOpen: false })}
-        linesToProcess={kardexModalState.linesToProcess}
-        originalEntry={kardexModalState.originalEntry}
-        onSave={handleKardexSave}
-      />
+      {kardexPopupState && (
+        <InlineKardexPopup
+          isOpen={kardexPopupState.isOpen}
+          onClose={() => setKardexPopupState(null)}
+          accountId={kardexPopupState.accountId}
+          lineAmount={kardexPopupState.lineAmount}
+          isIncrease={kardexPopupState.isIncrease}
+          onSave={handleKardexPopupSave}
+          initialData={lines[kardexPopupState.lineIndex]?.kardexData}
+        />
+      )}
 
       <AuxiliaryLedgerModal
         isOpen={auxiliaryModalState.isOpen}
