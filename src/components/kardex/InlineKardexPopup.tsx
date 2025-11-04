@@ -17,7 +17,7 @@ interface InlineKardexPopupProps {
   isOpen: boolean;
   onClose: () => void;
   accountId: string;
-  lineAmount: number;
+  lineAmount?: number;
   isIncrease: boolean;
   onSave: (data: KardexData) => void;
   initialData?: KardexData;
@@ -48,7 +48,7 @@ export function InlineKardexPopup({
       } else {
         setConcepto('');
         setCantidad('');
-        setCostoTotal(isIncrease ? String(lineAmount) : '');
+        setCostoTotal(isIncrease && lineAmount ? String(lineAmount) : '');
       }
     }
   }, [isOpen, initialData, isIncrease, lineAmount]);
@@ -132,7 +132,9 @@ export function InlineKardexPopup({
                 onChange={(e) => setCostoTotal(e.target.value)}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Monto total de la compra según el asiento: {lineAmount.toFixed(2)}
+                {lineAmount 
+                  ? `Monto total de la compra según el asiento: ${lineAmount.toFixed(2)}`
+                  : 'Ingresa el monto total de la compra'}
               </p>
             </div>
           )}
