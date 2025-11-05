@@ -63,12 +63,12 @@ export function InlineKardexPopup({
     }
   }, [isOpen, initialData]);
 
-  // Load kardex movements when switching to salida
+  // Load kardex data when opening or switching to salida
   useEffect(() => {
     if (isOpen && movementType === 'salida' && !initialData) {
       loadKardexData();
     }
-  }, [isOpen, movementType, accountId]);
+  }, [isOpen, movementType, accountId, initialData]);
 
   async function loadKardexData() {
     try {

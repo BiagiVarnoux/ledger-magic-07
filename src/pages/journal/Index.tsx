@@ -248,7 +248,42 @@ export default function JournalPage() {
               kardexId = newKardex.id;
             }
             
-            // Create kardex movement
+            // Get last movement to calculate new balances with CPP
+            const { data: lastMovements } = await supabase
+              .from('kardex_movements')
+              .select('*')
+              .eq('kardex_id', kardexId)
+              .eq('user_id', user.id)
+              .order('fecha', { ascending: false })
+              .order('created_at', { ascending: false })
+              .limit(1);
+            
+            const lastMovement = lastMovements?.[0];
+            const saldoAnterior = lastMovement ? Number(lastMovement.saldo) : 0;
+            const costoUnitarioAnterior = lastMovement ? Number(lastMovement.costo_unitario) : 0;
+            const saldoValoradoAnterior = lastMovement ? Number(lastMovement.saldo_valorado) : 0;
+            
+            let nuevoSaldo = 0;
+            let nuevoCostoUnitario = 0;
+            let nuevoSaldoValorado = 0;
+            
+            const entrada = Number(line.kardexData.entrada);
+            const salida = Number(line.kardexData.salidas);
+            const costoTotal = Number(line.kardexData.costo_total);
+            
+            if (entrada > 0) {
+              // Entrada: Calcular nuevo costo promedio ponderado
+              nuevoSaldo = saldoAnterior + entrada;
+              nuevoSaldoValorado = saldoValoradoAnterior + costoTotal;
+              nuevoCostoUnitario = nuevoSaldo > 0 ? nuevoSaldoValorado / nuevoSaldo : 0;
+            } else if (salida > 0) {
+              // Salida: Mantener costo unitario anterior
+              nuevoSaldo = saldoAnterior - salida;
+              nuevoCostoUnitario = costoUnitarioAnterior;
+              nuevoSaldoValorado = nuevoSaldo * nuevoCostoUnitario;
+            }
+            
+            // Create kardex movement with calculated values
             const { error: movError } = await supabase
               .from('kardex_movements')
               .insert({
@@ -256,13 +291,13 @@ export default function JournalPage() {
                 user_id: user.id,
                 fecha: je.date,
                 concepto: line.kardexData.concepto,
-                entrada: line.kardexData.entrada,
-                salidas: line.kardexData.salidas,
-                costo_total: line.kardexData.costo_total,
+                entrada: entrada,
+                salidas: salida,
+                costo_total: costoTotal,
                 journal_entry_id: je.id,
-                saldo: 0,
-                costo_unitario: 0,
-                saldo_valorado: 0
+                saldo: nuevoSaldo,
+                costo_unitario: nuevoCostoUnitario,
+                saldo_valorado: nuevoSaldoValorado
               });
             
             if (movError) throw movError;
