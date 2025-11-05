@@ -85,6 +85,7 @@ export function InlineKardexPopup({
         .from('kardex_entries')
         .select('id')
         .eq('account_id', accountId)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (existingKardex) {
@@ -105,6 +106,7 @@ export function InlineKardexPopup({
         .from('kardex_movements')
         .select('*')
         .eq('kardex_id', kardexId)
+        .eq('user_id', user.id)
         .order('fecha', { ascending: true });
 
       if (movements && movements.length > 0) {
@@ -117,6 +119,7 @@ export function InlineKardexPopup({
       }
     } catch (error) {
       console.error('Error loading kardex data:', error);
+      toast.error('Error al cargar datos del Kardex');
     } finally {
       setLoading(false);
     }
