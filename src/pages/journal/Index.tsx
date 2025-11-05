@@ -50,7 +50,6 @@ export default function JournalPage() {
     lineIndex: number;
     accountId: string;
     lineAmount?: number;
-    isIncrease: boolean;
   } | null>(null);
   const [auxiliaryModalState, setAuxiliaryModalState] = useState<{
     isOpen: boolean;
@@ -95,16 +94,12 @@ export default function JournalPage() {
       const creditVal = toDecimal(newLine.credit);
       const lineAmount = debitVal || creditVal;
       
-      const account = accounts.find(a => a.id === accountId);
-      const isIncrease = account?.normal_side === 'DEBE' ? debitVal > 0 : creditVal > 0;
-      
       // Abrir el popup inmediatamente si tiene Kardex
       setKardexPopupState({
         isOpen: true,
         lineIndex: idx,
         accountId,
-        lineAmount: lineAmount > 0 ? lineAmount : undefined,
-        isIncrease
+        lineAmount: lineAmount > 0 ? lineAmount : undefined
       });
     }
     
@@ -647,7 +642,6 @@ export default function JournalPage() {
           onClose={() => setKardexPopupState(null)}
           accountId={kardexPopupState.accountId}
           lineAmount={kardexPopupState.lineAmount}
-          isIncrease={kardexPopupState.isIncrease}
           onSave={handleKardexPopupSave}
           initialData={lines[kardexPopupState.lineIndex]?.kardexData}
         />

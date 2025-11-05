@@ -3,8 +3,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
+import { supabase } from '@/integrations/supabase/client';
+import { KardexMovement } from '@/accounting/types';
 
 export interface KardexData {
   concepto: string;
@@ -18,7 +21,6 @@ interface InlineKardexPopupProps {
   onClose: () => void;
   accountId: string;
   lineAmount?: number;
-  isIncrease: boolean;
   onSave: (data: KardexData) => void;
   initialData?: KardexData;
 }
@@ -28,30 +30,107 @@ export function InlineKardexPopup({
   onClose,
   accountId,
   lineAmount,
-  isIncrease,
   onSave,
   initialData
 }: InlineKardexPopupProps) {
-  const { accounts } = useAccounting();
+  const { accounts, kardexDefinitions } = useAccounting();
+  const [movementType, setMovementType] = useState<'entrada' | 'salida'>('entrada');
   const [concepto, setConcepto] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [costoTotal, setCostoTotal] = useState('');
+  const [saldoActual, setSaldoActual] = useState(0);
+  const [costoUnitarioActual, setCostoUnitarioActual] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const account = accounts.find(a => a.id === accountId);
 
+  // Load kardex data when opening for salidas
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
         setConcepto(initialData.concepto);
         setCantidad(String(initialData.entrada || initialData.salidas));
         setCostoTotal(String(initialData.costo_total));
+        setMovementType(initialData.entrada > 0 ? 'entrada' : 'salida');
       } else {
         setConcepto('');
         setCantidad('');
-        setCostoTotal(isIncrease && lineAmount ? String(lineAmount) : '');
+        setCostoTotal('');
+        setMovementType('entrada');
+        setSaldoActual(0);
+        setCostoUnitarioActual(0);
       }
     }
-  }, [isOpen, initialData, isIncrease, lineAmount]);
+  }, [isOpen, initialData]);
+
+  // Load kardex movements when switching to salida
+  useEffect(() => {
+    if (isOpen && movementType === 'salida' && !initialData) {
+      loadKardexData();
+    }
+  }, [isOpen, movementType, accountId]);
+
+  async function loadKardexData() {
+    try {
+      setLoading(true);
+      const kardexDef = kardexDefinitions.find(d => d.account_id === accountId);
+      if (!kardexDef) return;
+
+      // Get or create kardex entry
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let kardexId = '';
+      const { data: existingKardex } = await supabase
+        .from('kardex_entries')
+        .select('id')
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      if (existingKardex) {
+        kardexId = existingKardex.id;
+      } else {
+        const { data: newKardex } = await supabase
+          .from('kardex_entries')
+          .insert({ account_id: accountId, user_id: user.id })
+          .select('id')
+          .single();
+        if (newKardex) kardexId = newKardex.id;
+      }
+
+      if (!kardexId) return;
+
+      // Load movements
+      const { data: movements } = await supabase
+        .from('kardex_movements')
+        .select('*')
+        .eq('kardex_id', kardexId)
+        .order('fecha', { ascending: true });
+
+      if (movements && movements.length > 0) {
+        const lastMovement = movements[movements.length - 1];
+        setSaldoActual(Number(lastMovement.saldo) || 0);
+        setCostoUnitarioActual(Number(lastMovement.costo_unitario) || 0);
+      } else {
+        setSaldoActual(0);
+        setCostoUnitarioActual(0);
+      }
+    } catch (error) {
+      console.error('Error loading kardex data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Auto-calculate costo total for salidas
+  useEffect(() => {
+    if (movementType === 'salida' && cantidad && costoUnitarioActual > 0) {
+      const cantidadNum = parseFloat(cantidad);
+      if (!isNaN(cantidadNum)) {
+        setCostoTotal((cantidadNum * costoUnitarioActual).toFixed(2));
+      }
+    }
+  }, [movementType, cantidad, costoUnitarioActual]);
 
   const handleSave = () => {
     if (!concepto.trim()) {
@@ -65,19 +144,29 @@ export function InlineKardexPopup({
       return;
     }
 
-    const costoTotalNum = parseFloat(costoTotal);
-    
-    // Para entradas, el costo total es requerido
-    if (isIncrease && (!costoTotalNum || costoTotalNum <= 0)) {
-      toast.error('Para entradas, el costo total es requerido');
-      return;
+    // Validaciones según tipo de movimiento
+    if (movementType === 'entrada') {
+      const costoTotalNum = parseFloat(costoTotal);
+      if (!costoTotalNum || costoTotalNum <= 0) {
+        toast.error('Para entradas, el costo total es requerido');
+        return;
+      }
+    } else {
+      // Para salidas, verificar que no exceda el saldo
+      if (cantidadNum > saldoActual) {
+        toast.error(`La cantidad de salida (${cantidadNum}) excede el saldo disponible (${saldoActual})`);
+        return;
+      }
     }
+
+    const costoTotalNum = parseFloat(costoTotal) || 0;
+    const isEntrada = movementType === 'entrada';
 
     const kardexData: KardexData = {
       concepto: concepto.trim(),
-      entrada: isIncrease ? cantidadNum : 0,
-      salidas: isIncrease ? 0 : cantidadNum,
-      costo_total: isIncrease ? costoTotalNum : 0
+      entrada: isEntrada ? cantidadNum : 0,
+      salidas: isEntrada ? 0 : cantidadNum,
+      costo_total: isEntrada ? costoTotalNum : costoTotalNum
     };
 
     onSave(kardexData);
@@ -93,12 +182,42 @@ export function InlineKardexPopup({
           <div className="text-sm text-muted-foreground">
             Cuenta: {accountId} - {account?.name}
           </div>
-          <div className="text-sm font-medium">
-            {isIncrease ? '📈 Entrada (Compra)' : '📉 Salida (Venta/Uso)'}
-          </div>
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Tipo de Movimiento */}
+          <div>
+            <Label className="text-sm font-medium mb-2 block">Tipo de Movimiento</Label>
+            <RadioGroup value={movementType} onValueChange={(v) => setMovementType(v as 'entrada' | 'salida')}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="entrada" id="entrada" />
+                <Label htmlFor="entrada" className="font-normal cursor-pointer">
+                  📈 Entrada (Compra)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="salida" id="salida" />
+                <Label htmlFor="salida" className="font-normal cursor-pointer">
+                  📉 Salida (Venta/Uso)
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          {/* Información de Saldo (solo para salidas) */}
+          {movementType === 'salida' && (
+            <div className="bg-muted/50 p-3 rounded-md space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Saldo Actual:</span>
+                <span className="font-medium">{saldoActual.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Costo Unitario:</span>
+                <span className="font-medium">Bs. {costoUnitarioActual.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
           <div>
             <Label className="text-sm font-medium">Concepto</Label>
             <Input
@@ -110,7 +229,7 @@ export function InlineKardexPopup({
 
           <div>
             <Label className="text-sm font-medium">
-              {isIncrease ? 'Cantidad de Entrada' : 'Cantidad de Salida'}
+              {movementType === 'entrada' ? 'Cantidad de Entrada' : 'Cantidad de Salida'}
             </Label>
             <Input
               type="number"
@@ -119,9 +238,14 @@ export function InlineKardexPopup({
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value)}
             />
+            {movementType === 'salida' && saldoActual > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Máximo disponible: {saldoActual.toFixed(2)}
+              </p>
+            )}
           </div>
 
-          {isIncrease && (
+          {movementType === 'entrada' && (
             <div>
               <Label className="text-sm font-medium">Costo Total (Bs.)</Label>
               <Input
@@ -139,12 +263,21 @@ export function InlineKardexPopup({
             </div>
           )}
 
+          {movementType === 'salida' && costoTotal && (
+            <div className="bg-muted/50 p-3 rounded-md">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Costo Total Calculado:</span>
+                <span className="font-medium">Bs. {costoTotal}</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>
-              Guardar
+            <Button onClick={handleSave} disabled={loading}>
+              {loading ? 'Cargando...' : 'Guardar'}
             </Button>
           </div>
         </div>
