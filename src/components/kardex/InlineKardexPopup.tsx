@@ -76,10 +76,10 @@ export function InlineKardexPopup({
       const kardexDef = kardexDefinitions.find(d => d.account_id === accountId);
       if (!kardexDef) return;
 
-      // Get or create kardex entry
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Get or create kardex entry
       let kardexId = '';
       const { data: existingKardex } = await supabase
         .from('kardex_entries')
@@ -91,35 +91,68 @@ export function InlineKardexPopup({
       if (existingKardex) {
         kardexId = existingKardex.id;
       } else {
-        const { data: newKardex } = await supabase
-          .from('kardex_entries')
-          .insert({ account_id: accountId, user_id: user.id })
-          .select('id')
-          .single();
-        if (newKardex) kardexId = newKardex.id;
+        // Si no existe kardex entry, el saldo es 0
+        console.log('No existe kardex entry para esta cuenta');
+        setSaldoActual(0);
+        setCostoUnitarioActual(0);
+        return;
       }
 
-      if (!kardexId) return;
-
-      // Load movements
+      // Load ALL movements ordered by date
       const { data: movements } = await supabase
         .from('kardex_movements')
         .select('*')
         .eq('kardex_id', kardexId)
         .eq('user_id', user.id)
-        .order('fecha', { ascending: true });
+        .order('fecha', { ascending: true })
+        .order('created_at', { ascending: true });
 
-      if (movements && movements.length > 0) {
-        const lastMovement = movements[movements.length - 1];
-        setSaldoActual(Number(lastMovement.saldo) || 0);
-        setCostoUnitarioActual(Number(lastMovement.costo_unitario) || 0);
-      } else {
+      if (!movements || movements.length === 0) {
+        console.log('No hay movimientos de kardex para esta cuenta');
         setSaldoActual(0);
         setCostoUnitarioActual(0);
+        return;
       }
+
+      console.log('Movimientos del Kardex:', movements.length);
+
+      // CALCULAR EL SALDO ACTUAL RECORRIENDO TODOS LOS MOVIMIENTOS
+      let saldoCalculado = 0;
+      let costoUnitarioCalculado = 0;
+      let saldoValoradoCalculado = 0;
+
+      for (const mov of movements) {
+        const entrada = Number(mov.entrada) || 0;
+        const salida = Number(mov.salidas) || 0;
+        const costoTotal = Number(mov.costo_total) || 0;
+
+        if (entrada > 0) {
+          // ENTRADA: Calcular nuevo promedio ponderado (CPP)
+          const nuevoSaldo = saldoCalculado + entrada;
+          const nuevoSaldoValorado = saldoValoradoCalculado + costoTotal;
+          costoUnitarioCalculado = nuevoSaldo > 0 ? nuevoSaldoValorado / nuevoSaldo : 0;
+          saldoCalculado = nuevoSaldo;
+          saldoValoradoCalculado = nuevoSaldoValorado;
+        } else if (salida > 0) {
+          // SALIDA: Mantener costo unitario, reducir saldo
+          saldoCalculado = saldoCalculado - salida;
+          saldoValoradoCalculado = saldoCalculado * costoUnitarioCalculado;
+        }
+      }
+
+      console.log('Saldo calculado final:', saldoCalculado);
+      console.log('Costo unitario calculado:', costoUnitarioCalculado);
+      console.log('Saldo valorado calculado:', saldoValoradoCalculado);
+
+      // Establecer los valores calculados
+      setSaldoActual(saldoCalculado);
+      setCostoUnitarioActual(costoUnitarioCalculado);
+
     } catch (error) {
       console.error('Error loading kardex data:', error);
       toast.error('Error al cargar datos del Kardex');
+      setSaldoActual(0);
+      setCostoUnitarioActual(0);
     } finally {
       setLoading(false);
     }
