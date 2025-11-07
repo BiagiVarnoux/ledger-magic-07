@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { supabase } from '@/integrations/supabase/client';
 import { KardexMovement } from '@/accounting/types';
+import { getCurrentKardexState } from '@/accounting/kardex-utils';
 
 export interface KardexData {
   concepto: string;
@@ -114,39 +115,20 @@ export function InlineKardexPopup({
         return;
       }
 
-      console.log('Movimientos del Kardex:', movements.length);
+      console.log('📦 Movimientos del Kardex cargados:', movements.length);
 
-      // CALCULAR EL SALDO ACTUAL RECORRIENDO TODOS LOS MOVIMIENTOS
-      let saldoCalculado = 0;
-      let costoUnitarioCalculado = 0;
-      let saldoValoradoCalculado = 0;
+      // CALCULAR EL SALDO ACTUAL usando utilidad centralizada
+      const currentState = getCurrentKardexState(movements);
 
-      for (const mov of movements) {
-        const entrada = Number(mov.entrada) || 0;
-        const salida = Number(mov.salidas) || 0;
-        const costoTotal = Number(mov.costo_total) || 0;
-
-        if (entrada > 0) {
-          // ENTRADA: Calcular nuevo promedio ponderado (CPP)
-          const nuevoSaldo = saldoCalculado + entrada;
-          const nuevoSaldoValorado = saldoValoradoCalculado + costoTotal;
-          costoUnitarioCalculado = nuevoSaldo > 0 ? nuevoSaldoValorado / nuevoSaldo : 0;
-          saldoCalculado = nuevoSaldo;
-          saldoValoradoCalculado = nuevoSaldoValorado;
-        } else if (salida > 0) {
-          // SALIDA: Mantener costo unitario, reducir saldo
-          saldoCalculado = saldoCalculado - salida;
-          saldoValoradoCalculado = saldoCalculado * costoUnitarioCalculado;
-        }
-      }
-
-      console.log('Saldo calculado final:', saldoCalculado);
-      console.log('Costo unitario calculado:', costoUnitarioCalculado);
-      console.log('Saldo valorado calculado:', saldoValoradoCalculado);
+      console.log('✅ Estado actual del Kardex:', {
+        saldo: currentState.currentBalance,
+        costoUnitario: currentState.currentUnitCost,
+        saldoValorado: currentState.currentValuedBalance
+      });
 
       // Establecer los valores calculados
-      setSaldoActual(saldoCalculado);
-      setCostoUnitarioActual(costoUnitarioCalculado);
+      setSaldoActual(currentState.currentBalance);
+      setCostoUnitarioActual(currentState.currentUnitCost);
 
     } catch (error) {
       console.error('Error loading kardex data:', error);

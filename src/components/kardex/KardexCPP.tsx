@@ -13,6 +13,17 @@ import { KardexMovement } from '@/accounting/types';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO } from '@/accounting/utils';
 import { KardexDefinitionsModal } from './KardexDefinitionsModal';
+import { calculateCPP } from '@/accounting/kardex-utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function KardexCPP() {
   const { accounts, kardexDefinitions } = useAccounting();
@@ -21,6 +32,8 @@ export function KardexCPP() {
   const [movements, setMovements] = useState<KardexMovement[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [movementToDelete, setMovementToDelete] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     fecha: todayISO(),
@@ -95,54 +108,9 @@ export function KardexCPP() {
     loadKardex();
   }, [selectedKardexDefId, selectedKardexDef]);
 
-  // Calculate CPP for each movement
+  // Calculate CPP for each movement using centralized utility
   const movementsWithCPP = useMemo(() => {
-    let saldoAcumulado = 0;
-    let saldoValoradoAcumulado = 0;
-
-    return movements.map((mov) => {
-      const entrada = mov.entrada || 0;
-      const salidas = mov.salidas || 0;
-      const costoTotal = mov.costo_total || 0;
-
-      // Para entradas: calcular nuevo CPP
-      if (entrada > 0) {
-        saldoValoradoAcumulado += costoTotal;
-        saldoAcumulado += entrada;
-        
-        const nuevoCPP = saldoAcumulado > 0 ? saldoValoradoAcumulado / saldoAcumulado : 0;
-        
-        return {
-          ...mov,
-          saldo: saldoAcumulado,
-          costo_unitario: nuevoCPP,
-          saldo_valorado: saldoValoradoAcumulado
-        };
-      }
-
-      // Para salidas: usar CPP actual
-      if (salidas > 0) {
-        const cppActual = saldoAcumulado > 0 ? saldoValoradoAcumulado / saldoAcumulado : 0;
-        saldoAcumulado -= salidas;
-        const costoSalida = salidas * cppActual;
-        saldoValoradoAcumulado -= costoSalida;
-
-        return {
-          ...mov,
-          saldo: saldoAcumulado,
-          costo_unitario: cppActual,
-          costo_total: costoSalida,
-          saldo_valorado: saldoValoradoAcumulado
-        };
-      }
-
-      return {
-        ...mov,
-        saldo: saldoAcumulado,
-        costo_unitario: saldoAcumulado > 0 ? saldoValoradoAcumulado / saldoAcumulado : 0,
-        saldo_valorado: saldoValoradoAcumulado
-      };
-    });
+    return calculateCPP(movements);
   }, [movements]);
 
   const handleOpenModal = () => {
@@ -225,14 +193,19 @@ export function KardexCPP() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este movimiento?')) return;
+  const handleDeleteClick = (id: string) => {
+    setMovementToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!movementToDelete) return;
 
     try {
       const { error } = await supabase
         .from('kardex_movements')
         .delete()
-        .eq('id', id);
+        .eq('id', movementToDelete);
 
       if (error) throw error;
 
@@ -247,8 +220,12 @@ export function KardexCPP() {
       setMovements(movementsData || []);
       
       toast.success('Movimiento eliminado');
+      setDeleteDialogOpen(false);
+      setMovementToDelete(null);
     } catch (error: any) {
       toast.error('Error al eliminar: ' + error.message);
+      setDeleteDialogOpen(false);
+      setMovementToDelete(null);
     }
   };
 
@@ -480,14 +457,14 @@ export function KardexCPP() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleDelete(mov.id)}
+                              onClick={() => handleDeleteClick(mov.id)}
                               title="Eliminar"
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </TableCell>
                         </TableRow>
-                      ))
+                       ))
                     )}
                   </TableBody>
                 </Table>
@@ -496,6 +473,24 @@ export function KardexCPP() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar movimiento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. El movimiento será eliminado permanentemente
+              y se recalcularán los saldos subsiguientes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

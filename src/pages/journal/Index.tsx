@@ -25,6 +25,17 @@ import {
 } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { supabase } from '@/integrations/supabase/client';
+import { getCurrentKardexState } from '@/accounting/kardex-utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 type LineDraft = { 
   account_id?: string; 
@@ -60,6 +71,8 @@ export default function JournalPage() {
     linesToProcess: [],
     originalEntry: null
   });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
 
   // Filter entries by selected quarter
   const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
@@ -248,20 +261,17 @@ export default function JournalPage() {
               kardexId = newKardex.id;
             }
             
-            // Get last movement to calculate new balances with CPP
-            const { data: lastMovements } = await supabase
+            // Get ALL movements to calculate CPP state
+            const { data: allMovements } = await supabase
               .from('kardex_movements')
               .select('*')
               .eq('kardex_id', kardexId)
               .eq('user_id', user.id)
-              .order('fecha', { ascending: false })
-              .order('created_at', { ascending: false })
-              .limit(1);
+              .order('fecha', { ascending: true })
+              .order('created_at', { ascending: true });
             
-            const lastMovement = lastMovements?.[0];
-            const saldoAnterior = lastMovement ? Number(lastMovement.saldo) : 0;
-            const costoUnitarioAnterior = lastMovement ? Number(lastMovement.costo_unitario) : 0;
-            const saldoValoradoAnterior = lastMovement ? Number(lastMovement.saldo_valorado) : 0;
+            // Use centralized utility to calculate current state
+            const currentState = getCurrentKardexState(allMovements || []);
             
             let nuevoSaldo = 0;
             let nuevoCostoUnitario = 0;
@@ -273,13 +283,13 @@ export default function JournalPage() {
             
             if (entrada > 0) {
               // Entrada: Calcular nuevo costo promedio ponderado
-              nuevoSaldo = saldoAnterior + entrada;
-              nuevoSaldoValorado = saldoValoradoAnterior + costoTotal;
+              nuevoSaldo = currentState.currentBalance + entrada;
+              nuevoSaldoValorado = currentState.currentValuedBalance + costoTotal;
               nuevoCostoUnitario = nuevoSaldo > 0 ? nuevoSaldoValorado / nuevoSaldo : 0;
             } else if (salida > 0) {
               // Salida: Mantener costo unitario anterior
-              nuevoSaldo = saldoAnterior - salida;
-              nuevoCostoUnitario = costoUnitarioAnterior;
+              nuevoSaldo = currentState.currentBalance - salida;
+              nuevoCostoUnitario = currentState.currentUnitCost;
               nuevoSaldoValorado = nuevoSaldo * nuevoCostoUnitario;
             }
             
@@ -336,15 +346,26 @@ export default function JournalPage() {
     setEditingEntry(entry);
   }
 
-  async function deleteEntry(id: string) { 
+  const handleDeleteClick = (id: string) => {
+    setEntryToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!entryToDelete) return;
+
     try { 
-      await adapter.deleteEntry(id); 
+      await adapter.deleteEntry(entryToDelete); 
       setEntries(await adapter.loadEntries()); 
       toast.success("Asiento eliminado"); 
+      setDeleteDialogOpen(false);
+      setEntryToDelete(null);
     } catch(e: any) { 
       toast.error(e.message || "No se pudo eliminar asiento"); 
+      setDeleteDialogOpen(false);
+      setEntryToDelete(null);
     } 
-  }
+  };
 
   async function voidEntry(orig: JournalEntry) {
     const inv: JournalEntry = { 
@@ -648,7 +669,7 @@ export default function JournalPage() {
                         <Button 
                           size="sm" 
                           variant="ghost" 
-                          onClick={() => deleteEntry(e.id)} 
+                          onClick={() => handleDeleteClick(e.id)} 
                           title="Eliminar"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -689,6 +710,24 @@ export default function JournalPage() {
         originalEntry={auxiliaryModalState.originalEntry}
         onSave={handleAuxiliarySave}
       />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar asiento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. El asiento será eliminado permanentemente.
+              Si este asiento tiene movimientos auxiliares o de kardex asociados, también serán eliminados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -257,17 +257,34 @@ export const SupaAdapter: IDataAdapter = {
     const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id").order("client_name");
     if (error) throw error;
     
-    // Calculate total_balance from movements for each entry
     const entries = data || [];
-    const result: AuxiliaryLedgerEntry[] = [];
+    if (entries.length === 0) return [];
     
-    for (const entry of entries) {
-      const movements = await this.loadAuxiliaryDetails(entry.id);
+    // Load ALL movements in one query
+    const entryIds = entries.map(e => e.id);
+    const { data: allMovements, error: movError } = await supa
+      .from("auxiliary_movement_details")
+      .select("aux_entry_id,movement_type,amount")
+      .in("aux_entry_id", entryIds);
+    
+    if (movError) throw movError;
+    
+    // Group movements by aux_entry_id in memory
+    const movementsByEntry = new Map<string, AuxiliaryMovementDetail[]>();
+    for (const mov of (allMovements || [])) {
+      const entryMovs = movementsByEntry.get((mov as any).aux_entry_id) || [];
+      entryMovs.push(mov as any);
+      movementsByEntry.set((mov as any).aux_entry_id, entryMovs);
+    }
+    
+    // Calculate total_balance for each entry
+    const result: AuxiliaryLedgerEntry[] = entries.map(entry => {
+      const movements = movementsByEntry.get(entry.id) || [];
       const total_balance = movements.reduce((sum, m) => {
         return sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount);
       }, 0);
-      result.push({ ...entry, total_balance });
-    }
+      return { ...entry, total_balance };
+    });
     
     return result;
   },
