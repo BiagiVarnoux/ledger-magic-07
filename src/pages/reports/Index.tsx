@@ -10,11 +10,27 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { todayISO, yyyymm, signedBalanceFor, fmt } from '@/accounting/utils';
 import { AccountType, Side } from '@/accounting/types';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { useNavigate } from 'react-router-dom';
 
 export default function ReportsPage() {
-  const { accounts, entries, adapter } = useAccounting();
+  const { accounts, entries } = useAccounting();
   const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   const [bsDate, setBsDate] = useState<string>(todayISO());
+  const navigate = useNavigate();
+
+  const handleJournalDrilldown = (type: AccountType) => {
+    navigate({
+      pathname: '/journal',
+      search: `?quarter=${encodeURIComponent(selectedQuarter)}&accountType=${type}`
+    });
+  };
+
+  const handleLedgerDrilldown = (accountId: string) => {
+    navigate({
+      pathname: '/ledger',
+      search: `?quarter=${encodeURIComponent(selectedQuarter)}&account=${encodeURIComponent(accountId)}`
+    });
+  };
   
   // Available quarters for selection
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
@@ -337,7 +353,15 @@ export default function ReportsPage() {
                       <TableRow key={ing.id}>
                         <TableCell className="font-mono">{ing.id}</TableCell>
                         <TableCell>{ing.name}</TableCell>
-                        <TableCell className="text-right">{fmt(ing.amount)}</TableCell>
+                        <TableCell className="text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleLedgerDrilldown(ing.id)}
+                            className="w-full text-right text-primary hover:underline"
+                          >
+                            {fmt(ing.amount)}
+                          </button>
+                        </TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="bg-muted/50">
@@ -345,7 +369,13 @@ export default function ReportsPage() {
                         Total Ingresos
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        {fmt(incomeStatement.ingresos)}
+                        <button
+                          type="button"
+                          onClick={() => handleJournalDrilldown('INGRESO')}
+                          className="w-full text-right text-primary hover:underline"
+                        >
+                          {fmt(incomeStatement.ingresos)}
+                        </button>
                       </TableCell>
                     </TableRow>
                     
@@ -359,7 +389,15 @@ export default function ReportsPage() {
                       <TableRow key={gst.id}>
                         <TableCell className="font-mono">{gst.id}</TableCell>
                         <TableCell>{gst.name}</TableCell>
-                        <TableCell className="text-right">{fmt(gst.amount)}</TableCell>
+                        <TableCell className="text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleLedgerDrilldown(gst.id)}
+                            className="w-full text-right text-primary hover:underline"
+                          >
+                            {fmt(gst.amount)}
+                          </button>
+                        </TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="bg-muted/50">
@@ -367,7 +405,13 @@ export default function ReportsPage() {
                         Total Gastos
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        {fmt(incomeStatement.gastos)}
+                        <button
+                          type="button"
+                          onClick={() => handleJournalDrilldown('GASTO')}
+                          className="w-full text-right text-primary hover:underline"
+                        >
+                          {fmt(incomeStatement.gastos)}
+                        </button>
                       </TableCell>
                     </TableRow>
                     
