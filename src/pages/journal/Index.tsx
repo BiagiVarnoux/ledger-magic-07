@@ -133,29 +133,28 @@ export default function JournalPage() {
   useEffect(() => {
     const params = new URLSearchParams(searchParamsString);
     const quarterParam = params.get('quarter');
-    if (quarterParam && quarterParam !== selectedQuarter) {
-      setSelectedQuarter(quarterParam);
+
+    if (quarterParam) {
+      setSelectedQuarter(prev => (quarterParam !== prev ? quarterParam : prev));
     }
 
     const accountParam = params.get('accountId');
     const typeParam = accountParam ? null : parseAccountTypeParam(params.get('accountType'));
 
-    if (accountParam) {
-      if (accountParam !== filterAccountId) {
-        setFilterAccountId(accountParam);
+    setFilterAccountId(prev => {
+      if (accountParam) {
+        return accountParam !== prev ? accountParam : prev;
       }
-      if (filterAccountType !== null) {
-        setFilterAccountType(null);
+      return prev !== null ? null : prev;
+    });
+
+    setFilterAccountType(prev => {
+      if (accountParam) {
+        return prev !== null ? null : prev;
       }
-    } else {
-      if (filterAccountId !== null) {
-        setFilterAccountId(null);
-      }
-      if (typeParam !== filterAccountType) {
-        setFilterAccountType(typeParam);
-      }
-    }
-  }, [searchParamsString, filterAccountId, filterAccountType, selectedQuarter]);
+      return typeParam !== prev ? typeParam : prev;
+    });
+  }, [searchParamsString]);
 
   useEffect(() => {
     const params = new URLSearchParams();
