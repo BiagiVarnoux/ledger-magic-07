@@ -42,14 +42,14 @@ export default function LedgerPage() {
     const accountParam = params.get('account');
     const quarterParam = params.get('quarter');
 
-    if (accountParam && accountParam !== ledgerAccount) {
-      setLedgerAccount(accountParam);
+    if (accountParam) {
+      setLedgerAccount(prev => (accountParam !== prev ? accountParam : prev));
     }
 
-    if (quarterParam && quarterParam !== selectedQuarter) {
-      setSelectedQuarter(quarterParam);
+    if (quarterParam) {
+      setSelectedQuarter(prev => (quarterParam !== prev ? quarterParam : prev));
     }
-  }, [searchParamsString, ledgerAccount, selectedQuarter]);
+  }, [searchParamsString]);
 
   useEffect(() => {
     const params = new URLSearchParams();
