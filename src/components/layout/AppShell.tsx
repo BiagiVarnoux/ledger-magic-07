@@ -1,5 +1,5 @@
 // src/components/layout/AppShell.tsx
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -50,7 +50,15 @@ export function AppShell() {
       </header>
       
       <main className="container px-6 py-6">
-        <Outlet />
+        <Suspense
+          fallback={(
+            <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+              Cargando módulo...
+            </div>
+          )}
+        >
+          <Outlet />
+        </Suspense>
       </main>
       
       <footer className="border-t bg-card/30 backdrop-blur supports-[backdrop-filter]:bg-card/30">
