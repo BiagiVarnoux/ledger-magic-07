@@ -2,22 +2,19 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Download } from 'lucide-react';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { cmpDate, signedBalanceFor, fmt } from '@/accounting/utils';
+import { todayISO, cmpDate, signedBalanceFor, fmt } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter, getPreviousQuarter } from '@/accounting/quarterly-utils';
-import { useSearchParams } from 'react-router-dom';
 
 export default function LedgerPage() {
   const { accounts, entries, adapter } = useAccounting();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const searchParamsString = searchParams.toString();
-  const initialAccount = searchParams.get('account');
-  const [ledgerAccount, setLedgerAccount] = useState<string>(() => initialAccount ?? 'A.1');
-  const [selectedQuarter, setSelectedQuarter] = useState<string>(() => searchParams.get('quarter') ?? getCurrentQuarter().label);
+  const [ledgerAccount, setLedgerAccount] = useState<string>("A.1");
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   
   // Available quarters for selection
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
@@ -29,37 +26,6 @@ export default function LedgerPage() {
     opening: number;
     closing: number;
   }>({ rows: [], opening: 0, closing: 0 });
-
-  useEffect(() => {
-    if (accounts.length === 0) return;
-    if (!accounts.find(a => a.id === ledgerAccount)) {
-      setLedgerAccount(accounts[0].id);
-    }
-  }, [accounts, ledgerAccount]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(searchParamsString);
-    const accountParam = params.get('account');
-    const quarterParam = params.get('quarter');
-
-    if (accountParam && accountParam !== ledgerAccount) {
-      setLedgerAccount(accountParam);
-    }
-
-    if (quarterParam && quarterParam !== selectedQuarter) {
-      setSelectedQuarter(quarterParam);
-    }
-  }, [searchParamsString, ledgerAccount, selectedQuarter]);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    params.set('quarter', selectedQuarter);
-    params.set('account', ledgerAccount);
-    const next = params.toString();
-    if (next !== searchParamsString) {
-      setSearchParams(params, { replace: true });
-    }
-  }, [selectedQuarter, ledgerAccount, searchParamsString, setSearchParams]);
 
   const ledgerData = useMemo(async () => {
     const acc = accounts.find(a => a.id === ledgerAccount);
