@@ -21,7 +21,7 @@ import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLed
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { ACCOUNT_TYPES, type AccountType, JournalEntry, JournalLine, type Account } from '@/accounting/types';
+import { JournalEntry, JournalLine, type Account } from '@/accounting/types';
 import {
   todayISO,
   toDecimal,
@@ -46,8 +46,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { useSearchParams } from 'react-router-dom';
-import { Badge } from '@/components/ui/badge';
 
 type LineDraft = { 
   account_id?: string; 
@@ -57,33 +55,14 @@ type LineDraft = {
   kardexData?: KardexData;
 };
 
-function parseAccountTypeParam(value: string | null): AccountType | null {
-  if (!value) return null;
-  return (ACCOUNT_TYPES as readonly string[]).includes(value) ? value as AccountType : null;
-}
-
-const accountTypeLabels: Record<AccountType, string> = {
-  ACTIVO: 'activos',
-  PASIVO: 'pasivos',
-  PATRIMONIO: 'patrimonio',
-  INGRESO: 'ingresos',
-  GASTO: 'gastos'
-};
-
 export default function JournalPage() {
   const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions } = useAccounting();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const searchParamsString = searchParams.toString();
-  const initialAccountId = searchParams.get('accountId');
-  const initialAccountType = initialAccountId ? null : parseAccountTypeParam(searchParams.get('accountType'));
   const [date, setDate] = useState<string>(todayISO());
   const [memo, setMemo] = useState<string>("");
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [selectedQuarter, setSelectedQuarter] = useState<string>(() => searchParams.get('quarter') ?? getCurrentQuarter().label);
-  const [filterAccountId, setFilterAccountId] = useState<string | null>(() => initialAccountId);
-  const [filterAccountType, setFilterAccountType] = useState<AccountType | null>(() => initialAccountType);
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
   });
@@ -107,21 +86,9 @@ export default function JournalPage() {
 
   // Filter entries by selected quarter
   const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
-  const accountsById = useMemo(() => new Map(accounts.map(account => [account.id, account])), [accounts]);
-
   const filteredEntries = useMemo(() => {
-    return entries
-      .filter(entry => isDateInQuarter(entry.date, currentQuarter))
-      .filter(entry => {
-        if (filterAccountId) {
-          return entry.lines.some(line => line.account_id === filterAccountId);
-        }
-        if (filterAccountType) {
-          return entry.lines.some(line => accountsById.get(line.account_id)?.type === filterAccountType);
-        }
-        return true;
-      });
-  }, [entries, currentQuarter, filterAccountId, filterAccountType, accountsById]);
+    return entries.filter(entry => isDateInQuarter(entry.date, currentQuarter));
+  }, [entries, currentQuarter]);
 
   // Available quarters for selection
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
@@ -129,55 +96,6 @@ export default function JournalPage() {
   useEffect(() => {
     localStorage.setItem('journal-show-line-memos', showLineMemos.toString());
   }, [showLineMemos]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(searchParamsString);
-    const quarterParam = params.get('quarter');
-    if (quarterParam && quarterParam !== selectedQuarter) {
-      setSelectedQuarter(quarterParam);
-    }
-
-    const accountParam = params.get('accountId');
-    const typeParam = accountParam ? null : parseAccountTypeParam(params.get('accountType'));
-
-    if (accountParam) {
-      if (accountParam !== filterAccountId) {
-        setFilterAccountId(accountParam);
-      }
-      if (filterAccountType !== null) {
-        setFilterAccountType(null);
-      }
-    } else {
-      if (filterAccountId !== null) {
-        setFilterAccountId(null);
-      }
-      if (typeParam !== filterAccountType) {
-        setFilterAccountType(typeParam);
-      }
-    }
-  }, [searchParamsString, filterAccountId, filterAccountType, selectedQuarter]);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    params.set('quarter', selectedQuarter);
-    if (filterAccountId) {
-      params.set('accountId', filterAccountId);
-    } else if (filterAccountType) {
-      params.set('accountType', filterAccountType);
-    }
-
-    const next = params.toString();
-    if (next !== searchParamsString) {
-      setSearchParams(params, { replace: true });
-    }
-  }, [selectedQuarter, filterAccountId, filterAccountType, searchParamsString, setSearchParams]);
-
-  const activeFilterAccount = filterAccountId ? accountsById.get(filterAccountId) : null;
-
-  const clearFilters = () => {
-    setFilterAccountId(null);
-    setFilterAccountType(null);
-  };
 
   function addLine() { 
     setLines(ls => [...ls, {}]); 
@@ -595,36 +513,20 @@ export default function JournalPage() {
 
       <Card className="shadow-sm">
         <CardHeader>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-4">
-              <Label htmlFor="quarter-select">Trimestre:</Label>
-              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-                <SelectTrigger id="quarter-select" className="w-48">
-                  <SelectValue placeholder="Seleccionar trimestre" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableQuarters.map((quarter) => (
-                    <SelectItem key={`${quarter.year}-Q${quarter.quarter}`} value={quarter.label}>
-                      {quarter.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {(filterAccountId || filterAccountType) && (
-              <div className="flex items-center gap-3">
-                <Badge variant="secondary">
-                  {filterAccountId && activeFilterAccount
-                    ? `Cuenta ${filterAccountId} — ${activeFilterAccount.name}`
-                    : filterAccountType
-                      ? `Mostrando ${accountTypeLabels[filterAccountType]}`
-                      : ''}
-                </Badge>
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  Limpiar filtro
-                </Button>
-              </div>
-            )}
+          <div className="flex items-center gap-4">
+            <Label htmlFor="quarter-select">Trimestre:</Label>
+            <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Seleccionar trimestre" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableQuarters.map((quarter) => (
+                  <SelectItem key={`${quarter.year}-Q${quarter.quarter}`} value={quarter.label}>
+                    {quarter.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
       </Card>
