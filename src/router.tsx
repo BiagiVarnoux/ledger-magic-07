@@ -3,12 +3,13 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AccountingProvider } from './accounting/AccountingProvider';
 import { AppShell } from './components/layout/AppShell';
-import AccountsPage from './pages/accounts/Index';
-import JournalPage from './pages/journal/Index';
-import AuxiliaryLedgersPage from './pages/auxiliary-ledgers/Index';
-import LedgerPage from './pages/ledger/Index';
-import ReportsPage from './pages/reports/Index';
-import NotFound from './pages/NotFound';
+
+const AccountsPage = React.lazy(() => import('./pages/accounts/Index'));
+const JournalPage = React.lazy(() => import('./pages/journal/Index'));
+const AuxiliaryLedgersPage = React.lazy(() => import('./pages/auxiliary-ledgers/Index'));
+const LedgerPage = React.lazy(() => import('./pages/ledger/Index'));
+const ReportsPage = React.lazy(() => import('./pages/reports/Index'));
+const NotFound = React.lazy(() => import('./pages/NotFound'));
 
 export function AppRouter() {
   return (
