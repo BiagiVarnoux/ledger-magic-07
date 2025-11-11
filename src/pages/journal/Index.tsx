@@ -5,19 +5,28 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff, Users } from 'lucide-react';
+import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff, Users, ChevronsUpDown, Check } from 'lucide-react';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { JournalEntry, JournalLine } from '@/accounting/types';
-import { 
-  todayISO, 
-  toDecimal, 
+import { JournalEntry, JournalLine, type Account } from '@/accounting/types';
+import {
+  todayISO,
+  toDecimal,
   formatDecimal,
-  generateEntryId, 
+  generateEntryId,
   cmpDate, 
   fmt,
   TYPE_ABBR,
@@ -36,6 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 
 type LineDraft = { 
   account_id?: string; 
@@ -418,10 +428,10 @@ export default function JournalPage() {
   function AccountLabel({ accountId, line }: { accountId: string; line?: { debit?: string | number; credit?: string | number } }) {
     const account = accounts.find(a => a.id === accountId);
     if (!account) return <span className="text-muted-foreground">--</span>;
-    
+
     const abbr = TYPE_ABBR[account.type];
     const sign = line ? signForLine(account, line) : "";
-    
+
     return (
       <TooltipProvider>
         <Tooltip>
@@ -436,6 +446,58 @@ export default function JournalPage() {
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
+    );
+  }
+
+  function AccountCombobox({ value, onChange, accounts }: { value: string; onChange: (value: string) => void; accounts: Account[] }) {
+    const [open, setOpen] = useState(false);
+    const selectedAccount = value ? accounts.find(account => account.id === value) : undefined;
+    const selectableAccounts = useMemo(
+      () => accounts.filter(account => account.is_active || account.id === value),
+      [accounts, value]
+    );
+
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn(
+              "w-[240px] justify-between",
+              !selectedAccount && "text-muted-foreground"
+            )}
+          >
+            {selectedAccount ? `${selectedAccount.id} — ${selectedAccount.name}` : "Selecciona cuenta"}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[360px] p-0">
+          <Command>
+            <CommandInput placeholder="Buscar cuenta..." />
+            <CommandEmpty>No se encontraron cuentas.</CommandEmpty>
+            <CommandList>
+              <CommandGroup>
+                {selectableAccounts.map(account => (
+                  <CommandItem
+                    key={account.id}
+                    value={`${account.id} ${account.name}`}
+                    onSelect={() => {
+                      onChange(account.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", account.id === value ? "opacity-100" : "opacity-0")} />
+                    <span className="font-mono">{account.id}</span>
+                    <span className="ml-2 truncate">{account.name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     );
   }
 
@@ -509,22 +571,12 @@ export default function JournalPage() {
                   <TableRow key={idx}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                         <Select 
-                           value={l.account_id || ""} 
-                           onValueChange={(v) => handleAccountChange(idx, v)}
-                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona cuenta" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-80">
-                            {accounts.filter(a => a.is_active).map(a => (
-                              <SelectItem key={a.id} value={a.id}>
-                                {a.id} — {a.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                         {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
+                        <AccountCombobox
+                          value={l.account_id || ''}
+                          onChange={(v) => handleAccountChange(idx, v)}
+                          accounts={accounts}
+                        />
+                        {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
                       </div>
                     </TableCell>
                      <TableCell>
