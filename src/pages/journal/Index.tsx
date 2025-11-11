@@ -528,18 +528,20 @@ export default function JournalPage() {
                       </div>
                     </TableCell>
                      <TableCell>
-                       <Input 
-                         type="text" 
-                         value={l.debit || ""} 
-                         onChange={e => setLine(idx, { debit: e.target.value, credit: "" })} 
+                       <Input
+                         type="text"
+                         value={l.debit || ""}
+                         onChange={e => setLine(idx, { debit: e.target.value, credit: "" })}
+                         disabled={!!l.credit}
                          placeholder="0,00"
                        />
                      </TableCell>
                      <TableCell>
-                       <Input 
-                         type="text" 
-                         value={l.credit || ""} 
-                         onChange={e => setLine(idx, { credit: e.target.value, debit: "" })} 
+                       <Input
+                         type="text"
+                         value={l.credit || ""}
+                         onChange={e => setLine(idx, { credit: e.target.value, debit: "" })}
+                         disabled={!!l.debit}
                          placeholder="0,00"
                        />
                      </TableCell>
