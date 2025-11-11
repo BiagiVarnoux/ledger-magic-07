@@ -103,7 +103,7 @@ export const LocalAdapter: IDataAdapter = {
     const { total_balance, ...entryData } = a; // Remove calculated field
     
     // Generate UUID if creating new entry
-    if (!entryData.id || entryData.id.includes('-')) {
+    if (!entryData.id) {
       entryData.id = crypto.randomUUID();
     }
     
@@ -132,7 +132,7 @@ export const LocalAdapter: IDataAdapter = {
     
     for (const detail of details) {
       // Generate UUID if creating new movement
-      if (!detail.id || detail.id.includes('-')) {
+      if (!detail.id) {
         detail.id = crypto.randomUUID();
       }
       
