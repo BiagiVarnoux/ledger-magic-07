@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, Trash2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
+import { useUserAccess } from '@/contexts/UserAccessContext';
 import { KardexMovement } from '@/accounting/types';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO } from '@/accounting/utils';
@@ -27,6 +28,7 @@ import {
 
 export function KardexCPP() {
   const { accounts, kardexDefinitions } = useAccounting();
+  const { isReadOnly } = useUserAccess();
   const [selectedKardexDefId, setSelectedKardexDefId] = useState<string>('');
   const [kardexId, setKardexId] = useState<string>('');
   const [movements, setMovements] = useState<KardexMovement[]>([]);
@@ -264,7 +266,7 @@ export function KardexCPP() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Seleccionar Kárdex</CardTitle>
-            <KardexDefinitionsModal />
+            {!isReadOnly && <KardexDefinitionsModal />}
           </div>
         </CardHeader>
         <CardContent>
@@ -299,6 +301,7 @@ export function KardexCPP() {
               )}
             </div>
             <div className="flex items-end gap-2">
+              {!isReadOnly && (
               <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                 <DialogTrigger asChild>
                   <Button 
@@ -381,8 +384,9 @@ export function KardexCPP() {
                   </div>
                 </DialogContent>
               </Dialog>
+              )}
               
-              <Button 
+              <Button
                 variant="outline" 
                 onClick={handleExport}
                 disabled={!selectedKardexDefId || movements.length === 0}
@@ -420,7 +424,7 @@ export function KardexCPP() {
                       <TableHead className="text-right">Costo Unitario</TableHead>
                       <TableHead className="text-right">Costo Total</TableHead>
                       <TableHead className="text-right">Saldo Valorado</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
+                      {!isReadOnly && <TableHead className="text-right">Acciones</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -453,6 +457,7 @@ export function KardexCPP() {
                           <TableCell className="text-right font-semibold text-blue-600">
                             {fmt(mov.saldo_valorado)}
                           </TableCell>
+                          {!isReadOnly && (
                           <TableCell className="text-right">
                             <Button
                               size="sm"
@@ -463,6 +468,7 @@ export function KardexCPP() {
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </TableCell>
+                          )}
                         </TableRow>
                        ))
                     )}

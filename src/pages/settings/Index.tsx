@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { Copy, Plus, Trash2, Users } from 'lucide-react';
+import { Copy, Plus, Trash2, Users, UserMinus } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -17,6 +17,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface InvitationCode {
   id: string;
@@ -50,6 +60,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [invitationCodes, setInvitationCodes] = useState<InvitationCode[]>([]);
   const [sharedAccess, setSharedAccess] = useState<SharedAccess[]>([]);
+  const [revokeDialogOpen, setRevokeDialogOpen] = useState(false);
+  const [accessToRevoke, setAccessToRevoke] = useState<SharedAccess | null>(null);
   
   // Form states
   const [permissions, setPermissions] = useState({
@@ -176,6 +188,40 @@ export default function SettingsPage() {
         description: error.message,
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleRevokeClick = (access: SharedAccess) => {
+    setAccessToRevoke(access);
+    setRevokeDialogOpen(true);
+  };
+
+  const handleRevokeConfirm = async () => {
+    if (!accessToRevoke || !user) return;
+
+    try {
+      const { error } = await supabase.rpc('revoke_shared_access', {
+        _owner_id: user.id,
+        _viewer_id: accessToRevoke.viewer_id
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Acceso revocado',
+        description: 'El usuario ya no tiene acceso a tu contabilidad.',
+      });
+
+      fetchSharedAccess();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setRevokeDialogOpen(false);
+      setAccessToRevoke(null);
     }
   };
 
@@ -379,6 +425,7 @@ export default function SettingsPage() {
                   <TableHead>Usuario ID</TableHead>
                   <TableHead>Permisos</TableHead>
                   <TableHead>Fecha</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -395,6 +442,17 @@ export default function SettingsPage() {
                       </div>
                     </TableCell>
                     <TableCell>{new Date(access.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRevokeClick(access)}
+                        className="text-destructive hover:text-destructive"
+                        title="Revocar acceso"
+                      >
+                        <UserMinus className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -402,6 +460,25 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Revoke Access Dialog */}
+      <AlertDialog open={revokeDialogOpen} onOpenChange={setRevokeDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Revocar acceso?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará el acceso de este usuario a tu contabilidad. 
+              Ya no podrá ver ninguno de tus datos contables.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRevokeConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Revocar Acceso
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

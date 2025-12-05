@@ -21,6 +21,8 @@ import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLed
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
+import { useUserAccess } from '@/contexts/UserAccessContext';
+import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { JournalEntry, JournalLine, type Account } from '@/accounting/types';
 import {
   todayISO,
@@ -57,6 +59,7 @@ type LineDraft = {
 
 export default function JournalPage() {
   const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions } = useAccounting();
+  const { isReadOnly } = useUserAccess();
   const [date, setDate] = useState<string>(todayISO());
   const [memo, setMemo] = useState<string>("");
   const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
@@ -503,6 +506,8 @@ export default function JournalPage() {
 
   return (
     <div className="space-y-6">
+      <ReadOnlyBanner />
+      
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Libro Diario</h1>
         <Button variant="outline" onClick={exportJournal}>
@@ -531,6 +536,8 @@ export default function JournalPage() {
         </CardHeader>
       </Card>
 
+      {/* Form - Only show for owners */}
+      {!isReadOnly && (
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
@@ -646,6 +653,7 @@ export default function JournalPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       <Card className="shadow-sm">
         <CardHeader>
@@ -670,7 +678,7 @@ export default function JournalPage() {
                   <TableHead>Fecha</TableHead>
                   <TableHead>Glosa</TableHead>
                   <TableHead>Detalle</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  {!isReadOnly && <TableHead className="text-right">Acciones</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -702,6 +710,7 @@ export default function JournalPage() {
                            })}
                         </div>
                       </TableCell>
+                      {!isReadOnly && (
                       <TableCell className="text-right">
                         <Button 
                           size="sm" 
@@ -729,6 +738,7 @@ export default function JournalPage() {
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </TableCell>
+                      )}
                     </TableRow>
                     {e.memo && (
                       <TableRow>

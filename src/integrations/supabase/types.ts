@@ -492,6 +492,10 @@ export type Database = {
         Args: { _code: string; _user_id: string }
         Returns: Json
       }
+      revoke_shared_access: {
+        Args: { _owner_id: string; _viewer_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "owner" | "viewer"

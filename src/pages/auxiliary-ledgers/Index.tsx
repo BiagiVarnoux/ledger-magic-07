@@ -11,6 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
+import { useUserAccess } from '@/contexts/UserAccessContext';
+import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/types';
 import { fmt, todayISO, toDecimal } from '@/accounting/utils';
 import { AuxiliaryDefinitionsModal } from '@/components/auxiliary-ledger/AuxiliaryDefinitionsModal';
@@ -25,6 +27,7 @@ export default function AuxiliaryLedgersPage() {
     adapter, 
     entries: journalEntries 
   } = useAccounting();
+  const { isReadOnly } = useUserAccess();
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDefinitionsModalOpen, setIsDefinitionsModalOpen] = useState(false);
@@ -93,6 +96,10 @@ export default function AuxiliaryLedgersPage() {
   };
 
   const handleSave = async () => {
+    if (isReadOnly) {
+      toast.error('No tienes permisos para modificar registros');
+      return;
+    }
     if (!selectedDefinitionId) {
       toast.error('Selecciona un libro auxiliar');
       return;
@@ -140,6 +147,10 @@ export default function AuxiliaryLedgersPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (isReadOnly) {
+      toast.error('No tienes permisos para eliminar registros');
+      return;
+    }
     try {
       await adapter.deleteAuxiliaryEntry(id);
       const updatedEntries = await adapter.loadAuxiliaryEntries();
@@ -160,12 +171,16 @@ export default function AuxiliaryLedgersPage() {
 
   return (
     <div className="space-y-6">
+      <ReadOnlyBanner />
+      
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Libros Auxiliares</h1>
-        <Button variant="outline" onClick={() => setIsDefinitionsModalOpen(true)}>
-          <Settings className="w-4 h-4 mr-2" />
-          Gestionar Libros Auxiliares
-        </Button>
+        {!isReadOnly && (
+          <Button variant="outline" onClick={() => setIsDefinitionsModalOpen(true)}>
+            <Settings className="w-4 h-4 mr-2" />
+            Gestionar Libros Auxiliares
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="auxiliary" className="w-full">
@@ -216,6 +231,7 @@ export default function AuxiliaryLedgersPage() {
                 </p>
               )}
             </div>
+            {!isReadOnly && (
             <div className="flex items-end">
               <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                 <DialogTrigger asChild>
@@ -300,6 +316,7 @@ export default function AuxiliaryLedgersPage() {
                 </DialogContent>
               </Dialog>
             </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -316,10 +333,10 @@ export default function AuxiliaryLedgersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-12"></TableHead>
                     <TableHead>Cliente/Proveedor</TableHead>
                     <TableHead className="text-right">Saldo Total</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    {!isReadOnly && <TableHead className="text-right">Acciones</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -360,6 +377,7 @@ export default function AuxiliaryLedgersPage() {
                               }`}>
                                 {fmt(entry.total_balance)}
                               </TableCell>
+                              {!isReadOnly && (
                               <TableCell className="text-right">
                                 <Button
                                   size="sm"
@@ -378,6 +396,7 @@ export default function AuxiliaryLedgersPage() {
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
                               </TableCell>
+                              )}
                             </TableRow>
                             <CollapsibleContent asChild>
                               <TableRow>
