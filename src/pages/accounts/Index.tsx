@@ -9,10 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Pencil, Trash2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
+import { useUserAccess } from '@/contexts/UserAccessContext';
+import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { Account, ACCOUNT_TYPES, SIDES } from '@/accounting/types';
 
 export default function AccountsPage() {
   const { accounts, entries, setAccounts, adapter } = useAccounting();
+  const { isReadOnly } = useUserAccess();
   const [accDraft, setAccDraft] = useState<Partial<Account>>({ 
     type: "ACTIVO", 
     normal_side: "DEBE", 
@@ -21,6 +24,10 @@ export default function AccountsPage() {
   const [editingAccId, setEditingAccId] = useState<string | null>(null);
 
   async function upsertAccount() {
+    if (isReadOnly) {
+      toast.error("No tienes permisos para modificar cuentas");
+      return;
+    }
     const d = accDraft as Account;
     if (!d.id || !d.name || !d.type || !d.normal_side) { 
       toast.error("Completa código, nombre, tipo y lado"); 
@@ -46,11 +53,16 @@ export default function AccountsPage() {
   }
 
   function editAccount(a: Account) { 
+    if (isReadOnly) return;
     setAccDraft(a); 
     setEditingAccId(a.id); 
   }
 
   async function deleteAccount(id: string) { 
+    if (isReadOnly) {
+      toast.error("No tienes permisos para eliminar cuentas");
+      return;
+    }
     try { 
       await adapter.deleteAccount(id); 
       setAccounts(await adapter.loadAccounts()); 
@@ -65,6 +77,10 @@ export default function AccountsPage() {
   }
 
   async function toggleAccountStatus(account: Account) {
+    if (isReadOnly) {
+      toast.error("No tienes permisos para modificar cuentas");
+      return;
+    }
     const updated = { ...account, is_active: !account.is_active };
     try {
       await adapter.upsertAccount(updated);
@@ -77,84 +93,91 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
+      <ReadOnlyBanner />
+      
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>Plan de Cuentas</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-6 gap-3">
-            <div className="col-span-1">
-              <Label>Código</Label>
-              <Input 
-                value={accDraft.id || ""} 
-                onChange={e => setAccDraft(p => ({...p, id: e.target.value}))} 
-                placeholder="A.1" 
-              />
-            </div>
-            <div className="col-span-2">
-              <Label>Nombre</Label>
-              <Input 
-                value={accDraft.name || ""} 
-                onChange={e => setAccDraft(p => ({...p, name: e.target.value}))} 
-                placeholder="Caja MN" 
-              />
-            </div>
-            <div>
-              <Label>Tipo</Label>
-              <Select 
-                value={accDraft.type as string} 
-                onValueChange={(v) => setAccDraft(p => ({...p, type: v as any}))}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ACCOUNT_TYPES.map(t => 
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Lado normal</Label>
-              <Select 
-                value={accDraft.normal_side as string} 
-                onValueChange={(v) => setAccDraft(p => ({...p, normal_side: v as any}))}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {SIDES.map(s => 
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <div className="flex items-center gap-2">
-                <Label className="mr-2">Activa</Label>
-                <input 
-                  type="checkbox" 
-                  checked={!!accDraft.is_active} 
-                  onChange={e => setAccDraft(p => ({...p, is_active: e.target.checked}))} 
-                />
+          {/* Form - Only show for owners */}
+          {!isReadOnly && (
+            <>
+              <div className="grid grid-cols-6 gap-3">
+                <div className="col-span-1">
+                  <Label>Código</Label>
+                  <Input 
+                    value={accDraft.id || ""} 
+                    onChange={e => setAccDraft(p => ({...p, id: e.target.value}))} 
+                    placeholder="A.1" 
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Nombre</Label>
+                  <Input 
+                    value={accDraft.name || ""} 
+                    onChange={e => setAccDraft(p => ({...p, name: e.target.value}))} 
+                    placeholder="Caja MN" 
+                  />
+                </div>
+                <div>
+                  <Label>Tipo</Label>
+                  <Select 
+                    value={accDraft.type as string} 
+                    onValueChange={(v) => setAccDraft(p => ({...p, type: v as any}))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ACCOUNT_TYPES.map(t => 
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Lado normal</Label>
+                  <Select 
+                    value={accDraft.normal_side as string} 
+                    onValueChange={(v) => setAccDraft(p => ({...p, normal_side: v as any}))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {SIDES.map(s => 
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <div className="flex items-center gap-2">
+                    <Label className="mr-2">Activa</Label>
+                    <input 
+                      type="checkbox" 
+                      checked={!!accDraft.is_active} 
+                      onChange={e => setAccDraft(p => ({...p, is_active: e.target.checked}))} 
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={upsertAccount}>
-              <Save className="w-4 h-4 mr-2" />
-              {editingAccId ? "Guardar cambios" : "Agregar cuenta"}
-            </Button>
-            {editingAccId && (
-              <Button 
-                variant="outline" 
-                onClick={() => { 
-                  setAccDraft({ type: "ACTIVO", normal_side: "DEBE", is_active: true }); 
-                  setEditingAccId(null); 
-                }}
-              >
-                Cancelar
-              </Button>
-            )}
-          </div>
+              <div className="flex gap-2">
+                <Button onClick={upsertAccount}>
+                  <Save className="w-4 h-4 mr-2" />
+                  {editingAccId ? "Guardar cambios" : "Agregar cuenta"}
+                </Button>
+                {editingAccId && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { 
+                      setAccDraft({ type: "ACTIVO", normal_side: "DEBE", is_active: true }); 
+                      setEditingAccId(null); 
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
 
           <div className="border rounded-xl overflow-hidden">
             <Table>
@@ -165,7 +188,7 @@ export default function AccountsPage() {
                   <TableHead>Tipo</TableHead>
                   <TableHead>Lado</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  {!isReadOnly && <TableHead className="text-right">Acciones</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -176,32 +199,34 @@ export default function AccountsPage() {
                     <TableCell>{a.type}</TableCell>
                     <TableCell>{a.normal_side}</TableCell>
                     <TableCell>{a.is_active ? "Activa" : "Inactiva"}</TableCell>
-                    <TableCell className="text-right">
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => editAccount(a)} 
-                        title="Editar"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => toggleAccountStatus(a)}
-                      >
-                        {a.is_active ? "Desactivar" : "Activar"}
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => deleteAccount(a.id)} 
-                        disabled={!canDeleteAccount(a.id)} 
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
+                    {!isReadOnly && (
+                      <TableCell className="text-right">
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => editAccount(a)} 
+                          title="Editar"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => toggleAccountStatus(a)}
+                        >
+                          {a.is_active ? "Desactivar" : "Activar"}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => deleteAccount(a.id)} 
+                          disabled={!canDeleteAccount(a.id)} 
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
