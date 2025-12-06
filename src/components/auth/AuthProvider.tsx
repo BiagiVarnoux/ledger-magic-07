@@ -35,19 +35,59 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return;
     }
 
-    // Get initial session
+    // Listen for auth changes FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+
+        // When user signs in (after email confirmation), check for pending invitation code
+        if (event === 'SIGNED_IN' && session?.user) {
+          const pendingCode = localStorage.getItem('pending_invitation_code');
+          
+          if (pendingCode) {
+            // Redeem the invitation code
+            setTimeout(async () => {
+              try {
+                const { data } = await supabase.rpc('redeem_invitation_code', {
+                  _code: pendingCode,
+                  _user_id: session.user.id
+                });
+                
+                if (data?.success) {
+                  localStorage.removeItem('pending_invitation_code');
+                  console.log('Invitation code redeemed successfully');
+                  window.location.reload();
+                } else {
+                  console.error('Failed to redeem code:', data?.error);
+                  localStorage.removeItem('pending_invitation_code');
+                }
+              } catch (error) {
+                console.error('Error redeeming invitation code:', error);
+                localStorage.removeItem('pending_invitation_code');
+              }
+            }, 0);
+          } else {
+            // No invitation code: assign owner role if needed
+            setTimeout(async () => {
+              try {
+                await supabase.rpc('assign_default_owner_role', { 
+                  _user_id: session.user.id 
+                });
+              } catch (error) {
+                console.error('Error assigning owner role:', error);
+              }
+            }, 0);
+          }
+        }
+      }
+    );
+
+    // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
 
     return () => subscription.unsubscribe();
   }, []);
