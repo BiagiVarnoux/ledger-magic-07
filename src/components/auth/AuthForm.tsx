@@ -54,46 +54,18 @@ export function AuthForm() {
         await signIn(validatedData.email, validatedData.password);
         toast.success('¡Sesión iniciada exitosamente!');
       } else {
+        // Guardar código de invitación en localStorage para después de confirmar email
+        if (validatedData.invitationCode) {
+          localStorage.setItem('pending_invitation_code', validatedData.invitationCode);
+        }
+
         // Crear cuenta
         await signUp(validatedData.email, validatedData.password);
 
-        // Esperar un momento para que se cree el usuario
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Obtener el ID del nuevo usuario
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (user) {
-          // Si hay código de invitación, validarlo y redimirlo
-          if (validatedData.invitationCode) {
-            const { data: result, error: redeemError } = await supabase.rpc(
-              'redeem_invitation_code',
-              { 
-                _code: validatedData.invitationCode,
-                _user_id: user.id 
-              }
-            );
-
-            if (redeemError || !result?.success) {
-              toast.error(result?.error || 'Error al validar el código de invitación');
-              setLoading(false);
-              return;
-            }
-
-            toast.success('¡Cuenta creada con acceso compartido! Revisa tu email para confirmar.');
-          } else {
-            // Sin código de invitación: asignar rol owner
-            const { error: roleError } = await supabase.rpc(
-              'assign_default_owner_role',
-              { _user_id: user.id }
-            );
-
-            if (roleError) {
-              console.error('Error asignando rol:', roleError);
-            }
-
-            toast.success('¡Cuenta creada exitosamente! Revisa tu email para confirmar.');
-          }
+        if (validatedData.invitationCode) {
+          toast.success('¡Cuenta creada! Confirma tu email para aplicar el código de invitación.');
+        } else {
+          toast.success('¡Cuenta creada exitosamente! Revisa tu email para confirmar.');
         }
       }
     } catch (error: any) {

@@ -47,6 +47,9 @@ export default function ViewerDashboardPage() {
       toast.success('Código canjeado exitosamente. Ahora tienes acceso a la contabilidad compartida.');
       setInvitationCode('');
       
+      // Limpiar cualquier código pendiente en localStorage
+      localStorage.removeItem('pending_invitation_code');
+      
       // Reload the page to refresh access
       window.location.reload();
     } catch (error: any) {
