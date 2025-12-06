@@ -452,6 +452,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_default_owner_role: { Args: { _user_id: string }; Returns: Json }
       get_balance_sheet: {
         Args: { as_of_date: string }
         Returns: {

@@ -64,7 +64,7 @@ export function AuthForm() {
         const { data: { user } } = await supabase.auth.getUser();
         
         if (user) {
-          // Si hay código de invitación, validarlo y redimirlo usando la función segura
+          // Si hay código de invitación, validarlo y redimirlo
           if (validatedData.invitationCode) {
             const { data: result, error: redeemError } = await supabase.rpc(
               'redeem_invitation_code',
@@ -80,8 +80,18 @@ export function AuthForm() {
               return;
             }
 
-            toast.success('¡Cuenta creada con código de invitación! Revisa tu email para confirmar.');
+            toast.success('¡Cuenta creada con acceso compartido! Revisa tu email para confirmar.');
           } else {
+            // Sin código de invitación: asignar rol owner
+            const { error: roleError } = await supabase.rpc(
+              'assign_default_owner_role',
+              { _user_id: user.id }
+            );
+
+            if (roleError) {
+              console.error('Error asignando rol:', roleError);
+            }
+
             toast.success('¡Cuenta creada exitosamente! Revisa tu email para confirmar.');
           }
         }
