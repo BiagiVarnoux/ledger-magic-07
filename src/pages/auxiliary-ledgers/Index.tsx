@@ -39,6 +39,14 @@ export default function AuxiliaryLedgersPage() {
     initial_amount: '0',
     movement_type: 'INCREASE' as 'INCREASE' | 'DECREASE'
   });
+  
+  // Estado para modal de movimiento manual
+  const [isManualMovementModalOpen, setIsManualMovementModalOpen] = useState(false);
+  const [manualMovementData, setManualMovementData] = useState({
+    client_id: '',
+    amount: '',
+    movement_type: 'INCREASE' as 'INCREASE' | 'DECREASE'
+  });
 
   const selectedDefinition = auxiliaryDefinitions.find(d => d.id === selectedDefinitionId);
   const selectedAccountId = selectedDefinition?.account_id || '';
@@ -161,6 +169,53 @@ export default function AuxiliaryLedgersPage() {
     }
   };
 
+  // Handler para agregar movimiento manual
+  const handleAddManualMovement = async () => {
+    if (isReadOnly) {
+      toast.error('No tienes permisos para modificar registros');
+      return;
+    }
+    if (!manualMovementData.client_id) {
+      toast.error('Selecciona un cliente');
+      return;
+    }
+    const amount = toDecimal(manualMovementData.amount);
+    if (amount <= 0) {
+      toast.error('Ingresa un monto válido');
+      return;
+    }
+
+    try {
+      const movement: AuxiliaryMovementDetail = {
+        id: crypto.randomUUID(),
+        aux_entry_id: manualMovementData.client_id,
+        journal_entry_id: 'MANUAL_ADJUSTMENT',
+        movement_date: todayISO(),
+        amount: amount,
+        movement_type: manualMovementData.movement_type
+      };
+
+      await adapter.upsertAuxiliaryMovementDetails([movement]);
+
+      // Reload entries and movements
+      const updatedEntries = await adapter.loadAuxiliaryEntries();
+      setAuxiliaryEntries(updatedEntries);
+      
+      // Clear cached movements for this client to reload
+      setClientMovements(prev => {
+        const updated = { ...prev };
+        delete updated[manualMovementData.client_id];
+        return updated;
+      });
+
+      toast.success('Movimiento agregado exitosamente');
+      setIsManualMovementModalOpen(false);
+      setManualMovementData({ client_id: '', amount: '', movement_type: 'INCREASE' });
+    } catch (error: any) {
+      toast.error(error.message || 'Error al agregar movimiento');
+    }
+  };
+
   const selectedAccountName = selectedDefinition ? 
     `${selectedDefinition.name} (${selectedDefinition.account_id})` : '';
 
@@ -232,7 +287,7 @@ export default function AuxiliaryLedgersPage() {
               )}
             </div>
             {!isReadOnly && (
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                 <DialogTrigger asChild>
                   <Button 
@@ -310,6 +365,92 @@ export default function AuxiliaryLedgersPage() {
                       </Button>
                       <Button onClick={handleSave}>
                         {editingEntry ? 'Actualizar' : 'Guardar'}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Botón y Modal para Movimiento Manual */}
+              <Dialog open={isManualMovementModalOpen} onOpenChange={setIsManualMovementModalOpen}>
+                <DialogTrigger asChild>
+                  <Button 
+                    variant="outline"
+                    onClick={() => setIsManualMovementModalOpen(true)} 
+                    disabled={!selectedDefinitionId || filteredEntries.length === 0}
+                  >
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    Agregar Movimiento
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Agregar Movimiento Manual</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Cliente/Proveedor</Label>
+                      <Select 
+                        value={manualMovementData.client_id} 
+                        onValueChange={(value) => setManualMovementData(prev => ({ ...prev, client_id: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un cliente" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredEntries.map(entry => (
+                            <SelectItem key={entry.id} value={entry.id}>
+                              {entry.client_name} (Saldo: {fmt(entry.total_balance)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label>Monto</Label>
+                      <Input
+                        type="text"
+                        value={manualMovementData.amount}
+                        onChange={(e) => setManualMovementData(prev => ({ ...prev, amount: e.target.value }))}
+                        placeholder="0,00"
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Tipo de Movimiento</Label>
+                      <Select 
+                        value={manualMovementData.movement_type} 
+                        onValueChange={(value: 'INCREASE' | 'DECREASE') => 
+                          setManualMovementData(prev => ({ ...prev, movement_type: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="INCREASE">
+                            <span className="flex items-center gap-2">
+                              <TrendingUp className="w-4 h-4 text-green-600" />
+                              DEBE (Aumento)
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="DECREASE">
+                            <span className="flex items-center gap-2">
+                              <TrendingDown className="w-4 h-4 text-blue-600" />
+                              HABER (Disminución)
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="outline" onClick={() => setIsManualMovementModalOpen(false)}>
+                        Cancelar
+                      </Button>
+                      <Button onClick={handleAddManualMovement}>
+                        Guardar Movimiento
                       </Button>
                     </div>
                   </div>
