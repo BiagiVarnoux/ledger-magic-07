@@ -297,13 +297,33 @@ export function AuxiliaryLedgerModal({
                       )}
                     </SelectContent>
                   </Select>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="Monto"
-                    value={movementAmount}
-                    onChange={(e) => setMovementAmount(e.target.value)}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Monto"
+                      value={movementAmount}
+                      onChange={(e) => setMovementAmount(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        const selectedClient = clientsForAccount.find(c => c.id === selectedClientId);
+                        if (selectedClient && selectedClient.total_balance > 0) {
+                          const maxAmount = Math.min(selectedClient.total_balance, remaining);
+                          setMovementAmount(maxAmount.toString());
+                        } else if (selectedClient) {
+                          toast.error('El cliente no tiene saldo disponible');
+                        } else {
+                          toast.error('Selecciona un cliente primero');
+                        }
+                      }}
+                      disabled={!selectedClientId || clientsForAccount.length === 0}
+                    >
+                      Todo
+                    </Button>
+                  </div>
                   <Button onClick={handleAddExistingClient} className="w-full" disabled={clientsForAccount.length === 0}>
                     <Plus className="w-4 h-4 mr-1" />
                     Agregar Existente
