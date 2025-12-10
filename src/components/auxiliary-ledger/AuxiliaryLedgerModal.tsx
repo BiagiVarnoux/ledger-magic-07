@@ -242,11 +242,15 @@ export function AuxiliaryLedgerModal({
             </div>
           </div>
 
-          {currentLine?.isIncrease ? (
+          <div className="grid grid-cols-2 gap-4">
+            {/* Opción: Nuevo Cliente */}
             <Card>
               <CardContent className="p-4">
-                <h3 className="font-medium mb-3">Nuevo Cliente/Deuda</h3>
-                <div className="grid grid-cols-3 gap-2">
+                <h3 className="font-medium mb-3 flex items-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  Nuevo Cliente
+                </h3>
+                <div className="space-y-2">
                   <Input
                     placeholder="Nombre del cliente"
                     value={newClientName}
@@ -259,28 +263,38 @@ export function AuxiliaryLedgerModal({
                     value={movementAmount}
                     onChange={(e) => setMovementAmount(e.target.value)}
                   />
-                  <Button onClick={handleAddNewClient}>
+                  <Button onClick={handleAddNewClient} className="w-full">
                     <Plus className="w-4 h-4 mr-1" />
-                    Agregar
+                    Agregar Nuevo
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          ) : (
+
+            {/* Opción: Cliente Existente */}
             <Card>
               <CardContent className="p-4">
-                <h3 className="font-medium mb-3">Pago de Cliente Existente</h3>
-                <div className="grid grid-cols-3 gap-2">
+                <h3 className="font-medium mb-3 flex items-center gap-2">
+                  <Minus className="w-4 h-4" />
+                  Cliente Existente
+                </h3>
+                <div className="space-y-2">
                   <Select value={selectedClientId} onValueChange={setSelectedClientId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      {clientsForAccount.map(client => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.client_name} (Saldo: {fmt(client.total_balance)})
+                      {clientsForAccount.length === 0 ? (
+                        <SelectItem value="_empty" disabled>
+                          No hay clientes registrados
                         </SelectItem>
-                      ))}
+                      ) : (
+                        clientsForAccount.map(client => (
+                          <SelectItem key={client.id} value={client.id}>
+                            {client.client_name} (Saldo: {fmt(client.total_balance)})
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   <Input
@@ -290,14 +304,14 @@ export function AuxiliaryLedgerModal({
                     value={movementAmount}
                     onChange={(e) => setMovementAmount(e.target.value)}
                   />
-                  <Button onClick={handleAddExistingClient}>
+                  <Button onClick={handleAddExistingClient} className="w-full" disabled={clientsForAccount.length === 0}>
                     <Plus className="w-4 h-4 mr-1" />
-                    Agregar
+                    Agregar Existente
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          )}
+          </div>
 
           {currentMovements.length > 0 && (
             <Card>
