@@ -1,42 +1,27 @@
 // src/pages/journal/Index.tsx
 import React, { useState, useMemo, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { Undo2, Trash2, Save, Plus, Download, Pencil, ArrowUpDown, Eye, EyeOff, Users, ChevronsUpDown, Check } from 'lucide-react';
-import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
-import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
+import { Download } from 'lucide-react';
 import { toast } from 'sonner';
+
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { JournalEntry, JournalLine, type Account } from '@/accounting/types';
-import {
-  todayISO,
-  toDecimal,
-  formatDecimal,
-  generateEntryId,
-  cmpDate, 
-  fmt,
-  TYPE_ABBR,
-  signForLine
-} from '@/accounting/utils';
+import { JournalEntry } from '@/accounting/types';
+import { generateEntryId } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { getCurrentKardexState } from '@/accounting/kardex-utils';
+import { exportJournalToCSV } from '@/services/exportService';
+
+// Components
+import { JournalEntryForm } from '@/components/journal/JournalEntryForm';
+import { JournalEntriesTable } from '@/components/journal/JournalEntriesTable';
+import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
+import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,23 +32,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
 
-type LineDraft = { 
-  account_id?: string; 
-  debit?: string; 
-  credit?: string; 
-  line_memo?: string;
-  kardexData?: KardexData;
-};
+// Hook
+import { useJournalForm, LineDraft } from '@/hooks/useJournalForm';
 
 export default function JournalPage() {
   const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions } = useAccounting();
   const { isReadOnly } = useUserAccess();
-  const [date, setDate] = useState<string>(todayISO());
-  const [memo, setMemo] = useState<string>("");
-  const [lines, setLines] = useState<LineDraft[]>([{}, {}, {}]);
-  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
+  
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
@@ -87,6 +63,21 @@ export default function JournalPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
 
+  // Use custom hook for form management
+  const form = useJournalForm({
+    accounts,
+    entries,
+    kardexDefinitions,
+    onKardexPopupOpen: (lineIndex, accountId, lineAmount) => {
+      setKardexPopupState({
+        isOpen: true,
+        lineIndex,
+        accountId,
+        lineAmount
+      });
+    }
+  });
+
   // Filter entries by selected quarter
   const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
   const filteredEntries = useMemo(() => {
@@ -100,68 +91,21 @@ export default function JournalPage() {
     localStorage.setItem('journal-show-line-memos', showLineMemos.toString());
   }, [showLineMemos]);
 
-  function addLine() { 
-    setLines(ls => [...ls, {}]); 
-  }
-  
-  function setLine(idx: number, patch: Partial<LineDraft>) { 
-    setLines(ls => ls.map((l, i) => i === idx ? { ...l, ...patch } : l)); 
-  }
-
-  function handleAccountChange(idx: number, accountId: string) {
-    const newLine = { ...lines[idx], account_id: accountId };
-    
-    // Check if this account has a kardex definition
-    const hasKardex = kardexDefinitions.some(d => d.account_id === accountId);
-    
-    if (hasKardex) {
-      // Calculate line amount (puede ser 0)
-      const debitVal = toDecimal(newLine.debit);
-      const creditVal = toDecimal(newLine.credit);
-      const lineAmount = debitVal || creditVal;
-      
-      // Abrir el popup inmediatamente si tiene Kardex
-      setKardexPopupState({
-        isOpen: true,
-        lineIndex: idx,
-        accountId,
-        lineAmount: lineAmount > 0 ? lineAmount : undefined
-      });
-    }
-    
-    setLine(idx, { account_id: accountId });
-  }
-
   function handleKardexPopupSave(kardexData: KardexData) {
     if (!kardexPopupState) return;
-    
-    const { lineIndex } = kardexPopupState;
-    
-    // Save kardex data with the line and copy concepto to line_memo
-    setLine(lineIndex, {
-      kardexData,
-      line_memo: kardexData.concepto
-    });
-    
+    form.handleKardexPopupSave(kardexData, kardexPopupState.lineIndex);
     setKardexPopupState(null);
   }
-  
-  function removeLine(idx: number) { 
-    setLines(ls => ls.filter((_, i) => i !== idx)); 
-  }
-
 
   function detectAuxiliaryLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
     const auxiliaryLines: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> = [];
     
-    // Get all auxiliary account IDs from definitions
     const auxiliaryAccountIds = auxiliaryDefinitions.map(d => d.account_id);
     
     je.lines.forEach((line, index) => {
       if (auxiliaryAccountIds.includes(line.account_id)) {
-        const lineDraft = lines[index];
+        const lineDraft = form.lines[index];
         const lineAmount = line.debit || line.credit;
-        // Determinar si es aumento o disminución según el tipo de cuenta y el lado
         const account = accounts.find(a => a.id === line.account_id);
         const isIncrease = account?.normal_side === 'DEBE' ? line.debit > 0 : line.credit > 0;
         
@@ -178,47 +122,13 @@ export default function JournalPage() {
     return auxiliaryLines;
   }
 
-  const totals = useMemo(() => {
-    let d = 0, c = 0;
-    for (const l of lines) {
-      const dv = toDecimal(l.debit);
-      const cv = toDecimal(l.credit);
-      d += dv; c += cv;
-    }
-    return { debit: d, credit: c, diff: +(d - c).toFixed(2) };
-  }, [lines]);
-
-  function validateAndBuildEntry(): JournalEntry | null {
-    const clean: JournalLine[] = [];
-    for (const l of lines) {
-      const acc = l.account_id?.trim(); 
-      const d = toDecimal(l.debit); 
-      const c = toDecimal(l.credit);
-      if (!acc && d === 0 && c === 0) continue;
-      if (!acc) { toast.error("Línea sin cuenta"); return null; }
-      const accExists = accounts.find(a => a.id === acc && a.is_active);
-      if (!accExists) { toast.error(`Cuenta ${acc} no existe o está inactiva`); return null; }
-      if (d > 0 && c > 0) { toast.error("Una línea no puede tener Debe y Haber a la vez"); return null; }
-      if (d === 0 && c === 0) { toast.error("Línea sin importe"); return null; }
-      clean.push({ account_id: acc, debit: d, credit: c, line_memo: l.line_memo?.trim() });
-    }
-    if (clean.length < 2) { toast.error("El asiento necesita al menos 2 líneas"); return null; }
-    const sumD = clean.reduce((s, l) => s + l.debit, 0); 
-    const sumC = clean.reduce((s, l) => s + l.credit, 0);
-    if (+sumD.toFixed(2) !== +sumC.toFixed(2)) { toast.error("El asiento no cuadra (Debe ≠ Haber)"); return null; }
-    const id = editingEntry ? editingEntry.id : generateEntryId(date, entries);
-    return { id, date, memo: memo.trim() || undefined, lines: clean };
-  }
-
   async function saveEntry() {
-    const je = validateAndBuildEntry(); 
+    const je = form.validateAndBuildEntry();
     if (!je) return;
     
-    // Detectar líneas que requieren gestión auxiliar
     const auxiliaryLines = detectAuxiliaryLines(je);
     
     if (auxiliaryLines.length > 0) {
-      // Hay líneas auxiliares, abrir el modal
       setAuxiliaryModalState({
         isOpen: true,
         linesToProcess: auxiliaryLines,
@@ -227,7 +137,6 @@ export default function JournalPage() {
       return;
     }
     
-    // No hay líneas especiales, guardar directamente
     await handleFinalSave(je);
   }
 
@@ -236,19 +145,17 @@ export default function JournalPage() {
   }
 
   async function handleFinalSave(je: JournalEntry) {
-    try { 
+    try {
       await adapter.saveEntry(je);
       
-      // Save kardex movements for lines that have kardex data
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
+        for (let i = 0; i < form.lines.length; i++) {
+          const line = form.lines[i];
           if (line.kardexData && line.account_id) {
             const kardexDef = kardexDefinitions.find(d => d.account_id === line.account_id);
             if (!kardexDef) continue;
             
-            // Find or create kardex entry
             const { data: existingKardex, error: kardexError } = await supabase
               .from('kardex_entries')
               .select('id')
@@ -274,7 +181,6 @@ export default function JournalPage() {
               kardexId = newKardex.id;
             }
             
-            // Get ALL movements to calculate CPP state
             const { data: allMovements } = await supabase
               .from('kardex_movements')
               .select('*')
@@ -283,7 +189,6 @@ export default function JournalPage() {
               .order('fecha', { ascending: true })
               .order('created_at', { ascending: true });
             
-            // Use centralized utility to calculate current state
             const currentState = getCurrentKardexState(allMovements || []);
             
             let nuevoSaldo = 0;
@@ -295,18 +200,15 @@ export default function JournalPage() {
             const costoTotal = Number(line.kardexData.costo_total);
             
             if (entrada > 0) {
-              // Entrada: Calcular nuevo costo promedio ponderado
               nuevoSaldo = currentState.currentBalance + entrada;
               nuevoSaldoValorado = currentState.currentValuedBalance + costoTotal;
               nuevoCostoUnitario = nuevoSaldo > 0 ? nuevoSaldoValorado / nuevoSaldo : 0;
             } else if (salida > 0) {
-              // Salida: Mantener costo unitario anterior
               nuevoSaldo = currentState.currentBalance - salida;
               nuevoCostoUnitario = currentState.currentUnitCost;
               nuevoSaldoValorado = nuevoSaldo * nuevoCostoUnitario;
             }
             
-            // Create kardex movement with calculated values
             const { error: movError } = await supabase
               .from('kardex_movements')
               .insert({
@@ -328,35 +230,12 @@ export default function JournalPage() {
         }
       }
       
-      setEntries(await adapter.loadEntries()); 
-      toast.success(`Asiento ${je.id} ${editingEntry ? 'actualizado' : 'guardado'}`); 
-      clearForm();
+      setEntries(await adapter.loadEntries());
+      toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
+      form.clearForm();
+    } catch (e: any) {
+      toast.error(e.message || 'Error guardando asiento');
     }
-    catch(e: any) { 
-      toast.error(e.message || "Error guardando asiento"); 
-    }
-  }
-
-  function clearForm() {
-    setMemo(""); 
-    setLines([{}, {}, {}]); 
-    setEditingEntry(null);
-  }
-
-  function editEntry(entry: JournalEntry) {
-    if (entry.void_of) {
-      toast.error("No se puede editar un asiento de anulación");
-      return;
-    }
-    setDate(entry.date);
-    setMemo(entry.memo || "");
-    setLines(entry.lines.map(l => ({
-      account_id: l.account_id,
-      debit: formatDecimal(l.debit),
-      credit: formatDecimal(l.credit),
-      line_memo: l.line_memo
-    })));
-    setEditingEntry(entry);
   }
 
   const handleDeleteClick = (id: string) => {
@@ -367,150 +246,48 @@ export default function JournalPage() {
   const handleDeleteConfirm = async () => {
     if (!entryToDelete) return;
 
-    try { 
-      await adapter.deleteEntry(entryToDelete); 
-      setEntries(await adapter.loadEntries()); 
-      toast.success("Asiento eliminado"); 
+    try {
+      await adapter.deleteEntry(entryToDelete);
+      setEntries(await adapter.loadEntries());
+      toast.success('Asiento eliminado');
       setDeleteDialogOpen(false);
       setEntryToDelete(null);
-    } catch(e: any) { 
-      toast.error(e.message || "No se pudo eliminar asiento"); 
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo eliminar asiento');
       setDeleteDialogOpen(false);
       setEntryToDelete(null);
-    } 
+    }
   };
 
   async function voidEntry(orig: JournalEntry) {
-    const inv: JournalEntry = { 
-      id: generateEntryId(orig.date, entries), 
-      date: orig.date, 
-      memo: (orig.memo ? `${orig.memo} ` : "") + "(ANULACIÓN)", 
-      void_of: orig.id, 
-      lines: orig.lines.map(l => ({ 
-        account_id: l.account_id, 
-        debit: l.credit, 
-        credit: l.debit, 
-        line_memo: l.line_memo 
-      })) 
+    const inv: JournalEntry = {
+      id: generateEntryId(orig.date, entries),
+      date: orig.date,
+      memo: (orig.memo ? `${orig.memo} ` : '') + '(ANULACIÓN)',
+      void_of: orig.id,
+      lines: orig.lines.map(l => ({
+        account_id: l.account_id,
+        debit: l.credit,
+        credit: l.debit,
+        line_memo: l.line_memo
+      }))
     };
-    try { 
-      await adapter.saveEntry(inv); 
-      setEntries(await adapter.loadEntries()); 
-      toast.success(`Asiento ${orig.id} anulado con ${inv.id}`); 
-    } catch(e: any) { 
-      toast.error(e.message || "No se pudo anular"); 
+    try {
+      await adapter.saveEntry(inv);
+      setEntries(await adapter.loadEntries());
+      toast.success(`Asiento ${orig.id} anulado con ${inv.id}`);
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo anular');
     }
-  }
-
-  function exportJournal() {
-    const rows = [["ID", "Fecha", "Glosa", "Cuenta", "Debe", "Haber", "Glosa línea"]];
-    for (const e of entries) { 
-      for (const l of e.lines) { 
-        rows.push([
-          e.id, 
-          e.date, 
-          e.memo || "", 
-          l.account_id, 
-          String(l.debit), 
-          String(l.credit), 
-          l.line_memo || ""
-        ]); 
-      } 
-    }
-    const csv = rows.map(r => r.map(x => `"${(x ?? "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob); 
-    const a = document.createElement('a'); 
-    a.href = url; 
-    a.download = "libro_diario.csv"; 
-    a.click(); 
-    URL.revokeObjectURL(url);
-  }
-
-  // Helper para mostrar etiqueta con abreviación y signo
-  function AccountLabel({ accountId, line }: { accountId: string; line?: { debit?: string | number; credit?: string | number } }) {
-    const account = accounts.find(a => a.id === accountId);
-    if (!account) return <span className="text-muted-foreground">--</span>;
-
-    const abbr = TYPE_ABBR[account.type];
-    const sign = line ? signForLine(account, line) : "";
-
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-              {abbr}
-              {sign && <span className={sign === "+" ? "text-green-600" : "text-red-600"}>{sign}</span>}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{accountId}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-
-  function AccountCombobox({ value, onChange, accounts }: { value: string; onChange: (value: string) => void; accounts: Account[] }) {
-    const [open, setOpen] = useState(false);
-    const selectedAccount = value ? accounts.find(account => account.id === value) : undefined;
-    const selectableAccounts = useMemo(
-      () => accounts.filter(account => account.is_active || account.id === value),
-      [accounts, value]
-    );
-
-    return (
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className={cn(
-              "w-[240px] justify-between",
-              !selectedAccount && "text-muted-foreground"
-            )}
-          >
-            {selectedAccount ? `${selectedAccount.id} — ${selectedAccount.name}` : "Selecciona cuenta"}
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[360px] p-0">
-          <Command>
-            <CommandInput placeholder="Buscar cuenta..." />
-            <CommandEmpty>No se encontraron cuentas.</CommandEmpty>
-            <CommandList>
-              <CommandGroup>
-                {selectableAccounts.map(account => (
-                  <CommandItem
-                    key={account.id}
-                    value={`${account.id} ${account.name}`}
-                    onSelect={() => {
-                      onChange(account.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className={cn("mr-2 h-4 w-4", account.id === value ? "opacity-100" : "opacity-0")} />
-                    <span className="font-mono">{account.id}</span>
-                    <span className="ml-2 truncate">{account.name}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    );
   }
 
   return (
     <div className="space-y-6">
       <ReadOnlyBanner />
-      
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Libro Diario</h1>
-        <Button variant="outline" onClick={exportJournal}>
+        <Button variant="outline" onClick={() => exportJournalToCSV(entries)}>
           <Download className="w-4 h-4 mr-2" />
           Exportar Diario
         </Button>
@@ -538,223 +315,37 @@ export default function JournalPage() {
 
       {/* Form - Only show for owners */}
       {!isReadOnly && (
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>{editingEntry ? `Editando Asiento ${editingEntry.id}` : "Nuevo Asiento"}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-6 gap-3">
-            <div>
-              <Label>Fecha</Label>
-              <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
-            </div>
-            <div className="col-span-5">
-              <Label>Glosa</Label>
-              <Input 
-                value={memo} 
-                onChange={e => setMemo(e.target.value)} 
-                placeholder="Descripción del asiento" 
-              />
-            </div>
-          </div>
-
-          <div className="border rounded-xl">
-            <Table>
-              <TableHeader>
-                 <TableRow>
-                   <TableHead className="w-[250px]">Cuenta</TableHead>
-                   <TableHead className="w-[200px]">Debe</TableHead>
-                   <TableHead className="w-[200px]">Haber</TableHead>
-                   {showLineMemos && <TableHead>Glosa línea</TableHead>}
-                   <TableHead className="text-right">
-                     <Button size="sm" variant="outline" onClick={addLine}>
-                       <Plus className="w-4 h-4" />
-                     </Button>
-                   </TableHead>
-                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines.map((l, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <AccountCombobox
-                          value={l.account_id || ''}
-                          onChange={(v) => handleAccountChange(idx, v)}
-                          accounts={accounts}
-                        />
-                        {l.account_id && <AccountLabel accountId={l.account_id} line={l} />}
-                      </div>
-                    </TableCell>
-                     <TableCell>
-                       <Input
-                         type="text"
-                         value={l.debit || ""}
-                         onChange={e => setLine(idx, { debit: e.target.value, credit: "" })}
-                         disabled={!!l.credit}
-                         placeholder="0,00"
-                       />
-                     </TableCell>
-                     <TableCell>
-                       <Input
-                         type="text"
-                         value={l.credit || ""}
-                         onChange={e => setLine(idx, { credit: e.target.value, debit: "" })}
-                         disabled={!!l.debit}
-                         placeholder="0,00"
-                       />
-                     </TableCell>
-                     {showLineMemos && (
-                       <TableCell>
-                         <Input 
-                           value={l.line_memo || ""} 
-                           onChange={e => setLine(idx, { line_memo: e.target.value })} 
-                         />
-                       </TableCell>
-                     )}
-                    <TableCell className="text-right">
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => removeLine(idx)} 
-                        title="Eliminar fila"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                 <TableRow>
-                   <TableCell className="text-right font-medium">Totales</TableCell>
-                   <TableCell className="font-semibold">{fmt(totals.debit)}</TableCell>
-                   <TableCell className="font-semibold">{fmt(totals.credit)}</TableCell>
-                   <TableCell colSpan={showLineMemos ? 2 : 1} className={"text-right font-semibold " + (totals.diff === 0 ? "text-green-600" : "text-red-600")}>
-                     {totals.diff === 0 ? "Cuadra" : `Diferencia: ${fmt(totals.diff)}`}
-                   </TableCell>
-                 </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={saveEntry}>
-              <Save className="w-4 h-4 mr-2" />
-              {editingEntry ? "Actualizar asiento" : "Guardar asiento"}
-            </Button>
-            <Button variant="outline" onClick={clearForm}>
-              {editingEntry ? "Cancelar edición" : "Limpiar"}
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowLineMemos(!showLineMemos)}
-            >
-              {showLineMemos ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-              {showLineMemos ? 'Ocultar glosas en línea' : 'Mostrar glosas en línea'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        <JournalEntryForm
+          date={form.date}
+          onDateChange={form.setDate}
+          memo={form.memo}
+          onMemoChange={form.setMemo}
+          lines={form.lines}
+          accounts={accounts}
+          editingEntry={form.editingEntry}
+          showLineMemos={showLineMemos}
+          onToggleLineMemos={() => setShowLineMemos(!showLineMemos)}
+          totals={form.totals}
+          onAddLine={form.addLine}
+          onAccountChange={form.handleAccountChange}
+          onLineChange={form.setLine}
+          onRemoveLine={form.removeLine}
+          onSave={saveEntry}
+          onClear={form.clearForm}
+        />
       )}
 
-      <Card className="shadow-sm">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Asientos registrados</CardTitle>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            >
-              <ArrowUpDown className="w-4 h-4 mr-2" />
-              {sortOrder === 'asc' ? 'Más antiguo' : 'Más reciente'}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="border rounded-xl overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Glosa</TableHead>
-                  <TableHead>Detalle</TableHead>
-                  {!isReadOnly && <TableHead className="text-right">Acciones</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEntries.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
-                      No hay asientos registrados para {selectedQuarter}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredEntries.sort((a, b) => sortOrder === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id)).map(e => (
-                  <React.Fragment key={e.id}>
-                    <TableRow>
-                      <TableCell className="font-mono">{e.id}</TableCell>
-                      <TableCell>{e.date}</TableCell>
-                      <TableCell></TableCell>
-                      <TableCell>
-                        <div className="text-sm space-y-1">
-                           {e.lines.map((l, i) => {
-                             const a = accounts.find(x => x.id === l.account_id);
-                             return (
-                               <div key={i} className="flex gap-2 items-center">
-                                 <AccountLabel accountId={l.account_id} line={l} />
-                                 <span className="flex-1">{a?.name}</span>
-                                 <span className="w-24 text-right">{l.debit ? fmt(l.debit) : ""}</span>
-                                 <span className="w-24 text-right">{l.credit ? fmt(l.credit) : ""}</span>
-                               </div>
-                             );
-                           })}
-                        </div>
-                      </TableCell>
-                      {!isReadOnly && (
-                      <TableCell className="text-right">
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={() => editEntry(e)} 
-                          title="Editar"
-                          disabled={!!e.void_of}
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={() => voidEntry(e)} 
-                          title="Anular"
-                        >
-                          <Undo2 className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={() => handleDeleteClick(e.id)} 
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                      )}
-                    </TableRow>
-                    {e.memo && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-muted-foreground italic text-sm pl-8">
-                          {e.memo}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </React.Fragment>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <JournalEntriesTable
+        entries={filteredEntries}
+        accounts={accounts}
+        isReadOnly={isReadOnly}
+        sortOrder={sortOrder}
+        selectedQuarter={selectedQuarter}
+        onSortOrderChange={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+        onEdit={form.editEntry}
+        onVoid={voidEntry}
+        onDelete={handleDeleteClick}
+      />
 
       {kardexPopupState && (
         <InlineKardexPopup
@@ -763,7 +354,7 @@ export default function JournalPage() {
           accountId={kardexPopupState.accountId}
           lineAmount={kardexPopupState.lineAmount}
           onSave={handleKardexPopupSave}
-          initialData={lines[kardexPopupState.lineIndex]?.kardexData}
+          initialData={form.lines[kardexPopupState.lineIndex]?.kardexData}
         />
       )}
 
