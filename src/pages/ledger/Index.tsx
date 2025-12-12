@@ -2,18 +2,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Download } from 'lucide-react';
 import { useAccounting } from '@/accounting/AccountingProvider';
-import { todayISO, cmpDate, signedBalanceFor, fmt } from '@/accounting/utils';
+import { cmpDate, signedBalanceFor, fmt } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter, getPreviousQuarter } from '@/accounting/quarterly-utils';
+import { exportLedgerToCSV, LedgerRow } from '@/services/exportService';
 
 export default function LedgerPage() {
   const { accounts, entries, adapter } = useAccounting();
-  const [ledgerAccount, setLedgerAccount] = useState<string>("A.1");
+  const [ledgerAccount, setLedgerAccount] = useState<string>('A.1');
   const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
   
   // Available quarters for selection
@@ -22,7 +22,7 @@ export default function LedgerPage() {
 
   // Ledger data with quarterly support
   const [ledgerState, setLedgerState] = useState<{
-    rows: any[];
+    rows: LedgerRow[];
     opening: number;
     closing: number;
   }>({ rows: [], opening: 0, closing: 0 });
@@ -61,17 +61,17 @@ export default function LedgerPage() {
 
     // Build ledger entries with running balance
     let running = initialBalance;
-    const rows = inRange.map(({ e, l }) => { 
-      const delta = signedBalanceFor(l.debit, l.credit, acc.normal_side); 
-      running += delta; 
-      return { 
-        date: e.date, 
-        id: e.id, 
-        memo: e.memo || "", 
-        debit: l.debit, 
-        credit: l.credit, 
-        balance: running 
-      }; 
+    const rows: LedgerRow[] = inRange.map(({ e, l }) => {
+      const delta = signedBalanceFor(l.debit, l.credit, acc.normal_side);
+      running += delta;
+      return {
+        date: e.date,
+        id: e.id,
+        memo: e.memo || '',
+        debit: l.debit,
+        credit: l.credit,
+        balance: running
+      };
     });
     
     return { rows, opening: initialBalance, closing: running };
@@ -82,42 +82,21 @@ export default function LedgerPage() {
     ledgerData.then(setLedgerState);
   }, [ledgerData]);
 
-  function exportLedger() {
-    const rows = [
-      ["Cuenta", "Trimestre"],
-      [ledgerAccount, selectedQuarter],
-      ["Fecha", "Asiento", "Glosa", "Debe", "Haber", "Saldo"]
-    ];
-    rows.push(["", "", "", "", "", ""]);
-    rows.push(["Saldo Inicial", "", "", "", "", String(ledgerState.opening)]);
-    for (const r of ledgerState.rows) {
-      rows.push([
-        r.date, 
-        r.id, 
-        r.memo, 
-        String(r.debit), 
-        String(r.credit), 
-        String(r.balance)
-      ]); 
-    }
-    rows.push(["", "", "", "", "", ""]);
-    rows.push(["Saldo Final", "", "", "", "", String(ledgerState.closing)]);
-    
-    const csv = rows.map(r => r.map(x => `"${(x ?? "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob); 
-    const a = document.createElement('a'); 
-    a.href = url; 
-    a.download = "libro_mayor.csv"; 
-    a.click(); 
-    URL.revokeObjectURL(url);
+  function handleExport() {
+    exportLedgerToCSV(
+      ledgerState.rows,
+      ledgerAccount,
+      selectedQuarter,
+      ledgerState.opening,
+      ledgerState.closing
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Libro Mayor</h1>
-        <Button variant="outline" onClick={exportLedger}>
+        <Button variant="outline" onClick={handleExport}>
           <Download className="w-4 h-4 mr-2" />
           Exportar Mayor
         </Button>
@@ -202,10 +181,10 @@ export default function LedgerPage() {
                     <TableCell className="font-mono">{r.id}</TableCell>
                     <TableCell>{r.memo}</TableCell>
                     <TableCell className="text-right">
-                      {r.debit ? fmt(r.debit) : ""}
+                      {r.debit ? fmt(r.debit) : ''}
                     </TableCell>
                     <TableCell className="text-right">
-                      {r.credit ? fmt(r.credit) : ""}
+                      {r.credit ? fmt(r.credit) : ''}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {fmt(r.balance)}
