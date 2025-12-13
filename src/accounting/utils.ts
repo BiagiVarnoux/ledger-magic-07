@@ -38,14 +38,12 @@ export function generateEntryId(date: string, existing: JournalEntry[]) {
   
   // Filter existing entries for the same quarter
   const quarterEntries = existing.filter(e => {
-    // Check if the entry ID ends with the same quarter identifier
     return e.id.endsWith(`-${quarterIdentifier}`);
   });
   
   // Find the highest sequential number for this quarter
   let maxSequence = 0;
   quarterEntries.forEach(entry => {
-    // Extract sequence number from ID format: XXX-QX-YY
     const match = entry.id.match(/^(\d{3})-/);
     if (match) {
       const sequence = parseInt(match[1], 10);
@@ -58,6 +56,59 @@ export function generateEntryId(date: string, existing: JournalEntry[]) {
   // Generate next sequential number with 3-digit padding
   const nextSequence = maxSequence + 1;
   return `${String(nextSequence).padStart(3, '0')}-${quarterIdentifier}`;
+}
+
+// Generate entry ID respecting chronological order
+export function generateChronologicalEntryId(date: string, existing: JournalEntry[]): string {
+  const quarterIdentifier = getQuarterIdentifier(date);
+  
+  // Get all entries in this quarter, sorted by date
+  const quarterEntries = existing
+    .filter(e => e.id.endsWith(`-${quarterIdentifier}`))
+    .sort((a, b) => cmpDate(a.date, b.date) || a.id.localeCompare(b.id));
+  
+  if (quarterEntries.length === 0) {
+    return `001-${quarterIdentifier}`;
+  }
+  
+  // Find where this entry should be inserted based on date
+  const insertIndex = quarterEntries.findIndex(e => e.date > date);
+  
+  if (insertIndex === -1) {
+    // Entry goes at the end - use next sequential number
+    const lastEntry = quarterEntries[quarterEntries.length - 1];
+    const match = lastEntry.id.match(/^(\d{3})-/);
+    const lastSeq = match ? parseInt(match[1], 10) : 0;
+    return `${String(lastSeq + 1).padStart(3, '0')}-${quarterIdentifier}`;
+  }
+  
+  // Entry needs to be inserted in the middle
+  // Find a sequence number between prev and current
+  const currentEntry = quarterEntries[insertIndex];
+  const currentMatch = currentEntry.id.match(/^(\d{3})-/);
+  const currentSeq = currentMatch ? parseInt(currentMatch[1], 10) : 1;
+  
+  if (insertIndex === 0) {
+    // Insert before first - need to renumber
+    return `001-${quarterIdentifier}`;
+  }
+  
+  const prevEntry = quarterEntries[insertIndex - 1];
+  const prevMatch = prevEntry.id.match(/^(\d{3})-/);
+  const prevSeq = prevMatch ? parseInt(prevMatch[1], 10) : 0;
+  
+  // If there's room between sequences, use middle value
+  if (currentSeq - prevSeq > 1) {
+    const newSeq = Math.floor((prevSeq + currentSeq) / 2);
+    return `${String(newSeq).padStart(3, '0')}-${quarterIdentifier}`;
+  }
+  
+  // No room - need to use the next available sequence
+  const maxSeq = Math.max(...quarterEntries.map(e => {
+    const m = e.id.match(/^(\d{3})-/);
+    return m ? parseInt(m[1], 10) : 0;
+  }));
+  return `${String(maxSeq + 1).padStart(3, '0')}-${quarterIdentifier}`;
 }
 
 export function signedBalanceFor(deb: number, hab: number, side: Side) {

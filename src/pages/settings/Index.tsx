@@ -7,7 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { Copy, Plus, Trash2, Users, UserMinus } from 'lucide-react';
+import { useAccounting } from '@/accounting/AccountingProvider';
+import { Copy, Plus, Trash2, Users, UserMinus, Database, History } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -27,6 +28,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { BackupRestoreModal } from '@/components/backup/BackupRestoreModal';
+import { AuditLogModal } from '@/components/audit/AuditLogModal';
 
 interface InvitationCode {
   id: string;
@@ -55,6 +58,7 @@ interface SharedAccess {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const { setAccounts, setEntries, adapter } = useAccounting();
   const { toast } = useToast();
   const [isOwner, setIsOwner] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,6 +66,8 @@ export default function SettingsPage() {
   const [sharedAccess, setSharedAccess] = useState<SharedAccess[]>([]);
   const [revokeDialogOpen, setRevokeDialogOpen] = useState(false);
   const [accessToRevoke, setAccessToRevoke] = useState<SharedAccess | null>(null);
+  const [backupModalOpen, setBackupModalOpen] = useState(false);
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
   
   // Form states
   const [permissions, setPermissions] = useState({
@@ -252,11 +258,58 @@ export default function SettingsPage() {
     );
   }
 
+  async function handleRestoreComplete() {
+    // Reload all data after restore
+    const accounts = await adapter.loadAccounts();
+    const entries = await adapter.loadEntries();
+    setAccounts(accounts);
+    setEntries(entries);
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Configuración</h1>
-        <p className="text-muted-foreground">Gestiona el acceso de usuarios a tu contabilidad</p>
+        <p className="text-muted-foreground">Gestiona el acceso de usuarios y respaldos</p>
+      </div>
+
+      {/* Backup & Audit Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Backup y Restauración
+            </CardTitle>
+            <CardDescription>
+              Respalda o restaura todos tus datos contables
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => setBackupModalOpen(true)} className="w-full">
+              <Database className="h-4 w-4 mr-2" />
+              Abrir Gestión de Backup
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Historial de Cambios
+            </CardTitle>
+            <CardDescription>
+              Revisa el historial de modificaciones en tu contabilidad
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => setAuditModalOpen(true)} variant="outline" className="w-full">
+              <History className="h-4 w-4 mr-2" />
+              Ver Historial de Auditoría
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Generate Invitation Code */}
@@ -479,6 +532,17 @@ export default function SettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <BackupRestoreModal
+        isOpen={backupModalOpen}
+        onClose={() => setBackupModalOpen(false)}
+        onRestoreComplete={handleRestoreComplete}
+      />
+
+      <AuditLogModal
+        isOpen={auditModalOpen}
+        onClose={() => setAuditModalOpen(false)}
+      />
     </div>
   );
 }
