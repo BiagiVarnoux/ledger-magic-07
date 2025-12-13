@@ -4,22 +4,25 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download } from 'lucide-react';
+import { Download, FileText, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { JournalEntry } from '@/accounting/types';
-import { generateEntryId } from '@/accounting/utils';
+import { generateChronologicalEntryId } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { getCurrentKardexState } from '@/accounting/kardex-utils';
 import { exportJournalToCSV } from '@/services/exportService';
+import { exportJournalToPDF, JournalEntryPDF } from '@/services/pdfService';
+import { logAuditEntry } from '@/services/auditService';
 
 // Components
 import { JournalEntryForm } from '@/components/journal/JournalEntryForm';
 import { JournalEntriesTable } from '@/components/journal/JournalEntriesTable';
+import { JournalFiltersComponent, JournalFilters, defaultFilters } from '@/components/journal/JournalFilters';
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
 import {
@@ -32,6 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 // Hook
 import { useJournalForm, LineDraft } from '@/hooks/useJournalForm';
@@ -45,6 +49,8 @@ export default function JournalPage() {
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
   });
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<JournalFilters>(defaultFilters);
   const [kardexPopupState, setKardexPopupState] = useState<{
     isOpen: boolean;
     lineIndex: number;
@@ -78,11 +84,44 @@ export default function JournalPage() {
     }
   });
 
-  // Filter entries by selected quarter
+  // Filter entries by selected quarter and filters
   const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
   const filteredEntries = useMemo(() => {
-    return entries.filter(entry => isDateInQuarter(entry.date, currentQuarter));
-  }, [entries, currentQuarter]);
+    let result = entries.filter(entry => isDateInQuarter(entry.date, currentQuarter));
+    
+    // Apply filters
+    if (filters.searchText) {
+      const search = filters.searchText.toLowerCase();
+      result = result.filter(e => 
+        e.id.toLowerCase().includes(search) || 
+        e.memo?.toLowerCase().includes(search)
+      );
+    }
+    if (filters.dateFrom) {
+      result = result.filter(e => e.date >= filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      result = result.filter(e => e.date <= filters.dateTo);
+    }
+    if (filters.accountId) {
+      result = result.filter(e => e.lines.some(l => l.account_id === filters.accountId));
+    }
+    if (filters.minAmount) {
+      const min = parseFloat(filters.minAmount);
+      result = result.filter(e => e.lines.some(l => l.debit >= min || l.credit >= min));
+    }
+    if (filters.maxAmount) {
+      const max = parseFloat(filters.maxAmount);
+      result = result.filter(e => e.lines.every(l => l.debit <= max && l.credit <= max));
+    }
+    if (filters.showVoided === 'only_voided') {
+      result = result.filter(e => e.void_of);
+    } else if (filters.showVoided === 'exclude_voided') {
+      result = result.filter(e => !e.void_of);
+    }
+    
+    return result;
+  }, [entries, currentQuarter, filters]);
 
   // Available quarters for selection
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
