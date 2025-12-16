@@ -11,7 +11,7 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { JournalEntry } from '@/accounting/types';
-import { generateChronologicalEntryId } from '@/accounting/utils';
+import { generateEntryId, generateChronologicalEntryId } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { getCurrentKardexState } from '@/accounting/kardex-utils';
