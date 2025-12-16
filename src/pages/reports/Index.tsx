@@ -9,6 +9,7 @@ import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '
 import { TrialBalanceReport } from '@/components/reports/TrialBalanceReport';
 import { IncomeStatementReport } from '@/components/reports/IncomeStatementReport';
 import { BalanceSheetReport } from '@/components/reports/BalanceSheetReport';
+import { CashFlowReport } from '@/components/reports/CashFlowReport';
 
 export default function ReportsPage() {
   const { accounts, entries } = useAccounting();
@@ -24,10 +25,11 @@ export default function ReportsPage() {
       <h1 className="text-2xl font-semibold">Reportes Financieros</h1>
 
       <Tabs defaultValue="trial-balance" className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
-          <TabsTrigger value="trial-balance">Balance de Comprobación</TabsTrigger>
-          <TabsTrigger value="income-statement">Estado de Resultados</TabsTrigger>
+        <TabsList className="grid w-full max-w-3xl grid-cols-4">
+          <TabsTrigger value="trial-balance">Balance Comprobación</TabsTrigger>
+          <TabsTrigger value="income-statement">Estado Resultados</TabsTrigger>
           <TabsTrigger value="balance-sheet">Balance General</TabsTrigger>
+          <TabsTrigger value="cash-flow">Flujo de Caja</TabsTrigger>
         </TabsList>
 
         {/* Balance de Comprobación */}
@@ -61,6 +63,18 @@ export default function ReportsPage() {
             entries={entries}
             bsDate={bsDate}
             onBsDateChange={setBsDate}
+          />
+        </TabsContent>
+
+        {/* Flujo de Caja */}
+        <TabsContent value="cash-flow" className="mt-6">
+          <CashFlowReport
+            accounts={accounts}
+            entries={entries}
+            selectedQuarter={selectedQuarter}
+            onQuarterChange={setSelectedQuarter}
+            availableQuarters={availableQuarters}
+            currentQuarter={currentQuarter}
           />
         </TabsContent>
       </Tabs>

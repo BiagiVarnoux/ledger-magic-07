@@ -361,3 +361,114 @@ export function exportJournalToPDF(
   addFooter(doc);
   doc.save(`libro-diario-${period.replace(/\s/g, '-')}.pdf`);
 }
+
+export interface CashFlowData {
+  initialCashBalance: number;
+  operacionDetalle: Array<{ id: string; name: string; amount: number }>;
+  inversionDetalle: Array<{ id: string; name: string; amount: number }>;
+  financiacionDetalle: Array<{ id: string; name: string; amount: number }>;
+  flujoOperacion: number;
+  flujoInversion: number;
+  flujoFinanciacion: number;
+  flujoNeto: number;
+  finalCashBalance: number;
+}
+
+export function exportCashFlowToPDF(data: CashFlowData, period: string): void {
+  const doc = new jsPDF();
+  
+  let startY = addReportHeader(doc, {
+    title: 'Estado de Flujo de Caja',
+    period: `Período: ${period}`,
+  });
+
+  // Initial Balance
+  autoTable(doc, {
+    startY,
+    body: [['SALDO INICIAL DE EFECTIVO', fmt(data.initialCashBalance)]],
+    styles: { fontSize: 11, fontStyle: 'bold' },
+    bodyStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0] },
+    columnStyles: { 1: { halign: 'right' } },
+  });
+
+  // @ts-ignore
+  startY = doc.lastAutoTable.finalY + 8;
+
+  // Operating Activities
+  if (data.operacionDetalle.length > 0) {
+    autoTable(doc, {
+      startY,
+      head: [['ACTIVIDADES DE OPERACIÓN', '', '']],
+      body: data.operacionDetalle.map(i => [i.id, i.name, (i.amount >= 0 ? '+' : '') + fmt(i.amount)]),
+      foot: [['', 'Flujo Neto de Operación', (data.flujoOperacion >= 0 ? '+' : '') + fmt(data.flujoOperacion)]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [33, 150, 243] },
+      footStyles: { fillColor: [200, 220, 255], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } },
+    });
+    // @ts-ignore
+    startY = doc.lastAutoTable.finalY + 6;
+  }
+
+  // Investment Activities
+  if (data.inversionDetalle.length > 0) {
+    autoTable(doc, {
+      startY,
+      head: [['ACTIVIDADES DE INVERSIÓN', '', '']],
+      body: data.inversionDetalle.map(i => [i.id, i.name, (i.amount >= 0 ? '+' : '') + fmt(i.amount)]),
+      foot: [['', 'Flujo Neto de Inversión', (data.flujoInversion >= 0 ? '+' : '') + fmt(data.flujoInversion)]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [156, 39, 176] },
+      footStyles: { fillColor: [230, 200, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } },
+    });
+    // @ts-ignore
+    startY = doc.lastAutoTable.finalY + 6;
+  }
+
+  // Financing Activities
+  if (data.financiacionDetalle.length > 0) {
+    autoTable(doc, {
+      startY,
+      head: [['ACTIVIDADES DE FINANCIACIÓN', '', '']],
+      body: data.financiacionDetalle.map(i => [i.id, i.name, (i.amount >= 0 ? '+' : '') + fmt(i.amount)]),
+      foot: [['', 'Flujo Neto de Financiación', (data.flujoFinanciacion >= 0 ? '+' : '') + fmt(data.flujoFinanciacion)]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [255, 152, 0] },
+      footStyles: { fillColor: [255, 230, 200], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } },
+    });
+    // @ts-ignore
+    startY = doc.lastAutoTable.finalY + 6;
+  }
+
+  // Net Cash Flow
+  autoTable(doc, {
+    startY,
+    body: [['FLUJO NETO TOTAL', (data.flujoNeto >= 0 ? '+' : '') + fmt(data.flujoNeto)]],
+    styles: { fontSize: 11, fontStyle: 'bold' },
+    bodyStyles: { 
+      fillColor: data.flujoNeto >= 0 ? [200, 230, 200] : [255, 200, 200],
+      textColor: [0, 0, 0],
+    },
+    columnStyles: { 1: { halign: 'right' } },
+  });
+
+  // @ts-ignore
+  startY = doc.lastAutoTable.finalY + 8;
+
+  // Final Balance
+  autoTable(doc, {
+    startY,
+    body: [
+      ['SALDO FINAL DE EFECTIVO', fmt(data.finalCashBalance)],
+      ['Verificación: Inicial + Flujo = Final', `${fmt(data.initialCashBalance)} + ${fmt(data.flujoNeto)} = ${fmt(data.finalCashBalance)}`],
+    ],
+    styles: { fontSize: 10 },
+    bodyStyles: { fillColor: [200, 220, 255], textColor: [0, 0, 0] },
+    columnStyles: { 1: { halign: 'right' } },
+  });
+
+  addFooter(doc);
+  doc.save(`flujo-caja-${period.replace(/\s/g, '-')}.pdf`);
+}
