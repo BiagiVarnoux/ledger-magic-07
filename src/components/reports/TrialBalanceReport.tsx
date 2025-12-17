@@ -2,10 +2,13 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { FileDown } from 'lucide-react';
 import { QuarterSelector } from './QuarterSelector';
 import { Account, JournalEntry, AccountType, Side } from '@/accounting/types';
 import { fmt } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { exportTrialBalanceToPDF } from '@/services/pdfService';
 
 interface TrialBalanceReportProps {
   accounts: Account[];
@@ -68,10 +71,25 @@ export function TrialBalanceReport({
     return { rows, totals };
   }, [accounts, entries, currentQuarter]);
 
+  const handleExportPDF = () => {
+    const pdfRows = trialRows.rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      debit: r.debit,
+      credit: r.credit,
+      balance: r.side === 'DEBE' ? r.debit - r.credit : r.credit - r.debit,
+    }));
+    exportTrialBalanceToPDF(pdfRows, trialRows.totals, selectedQuarter);
+  };
+
   return (
     <Card className="shadow-sm">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Balance de Comprobación</CardTitle>
+        <Button variant="outline" size="sm" onClick={handleExportPDF}>
+          <FileDown className="h-4 w-4 mr-2" />
+          Exportar PDF
+        </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         <QuarterSelector

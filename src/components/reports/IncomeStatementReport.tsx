@@ -2,10 +2,13 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { FileDown } from 'lucide-react';
 import { QuarterSelector } from './QuarterSelector';
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { exportIncomeStatementToPDF } from '@/services/pdfService';
 
 interface IncomeStatementReportProps {
   accounts: Account[];
@@ -73,10 +76,18 @@ export function IncomeStatementReport({
     };
   }, [accounts, entries, currentQuarter]);
 
+  const handleExportPDF = () => {
+    exportIncomeStatementToPDF(incomeStatement, selectedQuarter);
+  };
+
   return (
     <Card className="shadow-sm">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Estado de Resultados</CardTitle>
+        <Button variant="outline" size="sm" onClick={handleExportPDF}>
+          <FileDown className="h-4 w-4 mr-2" />
+          Exportar PDF
+        </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         <QuarterSelector
