@@ -4,8 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { FileDown } from 'lucide-react';
 import { Account, JournalEntry } from '@/accounting/types';
 import { signedBalanceFor, fmt } from '@/accounting/utils';
+import { exportBalanceSheetToPDF } from '@/services/pdfService';
 
 interface BalanceSheetReportProps {
   accounts: Account[];
@@ -111,10 +114,26 @@ export function BalanceSheetReport({
     };
   }, [accounts, entries, bsDate]);
 
+  const handleExportPDF = () => {
+    exportBalanceSheetToPDF({
+      activosDetalle: balanceSheet.activosDetalle,
+      pasivosDetalle: balanceSheet.pasivosDetalle,
+      patrimonioDetalle: balanceSheet.patrimonioDetalle,
+      utilidadAcumulada: balanceSheet.utilidadAcumulada,
+      totalActivo: balanceSheet.totalActivo,
+      totalPasivo: balanceSheet.totalPasivo,
+      totalPatrimonio: balanceSheet.totalPatrimonio,
+    }, bsDate);
+  };
+
   return (
     <Card className="shadow-sm">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Balance General</CardTitle>
+        <Button variant="outline" size="sm" onClick={handleExportPDF}>
+          <FileDown className="h-4 w-4 mr-2" />
+          Exportar PDF
+        </Button>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="w-full max-w-xs">
