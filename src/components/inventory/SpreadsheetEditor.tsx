@@ -138,8 +138,8 @@ export function SpreadsheetEditor({
         </div>
       )}
 
-      <div className="overflow-auto max-h-[600px]">
-        <table className="w-full border-collapse text-sm">
+      <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
+        <table className="border-collapse text-sm min-w-max">
           <thead className="sticky top-0 z-10">
             <tr className="bg-muted">
               <th className="w-10 min-w-10 border p-1 text-center text-muted-foreground sticky left-0 bg-muted">
