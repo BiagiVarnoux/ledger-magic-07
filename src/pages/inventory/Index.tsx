@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Package, FileSpreadsheet, Warehouse, ArrowLeftRight } from 'lucide-react';
 import { ProductCatalog } from '@/components/inventory/ProductCatalog';
 import { CostSheetManager } from '@/components/inventory/CostSheetManager';
+import { InventoryManager } from '@/components/inventory/InventoryManager';
 
 export default function InventoryPage() {
   return (
@@ -43,11 +44,7 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="inventory">
-          <div className="text-center py-12 text-muted-foreground">
-            <Warehouse className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>Control de inventario por lotes</p>
-            <p className="text-sm">Próximamente: Vista de stock actual y valuación</p>
-          </div>
+          <InventoryManager />
         </TabsContent>
 
         <TabsContent value="movements">
