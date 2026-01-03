@@ -2,7 +2,14 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Plus, Minus } from 'lucide-react';
+import { Plus, Minus, Type } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   CellGrid,
   CellData,
@@ -13,12 +20,23 @@ import {
   formatNumber,
 } from '@/lib/spreadsheet-engine';
 
+interface Product {
+  id: string;
+  codigo: string;
+  nombre: string;
+}
+
 interface SpreadsheetEditorProps {
   grid: CellGrid;
   onGridChange: (grid: CellGrid) => void;
   initialRows?: number;
   initialCols?: number;
   readOnly?: boolean;
+  selectedProducts?: Product[];
+  headerRows?: number[];
+  onHeaderRowsChange?: (rows: number[]) => void;
+  showAutoNumbering?: boolean;
+  showReservedColumns?: boolean;
 }
 
 export function SpreadsheetEditor({
@@ -27,6 +45,11 @@ export function SpreadsheetEditor({
   initialRows = 30,
   initialCols = 8,
   readOnly = false,
+  selectedProducts = [],
+  headerRows = [0],
+  onHeaderRowsChange,
+  showAutoNumbering = true,
+  showReservedColumns = true,
 }: SpreadsheetEditorProps) {
   const [rows, setRows] = useState(initialRows);
   const [cols, setCols] = useState(initialCols);
@@ -35,20 +58,60 @@ export function SpreadsheetEditor({
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Calculate reserved column indices
+  const productCol = showReservedColumns ? cols - 3 : -1;
+  const priceCol = showReservedColumns ? cols - 2 : -1;
+  const quantityCol = showReservedColumns ? cols - 1 : -1;
+
   useEffect(() => {
     if (editingCell && inputRef.current) {
       inputRef.current.focus();
     }
   }, [editingCell]);
 
-  const handleCellClick = useCallback((key: string) => {
-    setSelectedCell(key);
-    if (!readOnly) {
-      const cell = grid.get(key);
-      setEditValue(cell?.formula || cell?.value || '');
-      setEditingCell(key);
+  const isHeaderRow = useCallback((rowIndex: number) => {
+    return headerRows.includes(rowIndex);
+  }, [headerRows]);
+
+  const toggleHeaderRow = useCallback((rowIndex: number) => {
+    if (!onHeaderRowsChange) return;
+    
+    if (headerRows.includes(rowIndex)) {
+      onHeaderRowsChange(headerRows.filter(r => r !== rowIndex));
+    } else {
+      onHeaderRowsChange([...headerRows, rowIndex].sort((a, b) => a - b));
     }
-  }, [grid, readOnly]);
+  }, [headerRows, onHeaderRowsChange]);
+
+  const isReservedColumn = useCallback((colIndex: number) => {
+    return showReservedColumns && (colIndex === productCol || colIndex === priceCol || colIndex === quantityCol);
+  }, [showReservedColumns, productCol, priceCol, quantityCol]);
+
+  const getColumnHeader = useCallback((colIndex: number) => {
+    if (showReservedColumns) {
+      if (colIndex === productCol) return 'Producto';
+      if (colIndex === priceCol) return 'Precio U.';
+      if (colIndex === quantityCol) return 'Cantidad';
+    }
+    return colToLetter(colIndex);
+  }, [showReservedColumns, productCol, priceCol, quantityCol]);
+
+  const handleCellClick = useCallback((key: string, rowIndex: number, colIndex: number) => {
+    setSelectedCell(key);
+    
+    // Don't edit header rows (except for text content) or if readonly
+    if (readOnly) return;
+    
+    const cell = grid.get(key);
+    
+    // For product columns, don't open text editor
+    if (showReservedColumns && colIndex === productCol && !isHeaderRow(rowIndex)) {
+      return;
+    }
+    
+    setEditValue(cell?.formula || cell?.value || '');
+    setEditingCell(key);
+  }, [grid, readOnly, showReservedColumns, productCol, isHeaderRow]);
 
   const handleCellChange = useCallback((value: string) => {
     setEditValue(value);
@@ -61,12 +124,26 @@ export function SpreadsheetEditor({
     if (!cell) return;
 
     const isFormula = editValue.startsWith('=');
+    let cellType = cell.cellType;
+    
+    // Determine cell type
+    if (isFormula) {
+      cellType = 'formula';
+    } else if (cell.cellType === 'price' || cell.cellType === 'quantity') {
+      // Keep price/quantity type for reserved columns
+    } else if (!isNaN(parseFloat(editValue)) && editValue.trim() !== '') {
+      cellType = 'number';
+    } else if (isHeaderRow(cell.row)) {
+      cellType = 'header';
+    } else {
+      cellType = 'text';
+    }
+
     const newCell: CellData = {
       ...cell,
       value: isFormula ? '' : editValue,
       formula: isFormula ? editValue : null,
-      cellType: isFormula ? 'formula' : 
-                (!isNaN(parseFloat(editValue)) ? 'number' : 'text'),
+      cellType,
     };
 
     const newGrid = new Map(grid);
@@ -76,7 +153,7 @@ export function SpreadsheetEditor({
     onGridChange(recalculated);
     
     setEditingCell(null);
-  }, [editingCell, editValue, grid, onGridChange]);
+  }, [editingCell, editValue, grid, onGridChange, isHeaderRow]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -123,19 +200,44 @@ export function SpreadsheetEditor({
     return cell.value;
   }, []);
 
+  const handleProductSelect = useCallback((rowIndex: number, productId: string) => {
+    const key = getCellKey(rowIndex, productCol);
+    const cell = grid.get(key);
+    if (!cell) return;
+
+    const product = selectedProducts.find(p => p.id === productId);
+    
+    const newCell: CellData = {
+      ...cell,
+      value: product?.nombre || '',
+      productId: productId,
+      cellType: 'product',
+    };
+
+    const newGrid = new Map(grid);
+    newGrid.set(key, newCell);
+    onGridChange(newGrid);
+  }, [grid, onGridChange, productCol, selectedProducts]);
+
+  const getProductName = useCallback((productId: string | undefined) => {
+    if (!productId) return '';
+    const product = selectedProducts.find(p => p.id === productId);
+    return product?.nombre || '';
+  }, [selectedProducts]);
+
   return (
     <div className="overflow-auto border rounded-md bg-background">
       {/* Controls bar */}
       {!readOnly && (
-        <div className="flex items-center gap-4 p-2 border-b bg-muted/50">
+        <div className="flex items-center gap-4 p-2 border-b bg-muted/50 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Columnas:</span>
             <Button
               variant="outline"
               size="icon"
               className="h-7 w-7"
-              onClick={() => setCols(Math.max(1, cols - 1))}
-              disabled={cols <= 1}
+              onClick={() => setCols(Math.max(showReservedColumns ? 4 : 1, cols - 1))}
+              disabled={cols <= (showReservedColumns ? 4 : 1)}
             >
               <Minus className="h-3 w-3" />
             </Button>
@@ -170,6 +272,23 @@ export function SpreadsheetEditor({
               <Plus className="h-3 w-3" />
             </Button>
           </div>
+          {selectedCell && onHeaderRowsChange && (
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const cell = grid.get(selectedCell);
+                  if (cell) toggleHeaderRow(cell.row);
+                }}
+              >
+                <Type className="h-4 w-4 mr-1" />
+                {selectedCell && grid.get(selectedCell) && isHeaderRow(grid.get(selectedCell)!.row) 
+                  ? 'Quitar título' 
+                  : 'Convertir a título'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -194,61 +313,117 @@ export function SpreadsheetEditor({
         <table className="border-collapse text-sm min-w-max">
           <thead className="sticky top-0 z-10">
             <tr className="bg-muted">
-              <th className="w-10 min-w-10 border p-1 text-center text-muted-foreground sticky left-0 bg-muted">
-                
-              </th>
+              {/* Row number column */}
+              {showAutoNumbering && (
+                <th className="w-10 min-w-10 border p-1 text-center text-muted-foreground sticky left-0 bg-muted z-20">
+                  #
+                </th>
+              )}
+              {/* Data columns */}
               {Array.from({ length: cols }, (_, i) => (
                 <th
                   key={i}
-                  className="min-w-24 border p-1 text-center font-medium text-muted-foreground"
+                  className={cn(
+                    'min-w-24 border p-1 text-center font-medium text-muted-foreground',
+                    isReservedColumn(i) && 'bg-primary/10 text-primary'
+                  )}
                 >
-                  {colToLetter(i)}
+                  {getColumnHeader(i)}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {Array.from({ length: rows }, (_, rowIndex) => (
-              <tr key={rowIndex} className="hover:bg-muted/30">
-                <td className="border p-1 text-center text-muted-foreground bg-muted sticky left-0 font-mono text-xs">
-                  {rowIndex + 1}
-                </td>
-                {Array.from({ length: cols }, (_, colIndex) => {
-                  const key = getCellKey(rowIndex, colIndex);
-                  const cell = grid.get(key);
-                  const isSelected = selectedCell === key;
-                  const isEditing = editingCell === key;
-
-                  return (
-                    <td
-                      key={key}
-                      className={cn(
-                        'border p-0 cursor-pointer transition-colors',
-                        isSelected && 'ring-2 ring-primary ring-inset',
-                        cell?.error && 'bg-destructive/10',
-                        cell?.cellType === 'header' && 'bg-muted font-semibold',
-                      )}
-                      onClick={() => handleCellClick(key)}
-                    >
-                      <div
-                        className={cn(
-                          'min-h-8 px-2 py-1 flex items-center',
-                          cell?.cellType === 'number' || cell?.cellType === 'formula'
-                            ? 'justify-end font-mono'
-                            : 'justify-start',
-                        )}
-                      >
-                        {isEditing ? (
-                          <span className="text-primary/50">...</span>
-                        ) : (
-                          cell ? getCellDisplay(cell) : ''
-                        )}
-                      </div>
+            {Array.from({ length: rows }, (_, rowIndex) => {
+              const rowIsHeader = isHeaderRow(rowIndex);
+              
+              return (
+                <tr key={rowIndex} className={cn(
+                  'hover:bg-muted/30',
+                  rowIsHeader && 'bg-muted/50'
+                )}>
+                  {/* Row number */}
+                  {showAutoNumbering && (
+                    <td className="border p-1 text-center text-muted-foreground bg-muted sticky left-0 font-mono text-xs z-10">
+                      {rowIndex + 1}
                     </td>
-                  );
-                })}
-              </tr>
-            ))}
+                  )}
+                  {/* Data cells */}
+                  {Array.from({ length: cols }, (_, colIndex) => {
+                    const key = getCellKey(rowIndex, colIndex);
+                    const cell = grid.get(key);
+                    const isSelected = selectedCell === key;
+                    const isEditing = editingCell === key;
+                    const isProductCell = showReservedColumns && colIndex === productCol && !rowIsHeader;
+                    const isPriceCell = showReservedColumns && colIndex === priceCol && !rowIsHeader;
+                    const isQuantityCell = showReservedColumns && colIndex === quantityCol && !rowIsHeader;
+
+                    return (
+                      <td
+                        key={key}
+                        className={cn(
+                          'border p-0 cursor-pointer transition-colors',
+                          isSelected && 'ring-2 ring-primary ring-inset',
+                          cell?.error && 'bg-destructive/10',
+                          rowIsHeader && 'bg-muted font-semibold',
+                          isReservedColumn(colIndex) && !rowIsHeader && 'bg-primary/5',
+                          (isPriceCell || isQuantityCell) && 'bg-accent/10'
+                        )}
+                        onClick={() => handleCellClick(key, rowIndex, colIndex)}
+                      >
+                        {/* Product dropdown cell */}
+                        {isProductCell && !readOnly ? (
+                          <Select
+                            value={cell?.productId || ''}
+                            onValueChange={(value) => handleProductSelect(rowIndex, value)}
+                          >
+                            <SelectTrigger className="h-8 border-0 bg-transparent font-normal">
+                              <SelectValue placeholder="Seleccionar...">
+                                {cell?.productId ? getProductName(cell.productId) : 'Seleccionar...'}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className="bg-popover z-50">
+                              {selectedProducts.length === 0 ? (
+                                <div className="p-2 text-sm text-muted-foreground">
+                                  No hay productos seleccionados
+                                </div>
+                              ) : (
+                                selectedProducts.map((product) => (
+                                  <SelectItem key={product.id} value={product.id}>
+                                    <span className="font-mono text-xs text-muted-foreground mr-2">
+                                      {product.codigo}
+                                    </span>
+                                    {product.nombre}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div
+                            className={cn(
+                              'min-h-8 px-2 py-1 flex items-center',
+                              cell?.cellType === 'number' || 
+                              cell?.cellType === 'formula' ||
+                              cell?.cellType === 'price' ||
+                              cell?.cellType === 'quantity'
+                                ? 'justify-end font-mono'
+                                : 'justify-start',
+                            )}
+                          >
+                            {isEditing && !isProductCell ? (
+                              <span className="text-primary/50">...</span>
+                            ) : (
+                              cell ? getCellDisplay(cell) : ''
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

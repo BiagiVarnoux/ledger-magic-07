@@ -8,12 +8,30 @@ export interface CellData {
   col: number;
   value: string;
   formula: string | null;
-  cellType: 'text' | 'number' | 'formula' | 'header';
+  cellType: 'text' | 'number' | 'formula' | 'header' | 'product' | 'price' | 'quantity';
   computedValue?: string | number;
   error?: string;
+  productId?: string; // For product column cells
+  isReadOnly?: boolean; // For auto-numbered rows
 }
 
 export type CellGrid = Map<string, CellData>;
+
+export interface SheetMetadata {
+  selectedProductIds: string[];
+  headerRows: number[]; // Row indices that are headers
+  autoNumberColumn: boolean; // If true, column 0 is auto-numbered
+  reservedColumnsEnabled: boolean; // If true, last 3 columns are reserved
+}
+
+export function createDefaultMetadata(): SheetMetadata {
+  return {
+    selectedProductIds: [],
+    headerRows: [0], // First row is header by default
+    autoNumberColumn: true,
+    reservedColumnsEnabled: true,
+  };
+}
 
 // Convert column index to letter (0 = A, 1 = B, etc.)
 export function colToLetter(col: number): string {
@@ -271,7 +289,7 @@ export function recalculateGrid(grid: CellGrid): CellGrid {
         computedValue: result.value,
         error: result.error,
       });
-    } else if (cell.cellType === 'number' || !isNaN(parseFloat(cell.value))) {
+    } else if (cell.cellType === 'number' || cell.cellType === 'price' || cell.cellType === 'quantity' || !isNaN(parseFloat(cell.value))) {
       newGrid.set(key, {
         ...cell,
         computedValue: parseFloat(cell.value.replace(/,/g, '')) || 0,
@@ -309,18 +327,59 @@ export function formatNumber(value: number | string, decimals: number = 2): stri
   });
 }
 
-// Create empty grid
-export function createEmptyGrid(rows: number, cols: number): CellGrid {
+// Create empty grid with special column types
+export function createEmptyGrid(rows: number, cols: number, metadata?: SheetMetadata): CellGrid {
   const grid: CellGrid = new Map();
+  const hasReserved = metadata?.reservedColumnsEnabled ?? false;
+  
+  // Calculate reserved column indices (last 3 columns)
+  const productCol = hasReserved ? cols - 3 : -1;
+  const priceCol = hasReserved ? cols - 2 : -1;
+  const quantityCol = hasReserved ? cols - 1 : -1;
+  
   for (let row = 0; row < rows; row++) {
+    const isHeaderRow = metadata?.headerRows?.includes(row) ?? (row === 0);
+    
     for (let col = 0; col < cols; col++) {
       const key = getCellKey(row, col);
+      
+      let cellType: CellData['cellType'] = 'text';
+      let value = '';
+      
+      // Set header row values for reserved columns
+      if (isHeaderRow && hasReserved) {
+        if (col === productCol) {
+          cellType = 'header';
+          value = 'Producto';
+        } else if (col === priceCol) {
+          cellType = 'header';
+          value = 'Precio Unit.';
+        } else if (col === quantityCol) {
+          cellType = 'header';
+          value = 'Cantidad';
+        } else {
+          cellType = 'header';
+        }
+      } else if (!isHeaderRow && hasReserved) {
+        // Data rows
+        if (col === productCol) {
+          cellType = 'product';
+        } else if (col === priceCol) {
+          cellType = 'price';
+        } else if (col === quantityCol) {
+          cellType = 'quantity';
+        }
+      } else if (isHeaderRow) {
+        cellType = 'header';
+      }
+      
       grid.set(key, {
         row,
         col,
-        value: '',
+        value,
         formula: null,
-        cellType: 'text',
+        cellType,
+        isReadOnly: isHeaderRow && hasReserved && (col === productCol || col === priceCol || col === quantityCol),
       });
     }
   }
@@ -334,6 +393,7 @@ export function gridToArray(grid: CellGrid): Array<{
   value: string;
   formula: string | null;
   cell_type: string;
+  style: { productId?: string } | null;
 }> {
   const cells: Array<{
     row_index: number;
@@ -341,16 +401,18 @@ export function gridToArray(grid: CellGrid): Array<{
     value: string;
     formula: string | null;
     cell_type: string;
+    style: { productId?: string } | null;
   }> = [];
   
   for (const [, cell] of grid) {
-    if (cell.value || cell.formula) {
+    if (cell.value || cell.formula || cell.productId || cell.cellType !== 'text') {
       cells.push({
         row_index: cell.row,
         col_index: cell.col,
         value: cell.value,
         formula: cell.formula,
         cell_type: cell.cellType,
+        style: cell.productId ? { productId: cell.productId } : null,
       });
     }
   }
@@ -366,6 +428,7 @@ export function arrayToGrid(
     value: string | null;
     formula: string | null;
     cell_type: string;
+    style?: { productId?: string } | null;
   }>,
   rows: number = 50,
   cols: number = 10
@@ -374,14 +437,60 @@ export function arrayToGrid(
   
   for (const cell of cells) {
     const key = getCellKey(cell.row_index, cell.col_index);
+    const style = cell.style as { productId?: string } | null;
+    
     grid.set(key, {
       row: cell.row_index,
       col: cell.col_index,
       value: cell.value || '',
       formula: cell.formula,
       cellType: (cell.cell_type as CellData['cellType']) || 'text',
+      productId: style?.productId,
     });
   }
   
   return recalculateGrid(grid);
+}
+
+// Extract product data from grid rows
+export function extractProductRows(grid: CellGrid, cols: number): Array<{
+  row: number;
+  productId: string;
+  price: number;
+  quantity: number;
+}> {
+  const productCol = cols - 3;
+  const priceCol = cols - 2;
+  const quantityCol = cols - 1;
+  
+  const rows: Array<{
+    row: number;
+    productId: string;
+    price: number;
+    quantity: number;
+  }> = [];
+  
+  for (const [, cell] of grid) {
+    if (cell.col === productCol && cell.productId) {
+      const priceKey = getCellKey(cell.row, priceCol);
+      const quantityKey = getCellKey(cell.row, quantityCol);
+      
+      const priceCell = grid.get(priceKey);
+      const quantityCell = grid.get(quantityKey);
+      
+      const price = priceCell ? parseFloat(String(priceCell.computedValue ?? priceCell.value).replace(/,/g, '')) || 0 : 0;
+      const quantity = quantityCell ? parseFloat(String(quantityCell.computedValue ?? quantityCell.value).replace(/,/g, '')) || 0 : 0;
+      
+      if (price > 0 && quantity > 0) {
+        rows.push({
+          row: cell.row,
+          productId: cell.productId,
+          price,
+          quantity,
+        });
+      }
+    }
+  }
+  
+  return rows;
 }

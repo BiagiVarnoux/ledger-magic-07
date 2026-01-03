@@ -20,15 +20,25 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { toast } from 'sonner';
-import { Plus, FileSpreadsheet, Pencil, Trash2, Eye } from 'lucide-react';
+import { Plus, FileSpreadsheet, Trash2, Eye, Package, CheckCircle, AlertTriangle } from 'lucide-react';
 import { SpreadsheetEditor } from './SpreadsheetEditor';
+import { ProductSelectorPanel } from './ProductSelectorPanel';
 import {
   CellGrid,
   createEmptyGrid,
   gridToArray,
   arrayToGrid,
-  getCellKey,
+  extractProductRows,
+  SheetMetadata,
+  createDefaultMetadata,
 } from '@/lib/spreadsheet-engine';
 
 interface CostSheet {
@@ -39,66 +49,32 @@ interface CostSheet {
   status: 'borrador' | 'finalizada';
   user_id: string;
   created_at: string;
+  metadata: SheetMetadata | null;
 }
 
-const IMPORT_TEMPLATE = [
-  // Header row
-  { row: 0, col: 0, value: 'HOJA DE COSTEO DE IMPORTACIÓN', cellType: 'header' as const },
-  // Column headers
-  { row: 2, col: 0, value: 'Descripción', cellType: 'header' as const },
-  { row: 2, col: 1, value: 'Cantidad', cellType: 'header' as const },
-  { row: 2, col: 2, value: 'Precio Unit.', cellType: 'header' as const },
-  { row: 2, col: 3, value: 'Subtotal', cellType: 'header' as const },
-  // Product rows placeholders
-  { row: 3, col: 0, value: 'Producto 1', cellType: 'text' as const },
-  { row: 3, col: 1, value: '0', cellType: 'number' as const },
-  { row: 3, col: 2, value: '0', cellType: 'number' as const },
-  { row: 3, col: 3, value: '', formula: '=B4*C4', cellType: 'formula' as const },
-  { row: 4, col: 0, value: 'Producto 2', cellType: 'text' as const },
-  { row: 4, col: 1, value: '0', cellType: 'number' as const },
-  { row: 4, col: 2, value: '0', cellType: 'number' as const },
-  { row: 4, col: 3, value: '', formula: '=B5*C5', cellType: 'formula' as const },
-  // FOB Total
-  { row: 6, col: 0, value: 'TOTAL FOB', cellType: 'header' as const },
-  { row: 6, col: 3, value: '', formula: '=SUM(D4:D5)', cellType: 'formula' as const },
-  // Shipping costs
-  { row: 8, col: 0, value: 'FLETE', cellType: 'text' as const },
-  { row: 8, col: 3, value: '0', cellType: 'number' as const },
-  { row: 9, col: 0, value: 'SEGURO (1% CIF)', cellType: 'text' as const },
-  { row: 9, col: 3, value: '', formula: '=D7*0.01', cellType: 'formula' as const },
-  // CIF
-  { row: 11, col: 0, value: 'TOTAL CIF', cellType: 'header' as const },
-  { row: 11, col: 3, value: '', formula: '=D7+D9+D10', cellType: 'formula' as const },
-  // Duties
-  { row: 13, col: 0, value: 'DAI (Arancel)', cellType: 'text' as const },
-  { row: 13, col: 1, value: '15', cellType: 'number' as const },
-  { row: 13, col: 2, value: '%', cellType: 'text' as const },
-  { row: 13, col: 3, value: '', formula: '=D12*B14/100', cellType: 'formula' as const },
-  { row: 14, col: 0, value: 'IVA', cellType: 'text' as const },
-  { row: 14, col: 1, value: '12', cellType: 'number' as const },
-  { row: 14, col: 2, value: '%', cellType: 'text' as const },
-  { row: 14, col: 3, value: '', formula: '=(D12+D14)*B15/100', cellType: 'formula' as const },
-  // Local costs
-  { row: 16, col: 0, value: 'AGENTE ADUANAL', cellType: 'text' as const },
-  { row: 16, col: 3, value: '0', cellType: 'number' as const },
-  { row: 17, col: 0, value: 'TRANSPORTE LOCAL', cellType: 'text' as const },
-  { row: 17, col: 3, value: '0', cellType: 'number' as const },
-  { row: 18, col: 0, value: 'OTROS GASTOS', cellType: 'text' as const },
-  { row: 18, col: 3, value: '0', cellType: 'number' as const },
-  // Total
-  { row: 20, col: 0, value: 'COSTO TOTAL', cellType: 'header' as const },
-  { row: 20, col: 3, value: '', formula: '=D12+D14+D15+D17+D18+D19', cellType: 'formula' as const },
-];
+interface Product {
+  id: string;
+  codigo: string;
+  nombre: string;
+  unidad_medida: string;
+}
+
+const DEFAULT_COLS = 8;
+const DEFAULT_ROWS = 30;
 
 export function CostSheetManager() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isProductSelectorOpen, setIsProductSelectorOpen] = useState(false);
   const [selectedSheet, setSelectedSheet] = useState<CostSheet | null>(null);
-  const [grid, setGrid] = useState<CellGrid>(createEmptyGrid(30, 8));
+  const [grid, setGrid] = useState<CellGrid>(createEmptyGrid(DEFAULT_ROWS, DEFAULT_COLS));
   const [newSheetName, setNewSheetName] = useState('');
   const [newSheetRef, setNewSheetRef] = useState('');
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [headerRows, setHeaderRows] = useState<number[]>([0]);
+  const [sheetCols, setSheetCols] = useState(DEFAULT_COLS);
 
   const { data: sheets = [], isLoading } = useQuery({
     queryKey: ['cost_sheets', user?.id],
@@ -114,48 +90,45 @@ export function CostSheetManager() {
     enabled: !!user,
   });
 
+  const { data: allProducts = [] } = useQuery({
+    queryKey: ['products', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, codigo, nombre, unidad_medida')
+        .eq('is_active', true)
+        .order('nombre');
+      
+      if (error) throw error;
+      return data as Product[];
+    },
+    enabled: !!user,
+  });
+
+  const selectedProducts = allProducts.filter(p => selectedProductIds.includes(p.id));
+
   const createMutation = useMutation({
     mutationFn: async ({
       nombre,
       referencia,
-      useTemplate,
     }: {
       nombre: string;
       referencia: string;
-      useTemplate: boolean;
     }) => {
-      // Create the sheet
+      const metadata = createDefaultMetadata();
+      
       const { data: sheet, error: sheetError } = await supabase
         .from('cost_sheets')
         .insert({
           nombre,
           referencia_importacion: referencia || null,
           user_id: user!.id,
+          metadata: metadata as unknown as Record<string, unknown>,
         })
         .select()
         .single();
 
       if (sheetError) throw sheetError;
-
-      // If using template, add the template cells
-      if (useTemplate) {
-        const cells = IMPORT_TEMPLATE.map((cell) => ({
-          sheet_id: sheet.id,
-          row_index: cell.row,
-          col_index: cell.col,
-          value: cell.value,
-          formula: cell.formula || null,
-          cell_type: cell.cellType,
-          user_id: user!.id,
-        }));
-
-        const { error: cellsError } = await supabase
-          .from('cost_sheet_cells')
-          .insert(cells);
-
-        if (cellsError) throw cellsError;
-      }
-
       return sheet;
     },
     onSuccess: (sheet) => {
@@ -164,7 +137,6 @@ export function CostSheetManager() {
       setIsCreateOpen(false);
       setNewSheetName('');
       setNewSheetRef('');
-      // Open the editor
       openSheetEditor(sheet);
     },
     onError: (error: Error) => {
@@ -187,7 +159,15 @@ export function CostSheetManager() {
   });
 
   const saveCellsMutation = useMutation({
-    mutationFn: async ({ sheetId, cells }: { sheetId: string; cells: ReturnType<typeof gridToArray> }) => {
+    mutationFn: async ({ 
+      sheetId, 
+      cells, 
+      metadata 
+    }: { 
+      sheetId: string; 
+      cells: ReturnType<typeof gridToArray>;
+      metadata: SheetMetadata;
+    }) => {
       // Delete existing cells
       await supabase.from('cost_sheet_cells').delete().eq('sheet_id', sheetId);
 
@@ -196,14 +176,28 @@ export function CostSheetManager() {
         const { error } = await supabase.from('cost_sheet_cells').insert(
           cells.map((cell) => ({
             sheet_id: sheetId,
-            ...cell,
+            row_index: cell.row_index,
+            col_index: cell.col_index,
+            value: cell.value,
+            formula: cell.formula,
+            cell_type: cell.cell_type,
+            style: cell.style,
             user_id: user!.id,
           }))
         );
         if (error) throw error;
       }
+
+      // Update metadata
+      const { error: metaError } = await supabase
+        .from('cost_sheets')
+        .update({ metadata: metadata as unknown as Record<string, unknown> })
+        .eq('id', sheetId);
+      
+      if (metaError) throw metaError;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cost_sheets'] });
       toast.success('Cambios guardados');
     },
     onError: (error: Error) => {
@@ -211,8 +205,78 @@ export function CostSheetManager() {
     },
   });
 
+  const finalizeMutation = useMutation({
+    mutationFn: async ({ 
+      sheetId, 
+      productRows,
+      sheetName,
+    }: { 
+      sheetId: string; 
+      productRows: Array<{ productId: string; price: number; quantity: number }>;
+      sheetName: string;
+    }) => {
+      // Create import lots and inventory lots for each product row
+      for (const row of productRows) {
+        // Create import lot
+        const { data: importLot, error: importError } = await supabase
+          .from('import_lots')
+          .insert({
+            product_id: row.productId,
+            cantidad: row.quantity,
+            costo_unitario: row.price,
+            costo_total: row.quantity * row.price,
+            sheet_id: sheetId,
+            numero_lote: sheetName,
+            user_id: user!.id,
+          })
+          .select()
+          .single();
+
+        if (importError) throw importError;
+
+        // Create inventory lot
+        const { error: invError } = await supabase
+          .from('inventory_lots')
+          .insert({
+            product_id: row.productId,
+            import_lot_id: importLot.id,
+            cantidad_inicial: row.quantity,
+            cantidad_disponible: row.quantity,
+            costo_unitario: row.price,
+            user_id: user!.id,
+          });
+
+        if (invError) throw invError;
+      }
+
+      // Update sheet status
+      const { error: statusError } = await supabase
+        .from('cost_sheets')
+        .update({ status: 'finalizada' })
+        .eq('id', sheetId);
+
+      if (statusError) throw statusError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cost_sheets'] });
+      queryClient.invalidateQueries({ queryKey: ['import_lots'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory_lots'] });
+      toast.success('Hoja finalizada y lotes creados');
+      setIsEditorOpen(false);
+      setSelectedSheet(null);
+    },
+    onError: (error: Error) => {
+      toast.error(`Error al finalizar: ${error.message}`);
+    },
+  });
+
   const openSheetEditor = async (sheet: CostSheet) => {
     setSelectedSheet(sheet);
+    
+    // Load metadata
+    const metadata = (sheet.metadata as SheetMetadata) || createDefaultMetadata();
+    setSelectedProductIds(metadata.selectedProductIds || []);
+    setHeaderRows(metadata.headerRows || [0]);
     
     // Load cells
     const { data: cells } = await supabase
@@ -220,10 +284,21 @@ export function CostSheetManager() {
       .select('*')
       .eq('sheet_id', sheet.id);
 
+    // Determine cols from cells or default
+    let maxCol = DEFAULT_COLS;
     if (cells && cells.length > 0) {
-      setGrid(arrayToGrid(cells));
+      maxCol = Math.max(DEFAULT_COLS, ...cells.map(c => c.col_index + 1));
+    }
+    setSheetCols(maxCol);
+
+    if (cells && cells.length > 0) {
+      const cellsWithStyle = cells.map(c => ({
+        ...c,
+        style: c.style as { productId?: string } | null,
+      }));
+      setGrid(arrayToGrid(cellsWithStyle, DEFAULT_ROWS, maxCol));
     } else {
-      setGrid(createEmptyGrid(30, 8));
+      setGrid(createEmptyGrid(DEFAULT_ROWS, maxCol));
     }
     
     setIsEditorOpen(true);
@@ -231,9 +306,49 @@ export function CostSheetManager() {
 
   const handleSave = () => {
     if (!selectedSheet) return;
+    
     const cells = gridToArray(grid);
-    saveCellsMutation.mutate({ sheetId: selectedSheet.id, cells });
+    const metadata: SheetMetadata = {
+      selectedProductIds,
+      headerRows,
+      autoNumberColumn: true,
+      reservedColumnsEnabled: true,
+    };
+    
+    saveCellsMutation.mutate({ 
+      sheetId: selectedSheet.id, 
+      cells,
+      metadata,
+    });
   };
+
+  const handleFinalize = () => {
+    if (!selectedSheet) return;
+    
+    const productRows = extractProductRows(grid, sheetCols);
+    
+    if (productRows.length === 0) {
+      toast.error('No hay productos con precio y cantidad válidos para crear lotes');
+      return;
+    }
+
+    // Validate all rows have price and quantity
+    const invalidRows = productRows.filter(r => r.price <= 0 || r.quantity <= 0);
+    if (invalidRows.length > 0) {
+      toast.error('Algunos productos tienen precio o cantidad inválidos');
+      return;
+    }
+
+    if (confirm(`¿Finalizar hoja y crear ${productRows.length} lotes de inventario?`)) {
+      finalizeMutation.mutate({
+        sheetId: selectedSheet.id,
+        productRows,
+        sheetName: selectedSheet.nombre,
+      });
+    }
+  };
+
+  const productRowsPreview = extractProductRows(grid, sheetCols);
 
   return (
     <div className="space-y-4">
@@ -275,33 +390,16 @@ export function CostSheetManager() {
                   placeholder="IMP-2026-001"
                 />
               </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() =>
-                    createMutation.mutate({
-                      nombre: newSheetName,
-                      referencia: newSheetRef,
-                      useTemplate: true,
-                    })
-                  }
-                  disabled={!newSheetName}
-                >
-                  Usar Plantilla
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    createMutation.mutate({
-                      nombre: newSheetName,
-                      referencia: newSheetRef,
-                      useTemplate: false,
-                    })
-                  }
-                  disabled={!newSheetName}
-                >
-                  Hoja en Blanco
-                </Button>
-              </div>
+              <Button
+                onClick={() => createMutation.mutate({
+                  nombre: newSheetName,
+                  referencia: newSheetRef,
+                })}
+                disabled={!newSheetName || createMutation.isPending}
+                className="w-full"
+              >
+                Crear Hoja
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -334,7 +432,12 @@ export function CostSheetManager() {
                     </CardDescription>
                   </div>
                   <Badge variant={sheet.status === 'finalizada' ? 'default' : 'secondary'}>
-                    {sheet.status}
+                    {sheet.status === 'finalizada' ? (
+                      <>
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Finalizada
+                      </>
+                    ) : 'Borrador'}
                   </Badge>
                 </div>
               </CardHeader>
@@ -353,17 +456,19 @@ export function CostSheetManager() {
                     <Eye className="h-4 w-4 mr-1" />
                     Abrir
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      if (confirm('¿Eliminar esta hoja de costeo?')) {
-                        deleteMutation.mutate(sheet.id);
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {sheet.status !== 'finalizada' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (confirm('¿Eliminar esta hoja de costeo?')) {
+                          deleteMutation.mutate(sheet.id);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -373,26 +478,95 @@ export function CostSheetManager() {
 
       {/* Spreadsheet Editor Dialog */}
       <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{selectedSheet?.nombre}</span>
-              <Button onClick={handleSave} disabled={saveCellsMutation.isPending}>
-                Guardar Cambios
-              </Button>
+            <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span>{selectedSheet?.nombre}</span>
+                {selectedSheet?.status === 'finalizada' && (
+                  <Badge variant="default">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Finalizada
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedSheet?.status !== 'finalizada' && (
+                  <>
+                    <Sheet open={isProductSelectorOpen} onOpenChange={setIsProductSelectorOpen}>
+                      <SheetTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <Package className="h-4 w-4 mr-1" />
+                          Productos ({selectedProductIds.length})
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent side="right" className="w-[400px] sm:w-[450px] p-0">
+                        <ProductSelectorPanel
+                          selectedProductIds={selectedProductIds}
+                          onSelectionChange={setSelectedProductIds}
+                          onClose={() => setIsProductSelectorOpen(false)}
+                        />
+                      </SheetContent>
+                    </Sheet>
+                    <Button 
+                      onClick={handleSave} 
+                      disabled={saveCellsMutation.isPending}
+                      variant="outline"
+                    >
+                      Guardar
+                    </Button>
+                    <Button 
+                      onClick={handleFinalize}
+                      disabled={finalizeMutation.isPending || productRowsPreview.length === 0}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      Finalizar ({productRowsPreview.length} productos)
+                    </Button>
+                  </>
+                )}
+              </div>
             </DialogTitle>
           </DialogHeader>
+          
+          {/* Validation preview */}
+          {selectedSheet?.status !== 'finalizada' && productRowsPreview.length > 0 && (
+            <div className="px-4 py-2 bg-accent/50 rounded-md text-sm flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <span>
+                {productRowsPreview.length} productos listos para crear lotes de inventario
+              </span>
+            </div>
+          )}
+          
+          {selectedSheet?.status !== 'finalizada' && selectedProductIds.length === 0 && (
+            <div className="px-4 py-2 bg-amber-100 dark:bg-amber-900/30 rounded-md text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <span>
+                Selecciona productos para poder asignarlos a las filas de la hoja
+              </span>
+            </div>
+          )}
+          
           <div className="flex-1 overflow-auto">
             <SpreadsheetEditor
               grid={grid}
               onGridChange={setGrid}
-              initialRows={30}
-              initialCols={8}
+              initialRows={DEFAULT_ROWS}
+              initialCols={sheetCols}
+              readOnly={selectedSheet?.status === 'finalizada'}
+              selectedProducts={selectedProducts}
+              headerRows={headerRows}
+              onHeaderRowsChange={selectedSheet?.status !== 'finalizada' ? setHeaderRows : undefined}
+              showAutoNumbering={true}
+              showReservedColumns={true}
             />
           </div>
-          <div className="text-xs text-muted-foreground pt-2 border-t">
+          <div className="text-xs text-muted-foreground pt-2 border-t space-y-1">
             <p>
-              <strong>Fórmulas soportadas:</strong> =A1+B1, =A1*B1, =SUM(A1:A10), =AVERAGE(B1:B5)
+              <strong>Fórmulas:</strong> =A1+B1, =SUM(A1:A10), =AVERAGE(B1:B5)
+            </p>
+            <p>
+              <strong>Columnas reservadas:</strong> Las últimas 3 columnas (Producto, Precio U., Cantidad) se vinculan al inventario
             </p>
           </div>
         </DialogContent>
