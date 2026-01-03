@@ -386,8 +386,8 @@ export function CostSheetManager() {
             <SpreadsheetEditor
               grid={grid}
               onGridChange={setGrid}
-              rows={30}
-              cols={8}
+              initialRows={30}
+              initialCols={8}
             />
           </div>
           <div className="text-xs text-muted-foreground pt-2 border-t">
