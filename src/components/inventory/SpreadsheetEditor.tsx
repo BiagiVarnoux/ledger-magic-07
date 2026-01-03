@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Plus, Minus } from 'lucide-react';
 import {
   CellGrid,
   CellData,
@@ -14,18 +16,20 @@ import {
 interface SpreadsheetEditorProps {
   grid: CellGrid;
   onGridChange: (grid: CellGrid) => void;
-  rows?: number;
-  cols?: number;
+  initialRows?: number;
+  initialCols?: number;
   readOnly?: boolean;
 }
 
 export function SpreadsheetEditor({
   grid,
   onGridChange,
-  rows = 30,
-  cols = 8,
+  initialRows = 30,
+  initialCols = 8,
   readOnly = false,
 }: SpreadsheetEditorProps) {
+  const [rows, setRows] = useState(initialRows);
+  const [cols, setCols] = useState(initialCols);
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -121,6 +125,54 @@ export function SpreadsheetEditor({
 
   return (
     <div className="overflow-auto border rounded-md bg-background">
+      {/* Controls bar */}
+      {!readOnly && (
+        <div className="flex items-center gap-4 p-2 border-b bg-muted/50">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Columnas:</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setCols(Math.max(1, cols - 1))}
+              disabled={cols <= 1}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+            <span className="text-sm font-medium w-8 text-center">{cols}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setCols(cols + 1)}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Filas:</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setRows(Math.max(1, rows - 1))}
+              disabled={rows <= 1}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+            <span className="text-sm font-medium w-8 text-center">{rows}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setRows(rows + 1)}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Formula bar */}
       {selectedCell && (
         <div className="flex items-center gap-2 p-2 border-b bg-muted/50">
