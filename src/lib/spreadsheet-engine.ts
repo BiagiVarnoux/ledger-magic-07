@@ -388,13 +388,14 @@ export function createEmptyGrid(rows: number, cols: number, metadata?: SheetMeta
 }
 
 // Convert grid to array for database storage
+// Maps special cell types to DB-valid types and stores original in style
 export function gridToArray(grid: CellGrid): Array<{
   row_index: number;
   col_index: number;
   value: string;
   formula: string | null;
   cell_type: string;
-  style: { productId?: string } | null;
+  style: { productId?: string; originalCellType?: string } | null;
 }> {
   const cells: Array<{
     row_index: number;
@@ -402,18 +403,32 @@ export function gridToArray(grid: CellGrid): Array<{
     value: string;
     formula: string | null;
     cell_type: string;
-    style: { productId?: string } | null;
+    style: { productId?: string; originalCellType?: string } | null;
   }> = [];
+  
+  // Types allowed by DB constraint
+  const validDbTypes = ['text', 'number', 'formula', 'header'];
   
   for (const [, cell] of grid) {
     if (cell.value || cell.formula || cell.productId || cell.cellType !== 'text') {
+      // Map special types to valid DB types
+      let dbCellType = cell.cellType;
+      let originalCellType: string | undefined;
+      
+      if (!validDbTypes.includes(cell.cellType)) {
+        originalCellType = cell.cellType; // Store original type
+        dbCellType = 'text'; // Map to 'text' for DB
+      }
+      
       cells.push({
         row_index: cell.row,
         col_index: cell.col,
         value: cell.value,
         formula: cell.formula,
-        cell_type: cell.cellType,
-        style: cell.productId ? { productId: cell.productId } : null,
+        cell_type: dbCellType,
+        style: (cell.productId || originalCellType) 
+          ? { productId: cell.productId, originalCellType } 
+          : null,
       });
     }
   }
@@ -422,6 +437,7 @@ export function gridToArray(grid: CellGrid): Array<{
 }
 
 // Convert array from database to grid
+// Restores original cell types from style.originalCellType
 export function arrayToGrid(
   cells: Array<{
     row_index: number;
@@ -429,7 +445,7 @@ export function arrayToGrid(
     value: string | null;
     formula: string | null;
     cell_type: string;
-    style?: { productId?: string } | null;
+    style?: { productId?: string; originalCellType?: string } | null;
   }>,
   rows: number = 50,
   cols: number = 10
@@ -438,14 +454,17 @@ export function arrayToGrid(
   
   for (const cell of cells) {
     const key = getCellKey(cell.row_index, cell.col_index);
-    const style = cell.style as { productId?: string } | null;
+    const style = cell.style as { productId?: string; originalCellType?: string } | null;
+    
+    // Restore original cellType if it was mapped for DB storage
+    const cellType = (style?.originalCellType || cell.cell_type) as CellData['cellType'] || 'text';
     
     grid.set(key, {
       row: cell.row_index,
       col: cell.col_index,
       value: cell.value || '',
       formula: cell.formula,
-      cellType: (cell.cell_type as CellData['cellType']) || 'text',
+      cellType,
       productId: style?.productId,
     });
   }
