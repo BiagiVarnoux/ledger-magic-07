@@ -75,6 +75,7 @@ export function CostSheetManager() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [headerRows, setHeaderRows] = useState<number[]>([0]);
   const [sheetCols, setSheetCols] = useState(DEFAULT_COLS);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const { data: sheets = [], isLoading } = useQuery({
     queryKey: ['cost_sheets', user?.id],
@@ -146,17 +147,56 @@ export function CostSheetManager() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
+      // First delete cells
+      await supabase.from('cost_sheet_cells').delete().eq('sheet_id', id);
+      
+      // Get import lots linked to this sheet
+      const { data: importLots } = await supabase
+        .from('import_lots')
+        .select('id')
+        .eq('sheet_id', id);
+      
+      if (importLots && importLots.length > 0) {
+        const lotIds = importLots.map(l => l.id);
+        // Delete inventory lots linked to import lots
+        await supabase.from('inventory_lots').delete().in('import_lot_id', lotIds);
+        // Delete import lots
+        await supabase.from('import_lots').delete().eq('sheet_id', id);
+      }
+      
+      // Finally delete the sheet
       const { error } = await supabase.from('cost_sheets').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cost_sheets'] });
-      toast.success('Hoja eliminada');
+      queryClient.invalidateQueries({ queryKey: ['import_lots'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory_lots'] });
+      toast.success('Hoja eliminada correctamente');
+      setConfirmDeleteId(null);
     },
     onError: (error: Error) => {
       toast.error(`Error: ${error.message}`);
+      setConfirmDeleteId(null);
     },
   });
+
+  const handleDeleteSheet = (sheet: CostSheet) => {
+    if (sheet.status === 'finalizada') {
+      if (confirmDeleteId === sheet.id) {
+        // Second confirmation - delete
+        deleteMutation.mutate(sheet.id);
+      } else {
+        // First confirmation - show warning
+        setConfirmDeleteId(sheet.id);
+        toast.warning('Esta hoja está finalizada y tiene lotes de inventario vinculados. Haz clic nuevamente para confirmar la eliminación.');
+      }
+    } else {
+      if (confirm('¿Eliminar esta hoja de costeo?')) {
+        deleteMutation.mutate(sheet.id);
+      }
+    }
+  };
 
   const saveCellsMutation = useMutation({
     mutationFn: async ({ 
@@ -456,19 +496,17 @@ export function CostSheetManager() {
                     <Eye className="h-4 w-4 mr-1" />
                     Abrir
                   </Button>
-                  {sheet.status !== 'finalizada' && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        if (confirm('¿Eliminar esta hoja de costeo?')) {
-                          deleteMutation.mutate(sheet.id);
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant={confirmDeleteId === sheet.id ? 'destructive' : 'ghost'}
+                    onClick={() => handleDeleteSheet(sheet)}
+                    disabled={deleteMutation.isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {sheet.status === 'finalizada' && confirmDeleteId === sheet.id && (
+                      <span className="ml-1">Confirmar</span>
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Plus, Minus, Type } from 'lucide-react';
+import { Plus, Minus, Type, Calculator } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -56,6 +56,7 @@ export function SpreadsheetEditor({
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [showFullDecimals, setShowFullDecimals] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Calculate reserved column indices
@@ -68,6 +69,44 @@ export function SpreadsheetEditor({
       inputRef.current.focus();
     }
   }, [editingCell]);
+
+  // Sync grid when rows/cols change to ensure new cells exist
+  useEffect(() => {
+    const newGrid = new Map(grid);
+    let gridChanged = false;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const key = getCellKey(row, col);
+        
+        if (!newGrid.has(key)) {
+          gridChanged = true;
+          const isHeader = headerRows.includes(row);
+          let cellType: CellData['cellType'] = 'text';
+          
+          if (showReservedColumns && !isHeader) {
+            if (col === cols - 3) cellType = 'product';
+            else if (col === cols - 2) cellType = 'price';
+            else if (col === cols - 1) cellType = 'quantity';
+          } else if (isHeader) {
+            cellType = 'header';
+          }
+          
+          newGrid.set(key, {
+            row,
+            col,
+            value: '',
+            formula: null,
+            cellType,
+          });
+        }
+      }
+    }
+
+    if (gridChanged) {
+      onGridChange(recalculateGrid(newGrid));
+    }
+  }, [rows, cols]);
 
   const isHeaderRow = useCallback((rowIndex: number) => {
     return headerRows.includes(rowIndex);
@@ -193,12 +232,12 @@ export function SpreadsheetEditor({
     if (cell.error) return cell.error;
     if (cell.computedValue !== undefined) {
       if (typeof cell.computedValue === 'number') {
-        return formatNumber(cell.computedValue);
+        return formatNumber(cell.computedValue, showFullDecimals ? 8 : 2);
       }
       return String(cell.computedValue);
     }
     return cell.value;
-  }, []);
+  }, [showFullDecimals]);
 
   const handleProductSelect = useCallback((rowIndex: number, productId: string) => {
     const key = getCellKey(rowIndex, productCol);
@@ -272,6 +311,14 @@ export function SpreadsheetEditor({
               <Plus className="h-3 w-3" />
             </Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFullDecimals(!showFullDecimals)}
+          >
+            <Calculator className="h-4 w-4 mr-1" />
+            {showFullDecimals ? '2 decimales' : '8 decimales'}
+          </Button>
           {selectedCell && onHeaderRowsChange && (
             <div className="flex items-center gap-2 ml-auto">
               <Button

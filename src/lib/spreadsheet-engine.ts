@@ -267,7 +267,8 @@ export function evaluateFormula(
   
   try {
     const result = parseArithmetic(expr, grid, visited);
-    return { value: Math.round(result * 100) / 100 };
+    // Keep full precision for calculations, display formatting is handled separately
+    return { value: result };
   } catch (error) {
     return { 
       value: '#ERROR', 
