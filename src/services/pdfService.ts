@@ -121,69 +121,63 @@ export interface IncomeStatementData {
   utilidad: number;
 }
 
-export function exportIncomeStatementToPDF(
-  data: IncomeStatementData,
-  period: string
-): void {
+export interface NIIFIncomeStatementData {
+  ventas: Array<{ id: string; name: string; amount: number }>;
+  totalVentas: number;
+  costoVentas: Array<{ id: string; name: string; amount: number }>;
+  totalCostoVentas: number;
+  utilidadBruta: number;
+  margenBruto: number;
+  gastosOperativos: Array<{ id: string; name: string; amount: number }>;
+  totalGastosOperativos: number;
+  utilidadOperativa: number;
+  margenOperativo: number;
+  otrosGastos: Array<{ id: string; name: string; amount: number }>;
+  totalOtrosGastos: number;
+  utilidadAntesImpuestos: number;
+  impuesto: number;
+  tasaImpuesto: number;
+  taxEnabled: boolean;
+  utilidadNeta: number;
+  margenNeto: number;
+}
+
+export function exportIncomeStatementNIIFToPDF(data: NIIFIncomeStatementData, period: string): void {
   const doc = new jsPDF();
-  
-  let startY = addReportHeader(doc, {
-    title: 'Estado de Resultados',
-    period: `Período: ${period}`,
-  });
+  let startY = addReportHeader(doc, { title: 'Estado de Resultados (NIIF)', period: `Período: ${period}` });
 
-  // Ingresos
-  autoTable(doc, {
-    startY,
-    head: [['INGRESOS', '', '']],
-    body: data.ingresosDetalle.map(ing => [ing.id, ing.name, fmt(ing.amount)]),
-    foot: [['', 'Total Ingresos', fmt(data.ingresos)]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [76, 175, 80] },
-    footStyles: { fillColor: [200, 230, 200], textColor: [0, 0, 0], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 25 },
-      2: { halign: 'right' },
-    },
-  });
+  const body: any[] = [
+    [{ content: 'INGRESOS POR VENTAS', colSpan: 3, styles: { fillColor: [200, 230, 200], fontStyle: 'bold' } }],
+    ...data.ventas.map(v => [v.id, v.name, fmt(v.amount)]),
+    [{ content: '', styles: { fontStyle: 'bold' } }, 'Total Ingresos', { content: fmt(data.totalVentas), styles: { fontStyle: 'bold' } }],
+    [{ content: '(-) COSTO DE VENTAS', colSpan: 3, styles: { fillColor: [255, 230, 200], fontStyle: 'bold' } }],
+    ...data.costoVentas.map(c => [c.id, c.name, `(${fmt(c.amount)})`]),
+    [{ content: 'UTILIDAD BRUTA', colSpan: 2, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } }, 
+     { content: `${fmt(data.utilidadBruta)} (${data.margenBruto.toFixed(1)}%)`, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } }],
+    [{ content: '(-) GASTOS OPERATIVOS', colSpan: 3, styles: { fillColor: [230, 200, 240], fontStyle: 'bold' } }],
+    ...data.gastosOperativos.map(g => [g.id, g.name, `(${fmt(g.amount)})`]),
+    [{ content: 'UTILIDAD OPERATIVA', colSpan: 2, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } },
+     { content: `${fmt(data.utilidadOperativa)} (${data.margenOperativo.toFixed(1)}%)`, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } }],
+  ];
 
-  // @ts-ignore - autoTable adds finalY to doc
-  startY = doc.lastAutoTable.finalY + 10;
+  if (data.otrosGastos.length > 0) {
+    body.push([{ content: '(-) OTROS GASTOS', colSpan: 3, styles: { fillColor: [230, 230, 230], fontStyle: 'bold' } }]);
+    data.otrosGastos.forEach(o => body.push([o.id, o.name, `(${fmt(o.amount)})`]));
+  }
 
-  // Gastos
-  autoTable(doc, {
-    startY,
-    head: [['GASTOS', '', '']],
-    body: data.gastosDetalle.map(gst => [gst.id, gst.name, fmt(gst.amount)]),
-    foot: [['', 'Total Gastos', fmt(data.gastos)]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [244, 67, 54] },
-    footStyles: { fillColor: [255, 200, 200], textColor: [0, 0, 0], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 25 },
-      2: { halign: 'right' },
-    },
-  });
+  body.push([{ content: 'UTILIDAD ANTES DE IMPUESTOS', colSpan: 2, styles: { fillColor: [255, 243, 205], fontStyle: 'bold' } },
+    { content: fmt(data.utilidadAntesImpuestos), styles: { fillColor: [255, 243, 205], fontStyle: 'bold' } }]);
 
-  // @ts-ignore
-  startY = doc.lastAutoTable.finalY + 10;
+  if (data.taxEnabled) {
+    body.push(['—', `(-) Impuesto (${data.tasaImpuesto}%)`, `(${fmt(data.impuesto)})`]);
+  }
 
-  // Utilidad
-  autoTable(doc, {
-    startY,
-    body: [['UTILIDAD/PÉRDIDA NETA', fmt(data.utilidad)]],
-    styles: { fontSize: 12, fontStyle: 'bold' },
-    bodyStyles: { 
-      fillColor: data.utilidad >= 0 ? [200, 230, 200] : [255, 200, 200],
-      textColor: [0, 0, 0],
-    },
-    columnStyles: {
-      1: { halign: 'right' },
-    },
-  });
+  body.push([{ content: 'UTILIDAD NETA', colSpan: 2, styles: { fillColor: data.utilidadNeta >= 0 ? [200, 230, 200] : [255, 200, 200], fontStyle: 'bold' } },
+    { content: `${fmt(data.utilidadNeta)} (${data.margenNeto.toFixed(1)}%)`, styles: { fillColor: data.utilidadNeta >= 0 ? [200, 230, 200] : [255, 200, 200], fontStyle: 'bold' } }]);
 
+  autoTable(doc, { startY, head: [['Código', 'Concepto', 'Monto']], body, styles: { fontSize: 9 }, headStyles: { fillColor: [66, 66, 66] }, columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } } });
   addFooter(doc);
-  doc.save(`estado-resultados-${period.replace(/\s/g, '-')}.pdf`);
+  doc.save(`estado-resultados-niif-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface BalanceSheetData {
@@ -196,96 +190,111 @@ export interface BalanceSheetData {
   totalPatrimonio: number;
 }
 
-export function exportBalanceSheetToPDF(
-  data: BalanceSheetData,
-  date: string
-): void {
+export interface BalanceSheetNIIFData {
+  activosCorrientes: Array<{ id: string; name: string; balance: number }>;
+  totalActivosCorrientes: number;
+  activosNoCorrientes: Array<{ id: string; name: string; balance: number }>;
+  totalActivosNoCorrientes: number;
+  totalActivo: number;
+  pasivosCorrientes: Array<{ id: string; name: string; balance: number }>;
+  totalPasivosCorrientes: number;
+  pasivosNoCorrientes: Array<{ id: string; name: string; balance: number }>;
+  totalPasivosNoCorrientes: number;
+  totalPasivo: number;
+  patrimonioDetalle: Array<{ id: string; name: string; balance: number }>;
+  utilidadAcumulada: number;
+  totalPatrimonio: number;
+  razonCorriente: number | null;
+  razonEndeudamiento: number;
+  capitalTrabajo: number;
+}
+
+export function exportBalanceSheetNIIFToPDF(data: BalanceSheetNIIFData, date: string): void {
   const doc = new jsPDF();
-  
-  let startY = addReportHeader(doc, {
-    title: 'Balance General',
-    date: `Al: ${date}`,
-  });
+  let startY = addReportHeader(doc, { title: 'Balance General (NIIF)', date: `Al: ${date}` });
 
-  // Activos
-  autoTable(doc, {
-    startY,
-    head: [['ACTIVOS', '', '']],
-    body: data.activosDetalle.map(a => [a.id, a.name, fmt(a.balance)]),
-    foot: [['', 'Total Activos', fmt(data.totalActivo)]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [33, 150, 243] },
-    footStyles: { fillColor: [200, 220, 255], textColor: [0, 0, 0], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 25 },
-      2: { halign: 'right' },
-    },
-  });
-
-  // @ts-ignore
-  startY = doc.lastAutoTable.finalY + 10;
-
-  // Pasivos
-  autoTable(doc, {
-    startY,
-    head: [['PASIVOS', '', '']],
-    body: data.pasivosDetalle.map(p => [p.id, p.name, fmt(p.balance)]),
-    foot: [['', 'Total Pasivos', fmt(data.totalPasivo)]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [255, 152, 0] },
-    footStyles: { fillColor: [255, 230, 200], textColor: [0, 0, 0], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 25 },
-      2: { halign: 'right' },
-    },
-  });
-
-  // @ts-ignore
-  startY = doc.lastAutoTable.finalY + 10;
-
-  // Patrimonio
-  const patrimonioBody = [
+  const body: any[] = [
+    [{ content: 'ACTIVOS CORRIENTES', colSpan: 3, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } }],
+    ...data.activosCorrientes.map(a => [a.id, a.name, fmt(a.balance)]),
+    ['', { content: 'Subtotal Corrientes', styles: { fontStyle: 'bold' } }, { content: fmt(data.totalActivosCorrientes), styles: { fontStyle: 'bold' } }],
+    [{ content: 'ACTIVOS NO CORRIENTES', colSpan: 3, styles: { fillColor: [200, 200, 240], fontStyle: 'bold' } }],
+    ...data.activosNoCorrientes.map(a => [a.id, a.name, fmt(a.balance)]),
+    ['', { content: 'Subtotal No Corrientes', styles: { fontStyle: 'bold' } }, { content: fmt(data.totalActivosNoCorrientes), styles: { fontStyle: 'bold' } }],
+    [{ content: 'TOTAL ACTIVOS', colSpan: 2, styles: { fillColor: [150, 200, 255], fontStyle: 'bold' } }, { content: fmt(data.totalActivo), styles: { fillColor: [150, 200, 255], fontStyle: 'bold' } }],
+    [{ content: 'PASIVOS CORRIENTES', colSpan: 3, styles: { fillColor: [255, 230, 200], fontStyle: 'bold' } }],
+    ...data.pasivosCorrientes.map(p => [p.id, p.name, fmt(p.balance)]),
+    [{ content: 'PASIVOS NO CORRIENTES', colSpan: 3, styles: { fillColor: [255, 220, 180], fontStyle: 'bold' } }],
+    ...data.pasivosNoCorrientes.map(p => [p.id, p.name, fmt(p.balance)]),
+    ['', { content: 'Total Pasivos', styles: { fontStyle: 'bold' } }, { content: fmt(data.totalPasivo), styles: { fontStyle: 'bold' } }],
+    [{ content: 'PATRIMONIO', colSpan: 3, styles: { fillColor: [230, 200, 240], fontStyle: 'bold' } }],
     ...data.patrimonioDetalle.map(p => [p.id, p.name, fmt(p.balance)]),
-    ['—', 'Utilidad/Pérdida Acumulada', fmt(data.utilidadAcumulada)],
+    ['—', 'Resultado del Ejercicio', fmt(data.utilidadAcumulada)],
+    ['', { content: 'Total Patrimonio', styles: { fontStyle: 'bold' } }, { content: fmt(data.totalPatrimonio), styles: { fontStyle: 'bold' } }],
+    [{ content: 'TOTAL PASIVO + PATRIMONIO', colSpan: 2, styles: { fillColor: [200, 200, 200], fontStyle: 'bold' } }, { content: fmt(data.totalPasivo + data.totalPatrimonio), styles: { fillColor: [200, 200, 200], fontStyle: 'bold' } }],
   ];
 
-  autoTable(doc, {
-    startY,
-    head: [['PATRIMONIO', '', '']],
-    body: patrimonioBody,
-    foot: [['', 'Total Patrimonio', fmt(data.totalPatrimonio)]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [156, 39, 176] },
-    footStyles: { fillColor: [230, 200, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 25 },
-      2: { halign: 'right' },
-    },
-  });
+  autoTable(doc, { startY, head: [['Código', 'Cuenta', 'Saldo']], body, styles: { fontSize: 9 }, headStyles: { fillColor: [66, 66, 66] }, columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } } });
 
   // @ts-ignore
   startY = doc.lastAutoTable.finalY + 10;
-
-  // Check
-  const check = +(data.totalActivo - (data.totalPasivo + data.totalPatrimonio)).toFixed(2);
-  autoTable(doc, {
-    startY,
-    body: [
-      ['Total Pasivo + Patrimonio', fmt(data.totalPasivo + data.totalPatrimonio)],
-      ['Verificación (Activo - Pasivo - Patrimonio)', fmt(check)],
-    ],
-    styles: { fontSize: 10, fontStyle: 'bold' },
-    bodyStyles: { 
-      fillColor: check === 0 ? [200, 230, 200] : [255, 200, 200],
-      textColor: [0, 0, 0],
-    },
-    columnStyles: {
-      1: { halign: 'right' },
-    },
-  });
+  autoTable(doc, { startY, body: [
+    ['Razón Corriente', data.razonCorriente !== null ? `${data.razonCorriente.toFixed(2)}x` : 'N/A'],
+    ['Razón Endeudamiento', `${data.razonEndeudamiento.toFixed(1)}%`],
+    ['Capital de Trabajo', fmt(data.capitalTrabajo)],
+  ], head: [['Indicador', 'Valor']], styles: { fontSize: 10 }, headStyles: { fillColor: [100, 100, 100] }, columnStyles: { 1: { halign: 'right' } } });
 
   addFooter(doc);
-  doc.save(`balance-general-${date}.pdf`);
+  doc.save(`balance-general-niif-${date}.pdf`);
+}
+
+export interface CashFlowNIIFData {
+  initialCashBalance: number;
+  operacionDetalle: Array<{ id: string; name: string; amount: number }>;
+  flujoOperacion: number;
+  inversionDetalle: Array<{ id: string; name: string; amount: number }>;
+  flujoInversion: number;
+  financiacionDetalle: Array<{ id: string; name: string; amount: number }>;
+  flujoFinanciacion: number;
+  flujoNeto: number;
+  finalCashBalance: number;
+  ratioCobertura: number | null;
+}
+
+export function exportCashFlowNIIFToPDF(data: CashFlowNIIFData, period: string): void {
+  const doc = new jsPDF();
+  let startY = addReportHeader(doc, { title: 'Estado de Flujo de Efectivo (NIC 7)', period: `Período: ${period}` });
+
+  autoTable(doc, { startY, body: [['SALDO INICIAL DE EFECTIVO', fmt(data.initialCashBalance)]], styles: { fontSize: 11, fontStyle: 'bold' }, bodyStyles: { fillColor: [230, 230, 230] }, columnStyles: { 1: { halign: 'right' } } });
+  // @ts-ignore
+  startY = doc.lastAutoTable.finalY + 6;
+
+  const sections = [
+    { title: 'ACTIVIDADES DE OPERACIÓN', items: data.operacionDetalle, total: data.flujoOperacion, color: [33, 150, 243] },
+    { title: 'ACTIVIDADES DE INVERSIÓN', items: data.inversionDetalle, total: data.flujoInversion, color: [156, 39, 176] },
+    { title: 'ACTIVIDADES DE FINANCIACIÓN', items: data.financiacionDetalle, total: data.flujoFinanciacion, color: [255, 152, 0] },
+  ];
+
+  for (const sec of sections) {
+    if (sec.items.length > 0) {
+      autoTable(doc, { startY, head: [[sec.title, '', '']], body: sec.items.map(i => [i.id, i.name, (i.amount >= 0 ? '+' : '') + fmt(i.amount)]),
+        foot: [['', 'Flujo Neto', (sec.total >= 0 ? '+' : '') + fmt(sec.total)]], styles: { fontSize: 9 }, headStyles: { fillColor: sec.color as [number, number, number] },
+        footStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold' }, columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } } });
+      // @ts-ignore
+      startY = doc.lastAutoTable.finalY + 6;
+    }
+  }
+
+  autoTable(doc, { startY, body: [['VARIACIÓN NETA DE EFECTIVO', (data.flujoNeto >= 0 ? '+' : '') + fmt(data.flujoNeto)], ['SALDO FINAL DE EFECTIVO', fmt(data.finalCashBalance)]],
+    styles: { fontSize: 11, fontStyle: 'bold' }, bodyStyles: { fillColor: [200, 220, 255] }, columnStyles: { 1: { halign: 'right' } } });
+
+  if (data.ratioCobertura !== null) {
+    // @ts-ignore
+    startY = doc.lastAutoTable.finalY + 8;
+    autoTable(doc, { startY, body: [['Ratio de Cobertura de Efectivo', `${data.ratioCobertura.toFixed(2)}x`]], head: [['Indicador', 'Valor']], styles: { fontSize: 10 }, headStyles: { fillColor: [100, 100, 100] }, columnStyles: { 1: { halign: 'right' } } });
+  }
+
+  addFooter(doc);
+  doc.save(`flujo-efectivo-nic7-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface JournalEntryPDF {

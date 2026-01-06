@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { BackupRestoreModal } from '@/components/backup/BackupRestoreModal';
 import { AuditLogModal } from '@/components/audit/AuditLogModal';
+import { TaxSettingsCard } from '@/components/settings/TaxSettingsCard';
 
 interface InvitationCode {
   id: string;
