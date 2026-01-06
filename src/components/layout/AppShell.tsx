@@ -30,7 +30,6 @@ export function AppShell() {
       items.push({ path: '/auxiliary-ledgers', label: 'Libros Auxiliares' });
       items.push({ path: '/ledger', label: 'Libro Mayor' });
       items.push({ path: '/reports', label: 'Reportes' });
-      items.push({ path: '/inventory', label: 'Inventario' });
       items.push({ path: '/settings', label: 'Configuración' });
     }
 
