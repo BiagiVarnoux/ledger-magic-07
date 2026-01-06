@@ -183,6 +183,257 @@ export type Database = {
           },
         ]
       }
+      cost_sheet_cells: {
+        Row: {
+          cell_type: string
+          col_index: number
+          created_at: string
+          formula: string | null
+          id: string
+          row_index: number
+          sheet_id: string
+          style: Json | null
+          user_id: string
+          value: string | null
+        }
+        Insert: {
+          cell_type?: string
+          col_index: number
+          created_at?: string
+          formula?: string | null
+          id?: string
+          row_index: number
+          sheet_id: string
+          style?: Json | null
+          user_id: string
+          value?: string | null
+        }
+        Update: {
+          cell_type?: string
+          col_index?: number
+          created_at?: string
+          formula?: string | null
+          id?: string
+          row_index?: number
+          sheet_id?: string
+          style?: Json | null
+          user_id?: string
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_sheet_cells_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "cost_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cost_sheets: {
+        Row: {
+          created_at: string
+          fecha: string
+          id: string
+          metadata: Json | null
+          nombre: string
+          referencia_importacion: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          fecha?: string
+          id?: string
+          metadata?: Json | null
+          nombre: string
+          referencia_importacion?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          fecha?: string
+          id?: string
+          metadata?: Json | null
+          nombre?: string
+          referencia_importacion?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      import_lots: {
+        Row: {
+          cantidad: number
+          costo_total: number
+          costo_unitario: number
+          created_at: string
+          fecha_ingreso: string
+          id: string
+          numero_lote: string | null
+          product_id: string
+          sheet_id: string | null
+          user_id: string
+        }
+        Insert: {
+          cantidad?: number
+          costo_total?: number
+          costo_unitario?: number
+          created_at?: string
+          fecha_ingreso?: string
+          id?: string
+          numero_lote?: string | null
+          product_id: string
+          sheet_id?: string | null
+          user_id: string
+        }
+        Update: {
+          cantidad?: number
+          costo_total?: number
+          costo_unitario?: number
+          created_at?: string
+          fecha_ingreso?: string
+          id?: string
+          numero_lote?: string | null
+          product_id?: string
+          sheet_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_lots_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_lots_sheet_id_fkey"
+            columns: ["sheet_id"]
+            isOneToOne: false
+            referencedRelation: "cost_sheets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_lots: {
+        Row: {
+          cantidad_disponible: number
+          cantidad_inicial: number
+          costo_unitario: number
+          created_at: string
+          fecha_ingreso: string
+          id: string
+          import_lot_id: string | null
+          product_id: string
+          user_id: string
+        }
+        Insert: {
+          cantidad_disponible?: number
+          cantidad_inicial?: number
+          costo_unitario?: number
+          created_at?: string
+          fecha_ingreso?: string
+          id?: string
+          import_lot_id?: string | null
+          product_id: string
+          user_id: string
+        }
+        Update: {
+          cantidad_disponible?: number
+          cantidad_inicial?: number
+          costo_unitario?: number
+          created_at?: string
+          fecha_ingreso?: string
+          id?: string
+          import_lot_id?: string | null
+          product_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_lots_import_lot_id_fkey"
+            columns: ["import_lot_id"]
+            isOneToOne: false
+            referencedRelation: "import_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_lots_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_movements: {
+        Row: {
+          cantidad: number
+          costo_total: number
+          costo_unitario: number
+          created_at: string
+          fecha: string
+          id: string
+          inventory_lot_id: string | null
+          journal_entry_id: string | null
+          metodo_valuacion: string
+          product_id: string
+          referencia: string | null
+          tipo: string
+          user_id: string
+        }
+        Insert: {
+          cantidad?: number
+          costo_total?: number
+          costo_unitario?: number
+          created_at?: string
+          fecha?: string
+          id?: string
+          inventory_lot_id?: string | null
+          journal_entry_id?: string | null
+          metodo_valuacion?: string
+          product_id: string
+          referencia?: string | null
+          tipo: string
+          user_id: string
+        }
+        Update: {
+          cantidad?: number
+          costo_total?: number
+          costo_unitario?: number
+          created_at?: string
+          fecha?: string
+          id?: string
+          inventory_lot_id?: string | null
+          journal_entry_id?: string | null
+          metodo_valuacion?: string
+          product_id?: string
+          referencia?: string | null
+          tipo?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_inventory_lot_id_fkey"
+            columns: ["inventory_lot_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitation_codes: {
         Row: {
           can_view_accounts: boolean
@@ -399,6 +650,48 @@ export type Database = {
           },
         ]
       }
+      products: {
+        Row: {
+          categoria: string | null
+          codigo: string
+          created_at: string
+          cuenta_inventario_id: string | null
+          descripcion: string | null
+          id: string
+          is_active: boolean
+          nombre: string
+          unidad_medida: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          categoria?: string | null
+          codigo: string
+          created_at?: string
+          cuenta_inventario_id?: string | null
+          descripcion?: string | null
+          id?: string
+          is_active?: boolean
+          nombre: string
+          unidad_medida?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          categoria?: string | null
+          codigo?: string
+          created_at?: string
+          cuenta_inventario_id?: string | null
+          descripcion?: string | null
+          id?: string
+          is_active?: boolean
+          nombre?: string
+          unidad_medida?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       quarterly_closures: {
         Row: {
           balances: Json
@@ -421,6 +714,42 @@ export type Database = {
           closure_date?: string
           created_at?: string
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      report_settings: {
+        Row: {
+          cost_of_sales_keywords: string[]
+          created_at: string
+          id: string
+          operating_expense_keywords: string[]
+          other_expense_keywords: string[]
+          tax_enabled: boolean
+          tax_rate: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cost_of_sales_keywords?: string[]
+          created_at?: string
+          id?: string
+          operating_expense_keywords?: string[]
+          other_expense_keywords?: string[]
+          tax_enabled?: boolean
+          tax_rate?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cost_of_sales_keywords?: string[]
+          created_at?: string
+          id?: string
+          operating_expense_keywords?: string[]
+          other_expense_keywords?: string[]
+          tax_enabled?: boolean
+          tax_rate?: number
           updated_at?: string
           user_id?: string
         }
