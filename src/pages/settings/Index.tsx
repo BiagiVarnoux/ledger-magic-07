@@ -274,6 +274,9 @@ export default function SettingsPage() {
         <p className="text-muted-foreground">Gestiona el acceso de usuarios y respaldos</p>
       </div>
 
+      {/* Tax Settings */}
+      <TaxSettingsCard />
+
       {/* Backup & Audit Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
