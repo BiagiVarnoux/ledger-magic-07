@@ -19,8 +19,17 @@ interface CashFlowReportProps {
   currentQuarter: Quarter;
 }
 
-// Heuristic to identify cash accounts (NIC 7 - Cash and cash equivalents)
+// Identify cash accounts (NIC 7 - Cash and cash equivalents)
 function isCashAccount(account: Account): boolean {
+  // Use manual classification if explicitly set
+  if (account.is_cash_equivalent === true) {
+    return true;
+  }
+  if (account.is_cash_equivalent === false) {
+    return false;
+  }
+  
+  // Fallback to keyword heuristics for unclassified accounts
   const cashKeywords = ['banco', 'caja', 'efectivo', 'cash', 'usdt', 'usd', 'btc', 'cripto', 'equivalente'];
   const lowerName = account.name.toLowerCase();
   return account.type === 'ACTIVO' && cashKeywords.some(k => lowerName.includes(k));

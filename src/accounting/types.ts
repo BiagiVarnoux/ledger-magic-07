@@ -1,9 +1,11 @@
 // src/accounting/types.ts
 export const ACCOUNT_TYPES = ["ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "GASTO"] as const;
 export const SIDES = ["DEBE", "HABER"] as const;
+export const EXPENSE_CATEGORIES = ["COSTO_VENTAS", "GASTO_OPERATIVO", "OTRO_GASTO"] as const;
 
 export type AccountType = typeof ACCOUNT_TYPES[number];
 export type Side = typeof SIDES[number];
+export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
 
 export interface Account {
   id: string;         // ej. "A.1"
@@ -11,6 +13,10 @@ export interface Account {
   type: AccountType;  // ACTIVO | PASIVO | PATRIMONIO | INGRESO | GASTO
   normal_side: Side;  // DEBE | HABER
   is_active: boolean;
+  // Classification fields
+  expense_category?: ExpenseCategory | null;  // Solo para tipo GASTO
+  is_cash_equivalent?: boolean;                // Solo para tipo ACTIVO
+  is_current?: boolean | null;                 // Para ACTIVO y PASIVO
 }
 
 export interface JournalLine { 

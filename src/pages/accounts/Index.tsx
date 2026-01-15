@@ -6,12 +6,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pencil, Trash2, Save } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Pencil, Trash2, Save, Banknote, Calendar, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
-import { Account, ACCOUNT_TYPES, SIDES } from '@/accounting/types';
+import { Account, ACCOUNT_TYPES, SIDES, EXPENSE_CATEGORIES, ExpenseCategory } from '@/accounting/types';
+
+const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+  COSTO_VENTAS: 'Costo de Ventas',
+  GASTO_OPERATIVO: 'Gasto Operativo',
+  OTRO_GASTO: 'Otro Gasto',
+};
 
 export default function AccountsPage() {
   const { accounts, entries, setAccounts, adapter } = useAccounting();
@@ -19,7 +26,10 @@ export default function AccountsPage() {
   const [accDraft, setAccDraft] = useState<Partial<Account>>({ 
     type: "ACTIVO", 
     normal_side: "DEBE", 
-    is_active: true 
+    is_active: true,
+    is_cash_equivalent: false,
+    is_current: null,
+    expense_category: null,
   });
   const [editingAccId, setEditingAccId] = useState<string | null>(null);
 
@@ -45,7 +55,14 @@ export default function AccountsPage() {
       await adapter.upsertAccount(d);
       setAccounts(await adapter.loadAccounts());
       toast.success(editingAccId ? "Cuenta actualizada" : "Cuenta creada");
-      setAccDraft({ type: "ACTIVO", normal_side: "DEBE", is_active: true });
+      setAccDraft({ 
+        type: "ACTIVO", 
+        normal_side: "DEBE", 
+        is_active: true,
+        is_cash_equivalent: false,
+        is_current: null,
+        expense_category: null,
+      });
       setEditingAccId(null);
     } catch(e: any) { 
       toast.error(e.message || "Error guardando cuenta"); 
@@ -54,7 +71,12 @@ export default function AccountsPage() {
 
   function editAccount(a: Account) { 
     if (isReadOnly) return;
-    setAccDraft(a); 
+    setAccDraft({
+      ...a,
+      expense_category: a.expense_category ?? null,
+      is_cash_equivalent: a.is_cash_equivalent ?? false,
+      is_current: a.is_current ?? null,
+    }); 
     setEditingAccId(a.id); 
   }
 
@@ -103,8 +125,8 @@ export default function AccountsPage() {
           {/* Form - Only show for owners */}
           {!isReadOnly && (
             <>
-              <div className="grid grid-cols-6 gap-3">
-                <div className="col-span-1">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                <div className="md:col-span-1">
                   <Label>Código</Label>
                   <Input 
                     value={accDraft.id || ""} 
@@ -112,7 +134,7 @@ export default function AccountsPage() {
                     placeholder="A.1" 
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="md:col-span-2">
                   <Label>Nombre</Label>
                   <Input 
                     value={accDraft.name || ""} 
@@ -124,7 +146,14 @@ export default function AccountsPage() {
                   <Label>Tipo</Label>
                   <Select 
                     value={accDraft.type as string} 
-                    onValueChange={(v) => setAccDraft(p => ({...p, type: v as any}))}
+                    onValueChange={(v) => setAccDraft(p => ({
+                      ...p, 
+                      type: v as any,
+                      // Reset classification fields when type changes
+                      expense_category: v === 'GASTO' ? p.expense_category : null,
+                      is_cash_equivalent: v === 'ACTIVO' ? (p.is_cash_equivalent ?? false) : false,
+                      is_current: (v === 'ACTIVO' || v === 'PASIVO') ? p.is_current : null,
+                    }))}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -150,15 +179,85 @@ export default function AccountsPage() {
                 </div>
                 <div className="flex items-end">
                   <div className="flex items-center gap-2">
-                    <Label className="mr-2">Activa</Label>
-                    <input 
-                      type="checkbox" 
-                      checked={!!accDraft.is_active} 
-                      onChange={e => setAccDraft(p => ({...p, is_active: e.target.checked}))} 
+                    <Checkbox
+                      id="is_active"
+                      checked={!!accDraft.is_active}
+                      onCheckedChange={(checked) => setAccDraft(p => ({...p, is_active: !!checked}))}
                     />
+                    <Label htmlFor="is_active">Activa</Label>
                   </div>
                 </div>
               </div>
+
+              {/* Conditional classification fields */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-muted">
+                {/* Expense Category - Only for GASTO */}
+                {accDraft.type === 'GASTO' && (
+                  <div>
+                    <Label className="flex items-center gap-1">
+                      <Tag className="h-3 w-3" />
+                      Categoría de Gasto
+                    </Label>
+                    <Select 
+                      value={accDraft.expense_category || "_none"}
+                      onValueChange={(v) => setAccDraft(p => ({
+                        ...p, 
+                        expense_category: v === '_none' ? null : v as ExpenseCategory
+                      }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Sin clasificar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">Sin clasificar</SelectItem>
+                        {EXPENSE_CATEGORIES.map(cat => 
+                          <SelectItem key={cat} value={cat}>{EXPENSE_CATEGORY_LABELS[cat]}</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Current/Non-Current - For ACTIVO and PASIVO */}
+                {(accDraft.type === 'ACTIVO' || accDraft.type === 'PASIVO') && (
+                  <div>
+                    <Label className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      Clasificación
+                    </Label>
+                    <Select 
+                      value={accDraft.is_current === true ? 'current' : accDraft.is_current === false ? 'non_current' : '_auto'}
+                      onValueChange={(v) => setAccDraft(p => ({
+                        ...p, 
+                        is_current: v === 'current' ? true : v === 'non_current' ? false : null
+                      }))}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_auto">Automático</SelectItem>
+                        <SelectItem value="current">Corriente</SelectItem>
+                        <SelectItem value="non_current">No Corriente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Cash Equivalent - Only for ACTIVO */}
+                {accDraft.type === 'ACTIVO' && (
+                  <div className="flex items-end">
+                    <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-md">
+                      <Checkbox
+                        id="is_cash_equivalent"
+                        checked={!!accDraft.is_cash_equivalent}
+                        onCheckedChange={(checked) => setAccDraft(p => ({...p, is_cash_equivalent: !!checked}))}
+                      />
+                      <Label htmlFor="is_cash_equivalent" className="flex items-center gap-1 text-sm cursor-pointer">
+                        <Banknote className="h-3 w-3" />
+                        Es efectivo o equivalente
+                      </Label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2">
                 <Button onClick={upsertAccount}>
                   <Save className="w-4 h-4 mr-2" />
@@ -168,7 +267,14 @@ export default function AccountsPage() {
                   <Button 
                     variant="outline" 
                     onClick={() => { 
-                      setAccDraft({ type: "ACTIVO", normal_side: "DEBE", is_active: true }); 
+                      setAccDraft({ 
+                        type: "ACTIVO", 
+                        normal_side: "DEBE", 
+                        is_active: true,
+                        is_cash_equivalent: false,
+                        is_current: null,
+                        expense_category: null,
+                      }); 
                       setEditingAccId(null); 
                     }}
                   >
@@ -187,6 +293,7 @@ export default function AccountsPage() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Lado</TableHead>
+                  <TableHead>Clasificación</TableHead>
                   <TableHead>Estado</TableHead>
                   {!isReadOnly && <TableHead className="text-right">Acciones</TableHead>}
                 </TableRow>
@@ -198,6 +305,27 @@ export default function AccountsPage() {
                     <TableCell>{a.name}</TableCell>
                     <TableCell>{a.type}</TableCell>
                     <TableCell>{a.normal_side}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {a.type === 'GASTO' && a.expense_category && (
+                        <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded">
+                          {EXPENSE_CATEGORY_LABELS[a.expense_category]}
+                        </span>
+                      )}
+                      {(a.type === 'ACTIVO' || a.type === 'PASIVO') && a.is_current !== null && (
+                        <span className={`px-2 py-0.5 rounded ${
+                          a.is_current 
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                            : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
+                        }`}>
+                          {a.is_current ? 'Corriente' : 'No Corriente'}
+                        </span>
+                      )}
+                      {a.type === 'ACTIVO' && a.is_cash_equivalent && (
+                        <span className="ml-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded">
+                          Efectivo
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>{a.is_active ? "Activa" : "Inactiva"}</TableCell>
                     {!isReadOnly && (
                       <TableCell className="text-right">

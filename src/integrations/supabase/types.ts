@@ -17,8 +17,11 @@ export type Database = {
       accounts: {
         Row: {
           created_at: string
+          expense_category: string | null
           id: string
           is_active: boolean
+          is_cash_equivalent: boolean | null
+          is_current: boolean | null
           name: string
           normal_side: string
           type: string
@@ -26,8 +29,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          expense_category?: string | null
           id: string
           is_active?: boolean
+          is_cash_equivalent?: boolean | null
+          is_current?: boolean | null
           name: string
           normal_side: string
           type: string
@@ -35,8 +41,11 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          expense_category?: string | null
           id?: string
           is_active?: boolean
+          is_cash_equivalent?: boolean | null
+          is_current?: boolean | null
           name?: string
           normal_side?: string
           type?: string

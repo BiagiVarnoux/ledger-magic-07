@@ -188,14 +188,21 @@ export const LocalAdapter: IDataAdapter = {
 export const SupaAdapter: IDataAdapter = {
   async loadAccounts(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
-    const { data, error } = await supa.from("accounts").select("id,name,type,normal_side,is_active").order("id");
+    const { data, error } = await supa.from("accounts").select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current").order("id");
     if (error) throw error; return (data||[]) as Account[];
   },
   async upsertAccount(a){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAccount(a);
     const { data: { user } } = await supa.auth.getUser();
     if (!user) throw new Error("Usuario no autenticado");
-    const accountWithUser = { ...a, user_id: user.id };
+    // Include classification fields
+    const accountWithUser = {
+      ...a,
+      user_id: user.id,
+      expense_category: a.expense_category ?? null,
+      is_cash_equivalent: a.is_cash_equivalent ?? false,
+      is_current: a.is_current ?? null,
+    };
     const { error } = await supa.from("accounts").upsert(accountWithUser);
     if (error) throw error;
   },
