@@ -65,12 +65,22 @@ interface NIIFIncomeStatement {
 }
 
 function classifyExpense(
-  accountName: string, 
+  account: Account,
   costoKeywords: string[], 
   operativoKeywords: string[], 
   otrosKeywords: string[]
 ): 'costo' | 'operativo' | 'otro' {
-  const lowerName = accountName.toLowerCase();
+  // Use manual classification if set
+  if (account.expense_category) {
+    switch (account.expense_category) {
+      case 'COSTO_VENTAS': return 'costo';
+      case 'GASTO_OPERATIVO': return 'operativo';
+      case 'OTRO_GASTO': return 'otro';
+    }
+  }
+  
+  // Fallback to keyword heuristics
+  const lowerName = account.name.toLowerCase();
   
   // Check cost of sales first
   if (costoKeywords.some(k => lowerName.includes(k))) {
@@ -113,7 +123,7 @@ export function IncomeStatementReport({
       }
       if (a.type === 'GASTO') {
         const classification = classifyExpense(
-          a.name,
+          a,
           settings.cost_of_sales_keywords,
           settings.operating_expense_keywords,
           settings.other_expense_keywords

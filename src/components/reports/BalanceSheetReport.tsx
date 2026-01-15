@@ -23,22 +23,32 @@ interface AccountBalance {
   balance: number;
 }
 
-// Classify assets/liabilities as current or non-current based on name heuristics
-function isCurrentAsset(name: string): boolean {
+// Classify assets/liabilities as current or non-current
+function isCurrentAsset(account: Account): boolean {
+  // Use manual classification if set
+  if (account.is_current === true) return true;
+  if (account.is_current === false) return false;
+  
+  // Fallback to keyword heuristics
   const currentKeywords = [
     'caja', 'banco', 'efectivo', 'cobrar', 'inventario', 'mercaderia', 'mercadería',
     'anticipo', 'prepago', 'iva', 'crédito fiscal', 'credito fiscal', 'usdt', 'cripto'
   ];
-  const lowerName = name.toLowerCase();
+  const lowerName = account.name.toLowerCase();
   return currentKeywords.some(k => lowerName.includes(k));
 }
 
-function isCurrentLiability(name: string): boolean {
+function isCurrentLiability(account: Account): boolean {
+  // Use manual classification if set
+  if (account.is_current === true) return true;
+  if (account.is_current === false) return false;
+  
+  // Fallback to keyword heuristics
   const currentKeywords = [
     'pagar', 'proveedor', 'acreedor', 'iva', 'débito fiscal', 'debito fiscal',
     'impuesto', 'sueldo', 'salario', 'corto plazo', 'anticipo'
   ];
-  const lowerName = name.toLowerCase();
+  const lowerName = account.name.toLowerCase();
   return currentKeywords.some(k => lowerName.includes(k));
 }
 
@@ -95,14 +105,14 @@ export function BalanceSheetReport({
       const entry = { id: a.id, name: a.name, balance: 0 };
       
       if (a.type === 'ACTIVO') {
-        if (isCurrentAsset(a.name)) {
+        if (isCurrentAsset(a)) {
           activosCorrientesMap.set(a.id, entry);
         } else {
           activosNoCorrientesMap.set(a.id, entry);
         }
       }
       if (a.type === 'PASIVO') {
-        if (isCurrentLiability(a.name)) {
+        if (isCurrentLiability(a)) {
           pasivosCorrientesMap.set(a.id, entry);
         } else {
           pasivosNoCorrientesMap.set(a.id, entry);
@@ -125,12 +135,12 @@ export function BalanceSheetReport({
       }
 
       if (a.type === 'ACTIVO') {
-        const map = isCurrentAsset(a.name) ? activosCorrientesMap : activosNoCorrientesMap;
+        const map = isCurrentAsset(a) ? activosCorrientesMap : activosNoCorrientesMap;
         const acc = map.get(a.id);
         if (acc) acc.balance = bal;
       }
       if (a.type === 'PASIVO') {
-        const map = isCurrentLiability(a.name) ? pasivosCorrientesMap : pasivosNoCorrientesMap;
+        const map = isCurrentLiability(a) ? pasivosCorrientesMap : pasivosNoCorrientesMap;
         const acc = map.get(a.id);
         if (acc) acc.balance = bal;
       }
