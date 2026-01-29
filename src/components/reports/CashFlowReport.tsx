@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FileDown, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } from './PeriodSelector';
 import { Account, JournalEntry } from '@/accounting/types';
-import { fmt } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { exportCashFlowNIIFToPDF, CashFlowNIIFData } from '@/services/pdfService';
 
@@ -247,11 +247,11 @@ export function CashFlowReport({
     const inversionDetalle = aggregateByAccount(inversionItems);
     const financiacionDetalle = aggregateByAccount(financiacionItems);
 
-    const flujoOperacion = operacionDetalle.reduce((sum, i) => sum + i.amount, 0);
-    const flujoInversion = inversionDetalle.reduce((sum, i) => sum + i.amount, 0);
-    const flujoFinanciacion = financiacionDetalle.reduce((sum, i) => sum + i.amount, 0);
-    const flujoNeto = flujoOperacion + flujoInversion + flujoFinanciacion;
-    const finalCashBalance = initialCashBalance + flujoNeto;
+    const flujoOperacion = round2(operacionDetalle.reduce((sum, i) => sum + i.amount, 0));
+    const flujoInversion = round2(inversionDetalle.reduce((sum, i) => sum + i.amount, 0));
+    const flujoFinanciacion = round2(financiacionDetalle.reduce((sum, i) => sum + i.amount, 0));
+    const flujoNeto = round2(flujoOperacion + flujoInversion + flujoFinanciacion);
+    const finalCashBalance = round2(initialCashBalance + flujoNeto);
 
     // Calculate ratio (Operating Cash Flow / Current Liabilities at period end)
     // For simplicity, we use total liabilities as a proxy

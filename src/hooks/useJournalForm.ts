@@ -2,7 +2,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { JournalEntry, JournalLine, Account } from '@/accounting/types';
-import { todayISO, toDecimal, formatDecimal, generateEntryId } from '@/accounting/utils';
+import { todayISO, toDecimal, formatDecimal, generateEntryId, round2 } from '@/accounting/utils';
 import { KardexData } from '@/components/kardex/InlineKardexPopup';
 
 export type LineDraft = {
@@ -128,7 +128,7 @@ export function useJournalForm({
         toast.error('Línea sin importe');
         return null;
       }
-      clean.push({ account_id: acc, debit: d, credit: c, line_memo: l.line_memo?.trim() });
+      clean.push({ account_id: acc, debit: round2(d), credit: round2(c), line_memo: l.line_memo?.trim() });
     }
     if (clean.length < 2) {
       toast.error('El asiento necesita al menos 2 líneas');

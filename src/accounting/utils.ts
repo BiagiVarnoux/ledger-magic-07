@@ -2,6 +2,11 @@
 import { AccountType, Side, Account, JournalEntry } from './types';
 import { getQuarterIdentifier } from './quarterly-utils';
 
+/** Round to 2 decimal places - use for all financial calculations */
+export function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function fmt(n: number) { 
   return n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); 
 }
@@ -112,7 +117,7 @@ export function generateChronologicalEntryId(date: string, existing: JournalEntr
 }
 
 export function signedBalanceFor(deb: number, hab: number, side: Side) {
-  return side === "DEBE" ? (deb - hab) : (hab - deb);
+  return round2(side === "DEBE" ? (deb - hab) : (hab - deb));
 }
 
 // --- Abreviaciones de tipo de cuenta y lógica de signo (+/-) ---

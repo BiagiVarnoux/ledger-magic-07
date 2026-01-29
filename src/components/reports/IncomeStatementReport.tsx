@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FileDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } from './PeriodSelector';
 import { Account, JournalEntry } from '@/accounting/types';
-import { fmt } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter, getCurrentQuarter } from '@/accounting/quarterly-utils';
 import { exportIncomeStatementNIIFToPDF } from '@/services/pdfService';
 import { useReportSettings } from '@/hooks/useReportSettings';
@@ -191,21 +191,21 @@ export function IncomeStatementReport({
     const gastosOperativos = filterAndSort(gastosOperativosMap);
     const otrosGastos = filterAndSort(otrosGastosMap);
 
-    const totalVentas = ventas.reduce((sum, x) => sum + x.amount, 0);
-    const totalCostoVentas = costoVentas.reduce((sum, x) => sum + x.amount, 0);
-    const totalGastosOperativos = gastosOperativos.reduce((sum, x) => sum + x.amount, 0);
-    const totalOtrosGastos = otrosGastos.reduce((sum, x) => sum + x.amount, 0);
+    const totalVentas = round2(ventas.reduce((sum, x) => sum + x.amount, 0));
+    const totalCostoVentas = round2(costoVentas.reduce((sum, x) => sum + x.amount, 0));
+    const totalGastosOperativos = round2(gastosOperativos.reduce((sum, x) => sum + x.amount, 0));
+    const totalOtrosGastos = round2(otrosGastos.reduce((sum, x) => sum + x.amount, 0));
 
-    const utilidadBruta = totalVentas - totalCostoVentas;
-    const utilidadOperativa = utilidadBruta - totalGastosOperativos;
-    const utilidadAntesImpuestos = utilidadOperativa - totalOtrosGastos;
+    const utilidadBruta = round2(totalVentas - totalCostoVentas);
+    const utilidadOperativa = round2(utilidadBruta - totalGastosOperativos);
+    const utilidadAntesImpuestos = round2(utilidadOperativa - totalOtrosGastos);
     
     // Only apply tax for annual reports when enabled
     const taxEnabled = periodType === 'annual' && settings.tax_enabled;
     const impuesto = taxEnabled && utilidadAntesImpuestos > 0 
-      ? utilidadAntesImpuestos * (settings.tax_rate / 100) 
+      ? round2(utilidadAntesImpuestos * (settings.tax_rate / 100)) 
       : 0;
-    const utilidadNeta = utilidadAntesImpuestos - impuesto;
+    const utilidadNeta = round2(utilidadAntesImpuestos - impuesto);
 
     const calcMargin = (value: number) => totalVentas > 0 ? (value / totalVentas) * 100 : 0;
 
