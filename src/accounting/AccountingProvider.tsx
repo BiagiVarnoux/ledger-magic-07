@@ -1,4 +1,5 @@
 // src/accounting/AccountingProvider.tsx
+// Context provider for accounting data (accounts, entries, auxiliary ledgers)
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, KardexDefinition } from './types';
 import { IDataAdapter, LocalAdapter, pickAdapter } from './data-adapter';
