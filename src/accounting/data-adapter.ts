@@ -1,6 +1,6 @@
 // src/accounting/data-adapter.ts
 import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, KardexDefinition, seedAccounts } from './types';
-import { cmpDate } from './utils';
+import { cmpDate, round2 } from './utils';
 import { supabase } from '@/integrations/supabase/client';
 
 type MaybeSupa = import("@supabase/supabase-js").SupabaseClient | null;
@@ -230,7 +230,7 @@ export const SupaAdapter: IDataAdapter = {
     if (e1) throw e1;
     const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
     if (eDel) throw eDel;
-    const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: l.debit, credit: l.credit, line_memo: l.line_memo||null }));
+    const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null }));
     const { error: e2 } = await supa.from("journal_lines").insert(payload);
     if (e2) throw e2;
   },

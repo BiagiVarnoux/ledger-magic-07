@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { FileDown, TrendingUp, TrendingDown } from 'lucide-react';
 import { Account, JournalEntry } from '@/accounting/types';
-import { signedBalanceFor, fmt } from '@/accounting/utils';
+import { signedBalanceFor, fmt, round2 } from '@/accounting/utils';
 import { exportBalanceSheetNIIFToPDF, BalanceSheetNIIFData } from '@/services/pdfService';
 
 interface BalanceSheetReportProps {
@@ -158,14 +158,14 @@ export function BalanceSheetReport({
         const a = accounts.find(x => x.id === l.account_id);
         if (!a) continue;
         if (a.type === 'INGRESO') {
-          ingresos += l.credit - l.debit;
+          ingresos += round2(l.credit - l.debit);
         }
         if (a.type === 'GASTO') {
-          gastos += l.debit - l.credit;
+          gastos += round2(l.debit - l.credit);
         }
       }
     }
-    const utilidadAcumulada = ingresos - gastos;
+    const utilidadAcumulada = round2(ingresos - gastos);
 
     // Filter and sort
     const filterAndSort = (map: Map<string, AccountBalance>) =>
@@ -179,17 +179,17 @@ export function BalanceSheetReport({
     const pasivosNoCorrientes = filterAndSort(pasivosNoCorrientesMap);
     const patrimonioDetalle = filterAndSort(patrimonioMap);
 
-    // Totals
-    const totalActivosCorrientes = activosCorrientes.reduce((sum, x) => sum + x.balance, 0);
-    const totalActivosNoCorrientes = activosNoCorrientes.reduce((sum, x) => sum + x.balance, 0);
-    const totalActivo = totalActivosCorrientes + totalActivosNoCorrientes;
+    // Totals - apply round2 to prevent floating point errors
+    const totalActivosCorrientes = round2(activosCorrientes.reduce((sum, x) => sum + x.balance, 0));
+    const totalActivosNoCorrientes = round2(activosNoCorrientes.reduce((sum, x) => sum + x.balance, 0));
+    const totalActivo = round2(totalActivosCorrientes + totalActivosNoCorrientes);
 
-    const totalPasivosCorrientes = pasivosCorrientes.reduce((sum, x) => sum + x.balance, 0);
-    const totalPasivosNoCorrientes = pasivosNoCorrientes.reduce((sum, x) => sum + x.balance, 0);
-    const totalPasivo = totalPasivosCorrientes + totalPasivosNoCorrientes;
+    const totalPasivosCorrientes = round2(pasivosCorrientes.reduce((sum, x) => sum + x.balance, 0));
+    const totalPasivosNoCorrientes = round2(pasivosNoCorrientes.reduce((sum, x) => sum + x.balance, 0));
+    const totalPasivo = round2(totalPasivosCorrientes + totalPasivosNoCorrientes);
 
-    const totalPatrimonioContable = patrimonioDetalle.reduce((sum, x) => sum + x.balance, 0);
-    const totalPatrimonio = totalPatrimonioContable + utilidadAcumulada;
+    const totalPatrimonioContable = round2(patrimonioDetalle.reduce((sum, x) => sum + x.balance, 0));
+    const totalPatrimonio = round2(totalPatrimonioContable + utilidadAcumulada);
 
     // Financial Ratios
     const razonCorriente = totalPasivosCorrientes > 0 
@@ -198,7 +198,7 @@ export function BalanceSheetReport({
     const razonEndeudamiento = totalActivo > 0 
       ? (totalPasivo / totalActivo) * 100 
       : 0;
-    const capitalTrabajo = totalActivosCorrientes - totalPasivosCorrientes;
+    const capitalTrabajo = round2(totalActivosCorrientes - totalPasivosCorrientes);
 
     return {
       activosCorrientes,
@@ -214,7 +214,7 @@ export function BalanceSheetReport({
       patrimonioDetalle,
       utilidadAcumulada,
       totalPatrimonio,
-      check: +(totalActivo - (totalPasivo + totalPatrimonio)).toFixed(2),
+      check: round2(totalActivo - (totalPasivo + totalPatrimonio)),
       razonCorriente,
       razonEndeudamiento,
       capitalTrabajo,
