@@ -1,7 +1,7 @@
 // src/router.tsx
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AccountingProvider } from './accounting/AccountingProvider';
+import { AccountingProvider } from '@/accounting/AccountingProvider';
 import { AppShell } from './components/layout/AppShell';
 import AccountsPage from './pages/accounts/Index';
 import JournalPage from './pages/journal/Index';
