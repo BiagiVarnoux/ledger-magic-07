@@ -137,16 +137,16 @@ export function BalanceSheetReport({
       if (a.type === 'ACTIVO') {
         const map = isCurrentAsset(a) ? activosCorrientesMap : activosNoCorrientesMap;
         const acc = map.get(a.id);
-        if (acc) acc.balance = bal;
+        if (acc) acc.balance = round2(bal);
       }
       if (a.type === 'PASIVO') {
         const map = isCurrentLiability(a) ? pasivosCorrientesMap : pasivosNoCorrientesMap;
         const acc = map.get(a.id);
-        if (acc) acc.balance = bal;
+        if (acc) acc.balance = round2(bal);
       }
       if (a.type === 'PATRIMONIO') {
         const acc = patrimonioMap.get(a.id);
-        if (acc) acc.balance = bal;
+        if (acc) acc.balance = round2(bal);
       }
     }
 
