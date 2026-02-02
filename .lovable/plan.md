@@ -1,122 +1,81 @@
 
-## Plan: Corregir Discrepancia de Decimales en Balance General
+## Plan: Corregir Asientos Descuadrados y Prevenir Futuros Errores
 
-### Diagnóstico del Problema
+### Parte 1: Corregir los 2 asientos existentes
 
-He identificado la causa raíz del problema:
+Se ajustará la línea de mayor importe Debe en cada asiento, sumándole 0,01 para igualar Debe = Haber.
 
-1. **Datos contaminados en la base de datos**: Los valores en `journal_lines` contienen errores de punto flotante heredados de JavaScript:
-   - `44762.399999999994` en lugar de `44762.40`
-   - `43619.799999999996` en lugar de `43619.80`
+**Correcciones SQL a ejecutar:**
 
-2. **Operaciones sin redondeo**: Las sumas de JavaScript acumulan errores de precisión de punto flotante (IEEE 754), y no hay redondeo al guardar ni al calcular.
-
-3. **Impacto en cascada**: Estos errores microscópicos se acumulan a lo largo de muchas transacciones, resultando en diferencias de céntimos en los totales del Balance General.
-
----
-
-### Solución en 3 Partes
-
-#### Parte 1: Crear Función de Redondeo Centralizada
-
-**Archivo**: `src/accounting/utils.ts`
-
-Crear una función `round2` para redondear todos los cálculos financieros a 2 decimales:
-
-```typescript
-export function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-```
-
-#### Parte 2: Aplicar Redondeo en Puntos Críticos
-
-**Archivos a modificar**:
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/accounting/data-adapter.ts` | Redondear `debit` y `credit` al guardar asientos |
-| `src/components/reports/BalanceSheetReport.tsx` | Redondear saldos individuales y totales |
-| `src/components/reports/IncomeStatementReport.tsx` | Redondear cálculos de ingresos/gastos |
-| `src/components/reports/CashFlowReport.tsx` | Redondear movimientos de efectivo |
-| `src/hooks/useJournalForm.ts` | Redondear valores al procesar líneas |
-
-**Puntos de redondeo clave**:
-1. Al guardar `debit` y `credit` en `journal_lines` → redondear a 2 decimales
-2. Al calcular `signedBalanceFor` → redondear resultado
-3. Al sumar saldos en reportes → redondear subtotales y totales
-4. Al calcular `utilidadAcumulada` → redondear el resultado
-
-#### Parte 3: Corregir Datos Existentes
-
-**Migración SQL opcional** para limpiar datos contaminados:
+| Asiento | Línea ID | Acción | Valor actual → Nuevo |
+|---------|----------|--------|---------------------|
+| 153-Q4-25 | 735 | +0,01 al Debe | 1.282,60 → 1.282,61 |
+| 154-Q4-25 | 753 | +0,01 al Debe | 21.885,78 → 21.885,79 |
 
 ```sql
-UPDATE journal_lines 
-SET debit = ROUND(debit::numeric, 2),
-    credit = ROUND(credit::numeric, 2);
+-- Corregir asiento 153-Q4-25 (línea 735)
+UPDATE journal_lines SET debit = 1282.61 WHERE id = 735;
+
+-- Corregir asiento 154-Q4-25 (línea 753)
+UPDATE journal_lines SET debit = 21885.79 WHERE id = 753;
 ```
 
 ---
 
-### Cambios Específicos por Archivo
+### Parte 2: Agregar redondeo final al calcular saldos de cuentas
 
-#### `src/accounting/utils.ts`
-- Agregar función `round2(n: number): number`
-- Modificar `signedBalanceFor` para usar `round2`
+**Archivo**: `src/components/reports/BalanceSheetReport.tsx`
 
-#### `src/accounting/data-adapter.ts` (línea ~233)
-Cambiar:
+Actualmente el saldo se acumula así:
 ```typescript
-const payload = e.lines.map(l => ({
-  entry_id: e.id,
-  account_id: l.account_id,
-  debit: l.debit,
-  credit: l.credit,
-  ...
-}));
+for (const l of e.lines) {
+  if (l.account_id !== a.id) continue;
+  bal += signedBalanceFor(l.debit, l.credit, a.normal_side);
+}
+// ... luego se asigna:
+if (acc) acc.balance = bal;  // ← Sin redondeo final
 ```
-A:
+
+**Cambiar a:**
 ```typescript
-const payload = e.lines.map(l => ({
-  entry_id: e.id,
-  account_id: l.account_id,
-  debit: round2(l.debit),
-  credit: round2(l.credit),
-  ...
-}));
+if (acc) acc.balance = round2(bal);  // ← Con redondeo de seguridad
 ```
 
-#### `src/components/reports/BalanceSheetReport.tsx`
-- Usar `round2` en el cálculo de `bal` (línea 133)
-- Usar `round2` en los totales (líneas 183-192)
-- Usar `round2` en `utilidadAcumulada` (línea 168)
-
-#### `src/components/reports/IncomeStatementReport.tsx`
-- Redondear saldos de cuentas al calcular
-- Redondear totales y márgenes
-
-#### `src/components/reports/CashFlowReport.tsx`
-- Redondear cálculos de flujos de efectivo
+Esto se aplica en:
+- Línea ~140: `if (acc) acc.balance = round2(bal);`
+- Línea ~145: `if (acc) acc.balance = round2(bal);`
+- Línea ~149: `if (acc) acc.balance = round2(bal);`
 
 ---
 
-### Prevención de Errores Futuros
+### Parte 3: Agregar indicador visual de asientos descuadrados
 
-1. **Redondeo al entrada**: Todo dato financiero se redondea al guardarse
-2. **Redondeo en cálculos**: Cada suma/resta de montos usa `round2`
-3. **Validación visual**: El check de ecuación contable ahora debería mostrar `0.00 ✓ Cuadra`
+**Archivo**: `src/components/journal/JournalEntriesTable.tsx`
+
+Agregar lógica para detectar asientos descuadrados y mostrar un indicador:
+
+```typescript
+const entryDiff = entry.lines.reduce((sum, l) => sum + l.debit - l.credit, 0);
+const isUnbalanced = Math.abs(round2(entryDiff)) >= 0.01;
+```
+
+Mostrar un ícono o badge rojo cuando `isUnbalanced === true`.
 
 ---
 
-### Resumen de Archivos
+### Resumen de cambios
 
-| Archivo | Acción |
-|---------|--------|
-| `src/accounting/utils.ts` | Agregar `round2()` |
-| `src/accounting/data-adapter.ts` | Redondear al guardar asientos |
-| `src/components/reports/BalanceSheetReport.tsx` | Redondear cálculos |
-| `src/components/reports/IncomeStatementReport.tsx` | Redondear cálculos |
-| `src/components/reports/CashFlowReport.tsx` | Redondear cálculos |
-| `src/hooks/useJournalForm.ts` | Redondear en validación |
-| Nueva migración SQL | Limpiar datos existentes (opcional) |
+| Tipo | Archivo / Ubicación | Acción |
+|------|---------------------|--------|
+| **Datos** | Base de datos | UPDATE 2 líneas (id 735 y 753) |
+| **Código** | `BalanceSheetReport.tsx` | Aplicar `round2()` al asignar `acc.balance` |
+| **Código** | `JournalEntriesTable.tsx` | Mostrar indicador de descuadre |
+
+---
+
+### Resultado esperado
+
+- Balance General: Activos = Pasivo + Patrimonio (diferencia = 0,00 ✓)
+- Los 2 asientos corregidos cuadrarán perfectamente
+- Futuras acumulaciones de saldos estarán protegidas contra errores de punto flotante
+- El usuario podrá ver inmediatamente si algún asiento está descuadrado
