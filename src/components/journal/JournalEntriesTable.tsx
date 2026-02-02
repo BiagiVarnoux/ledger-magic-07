@@ -3,10 +3,11 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Undo2, Trash2, Pencil, ArrowUpDown } from 'lucide-react';
+import { Undo2, Trash2, Pencil, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import { AccountLabel } from './AccountLabel';
 import { JournalEntry, Account } from '@/accounting/types';
-import { fmt } from '@/accounting/utils';
+import { fmt, round2 } from '@/accounting/utils';
+import { Badge } from '@/components/ui/badge';
 
 interface JournalEntriesTableProps {
   entries: JournalEntry[];
@@ -66,10 +67,24 @@ export function JournalEntriesTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedEntries.map(e => (
+                sortedEntries.map(e => {
+                  const entryDiff = e.lines.reduce((sum, l) => sum + l.debit - l.credit, 0);
+                  const isUnbalanced = Math.abs(round2(entryDiff)) >= 0.01;
+                  
+                  return (
                   <React.Fragment key={e.id}>
-                    <TableRow>
-                      <TableCell className="font-mono">{e.id}</TableCell>
+                    <TableRow className={isUnbalanced ? 'bg-red-50 dark:bg-red-950/30' : ''}>
+                      <TableCell className="font-mono">
+                        <div className="flex items-center gap-2">
+                          {e.id}
+                          {isUnbalanced && (
+                            <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              {fmt(round2(entryDiff))}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{e.date}</TableCell>
                       <TableCell></TableCell>
                       <TableCell>
@@ -115,7 +130,8 @@ export function JournalEntriesTable({
                       </TableRow>
                     )}
                   </React.Fragment>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>
