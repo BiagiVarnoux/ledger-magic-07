@@ -8,15 +8,17 @@ import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings, Package } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings, Package, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/types';
-import { fmt, todayISO, toDecimal } from '@/accounting/utils';
+import { fmt, todayISO, toDecimal, round2 } from '@/accounting/utils';
 import { AuxiliaryDefinitionsModal } from '@/components/auxiliary-ledger/AuxiliaryDefinitionsModal';
 import { KardexCPP } from '@/components/kardex/KardexCPP';
+import { Quarter, getCurrentQuarter, getAllQuartersFromStart } from '@/accounting/quarterly-utils';
 
 export default function AuxiliaryLedgersPage() {
   const { 
@@ -29,6 +31,7 @@ export default function AuxiliaryLedgersPage() {
   } = useAccounting();
   const { isReadOnly } = useUserAccess();
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>('');
+  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getCurrentQuarter());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDefinitionsModalOpen, setIsDefinitionsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AuxiliaryLedgerEntry | null>(null);
@@ -48,31 +51,79 @@ export default function AuxiliaryLedgersPage() {
     movement_type: 'INCREASE' as 'INCREASE' | 'DECREASE'
   });
 
+  const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
   const selectedDefinition = auxiliaryDefinitions.find(d => d.id === selectedDefinitionId);
   const selectedAccountId = selectedDefinition?.account_id || '';
 
-  // Filter entries by selected definition
-  const filteredEntries = useMemo(() => {
-    if (!selectedDefinitionId || !selectedDefinition) return [];
-    return auxiliaryEntries.filter(entry => 
-      entry.definition_id === selectedDefinitionId || entry.account_id === selectedDefinition.account_id
-    );
-  }, [auxiliaryEntries, selectedDefinitionId, selectedDefinition]);
-
-  // Load movement details when a client row is expanded
+  // Cargar TODOS los movimientos cuando cambia la definición seleccionada
   useEffect(() => {
-    const loadMovements = async () => {
-      if (expandedClientId && !clientMovements[expandedClientId]) {
-        try {
-          const movements = await adapter.loadAuxiliaryDetails(expandedClientId);
-          setClientMovements(prev => ({ ...prev, [expandedClientId]: movements }));
-        } catch (error: any) {
-          toast.error('Error al cargar movimientos del cliente');
-        }
+    const loadAllMovements = async () => {
+      if (!selectedDefinitionId || !selectedDefinition) return;
+      const baseEntries = auxiliaryEntries.filter(entry =>
+        entry.definition_id === selectedDefinitionId || entry.account_id === selectedDefinition.account_id
+      );
+      const ids = baseEntries.map(e => e.id);
+      if (ids.length === 0) return;
+      try {
+        const results = await Promise.all(ids.map(id => adapter.loadAuxiliaryDetails(id)));
+        const map: Record<string, AuxiliaryMovementDetail[]> = {};
+        ids.forEach((id, i) => { map[id] = results[i]; });
+        setClientMovements(map);
+      } catch (error: any) {
+        toast.error('Error al cargar movimientos');
       }
     };
-    loadMovements();
-  }, [expandedClientId, adapter, clientMovements]);
+    loadAllMovements();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDefinitionId, auxiliaryEntries]);
+
+  // Filtrado por trimestre: un cliente aparece si tiene saldo != 0 al cierre del trimestre
+  // O si tuvo algún movimiento dentro del trimestre seleccionado
+  const filteredEntries = useMemo(() => {
+    if (!selectedDefinitionId || !selectedDefinition) return [];
+
+    const baseEntries = auxiliaryEntries.filter(entry =>
+      entry.definition_id === selectedDefinitionId || entry.account_id === selectedDefinition.account_id
+    );
+
+    return baseEntries
+      .map(entry => {
+        const movements = clientMovements[entry.id];
+        if (!movements) {
+          // Movimientos aún no cargados: mostrar con saldo original
+          return { ...entry, _hasMovementsInQuarter: false, _movementsLoaded: false };
+        }
+
+        const quarterEnd = selectedQuarter.endDate;
+        const quarterStart = selectedQuarter.startDate;
+
+        // Saldo acumulado hasta el fin del trimestre seleccionado
+        const quarterBalance = round2(
+          movements
+            .filter(m => m.movement_date <= quarterEnd)
+            .reduce((sum, m) => sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount), 0)
+        );
+
+        // ¿Tuvo algún movimiento dentro del trimestre?
+        const hasMovementsInQuarter = movements.some(
+          m => m.movement_date >= quarterStart && m.movement_date <= quarterEnd
+        );
+
+        return {
+          ...entry,
+          total_balance: quarterBalance,
+          _hasMovementsInQuarter: hasMovementsInQuarter,
+          _movementsLoaded: true,
+        };
+      })
+      .filter(entry => {
+        if (!entry._movementsLoaded) return true; // Mostrar mientras carga
+        // Mostrar si tiene saldo pendiente o movió en el trimestre
+        return entry._hasMovementsInQuarter || Math.abs(entry.total_balance) >= 0.01;
+      });
+  }, [auxiliaryEntries, selectedDefinitionId, selectedDefinition, selectedQuarter, clientMovements]);
+
+
 
   const handleOpenModal = (entry?: AuxiliaryLedgerEntry) => {
     if (entry) {
@@ -256,7 +307,7 @@ export default function AuxiliaryLedgersPage() {
           <CardTitle>Seleccionar Libro Auxiliar</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <Label>Libro Auxiliar</Label>
               <Select value={selectedDefinitionId} onValueChange={setSelectedDefinitionId}>
@@ -285,6 +336,33 @@ export default function AuxiliaryLedgersPage() {
                   Primero debes crear libros auxiliares usando el botón "Gestionar Libros Auxiliares"
                 </p>
               )}
+            </div>
+            <div>
+              <Label className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Trimestre
+              </Label>
+              <Select
+                value={selectedQuarter.label}
+                onValueChange={(val) => {
+                  const q = availableQuarters.find(q => q.label === val);
+                  if (q) setSelectedQuarter(q);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableQuarters.map(q => (
+                    <SelectItem key={q.label} value={q.label}>
+                      {q.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {selectedQuarter.startDate} — {selectedQuarter.endDate}
+              </p>
             </div>
             {!isReadOnly && (
             <div className="flex items-end gap-2">
@@ -431,13 +509,13 @@ export default function AuxiliaryLedgersPage() {
                         <SelectContent>
                           <SelectItem value="INCREASE">
                             <span className="flex items-center gap-2">
-                              <TrendingUp className="w-4 h-4 text-green-600" />
+                              <TrendingUp className="w-4 h-4 text-primary" />
                               DEBE (Aumento)
                             </span>
                           </SelectItem>
                           <SelectItem value="DECREASE">
                             <span className="flex items-center gap-2">
-                              <TrendingDown className="w-4 h-4 text-blue-600" />
+                              <TrendingDown className="w-4 h-4 text-muted-foreground" />
                               HABER (Disminución)
                             </span>
                           </SelectItem>
@@ -465,152 +543,193 @@ export default function AuxiliaryLedgersPage() {
       {selectedDefinitionId && (
         <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle>
-              {selectedAccountName} — Detalle por Cliente
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>
+                {selectedAccountName} — {selectedQuarter.label}
+              </CardTitle>
+              <span className="text-sm text-muted-foreground">
+                {selectedQuarter.startDate} — {selectedQuarter.endDate}
+              </span>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="border rounded-xl overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
-                  <TableHead className="w-12"></TableHead>
+                    <TableHead className="w-12"></TableHead>
                     <TableHead>Cliente/Proveedor</TableHead>
-                    <TableHead className="text-right">Saldo Total</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Saldo al {selectedQuarter.endDate}</TableHead>
                     {!isReadOnly && <TableHead className="text-right">Acciones</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredEntries.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No hay registros para esta cuenta
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        No hay registros con actividad en {selectedQuarter.label}
                       </TableCell>
                     </TableRow>
                   ) : (
                     <>
-                      {filteredEntries.map(entry => (
-                        <Collapsible
-                          key={entry.id}
-                          open={expandedClientId === entry.id}
-                          onOpenChange={(open) => setExpandedClientId(open ? entry.id : null)}
-                          asChild
-                        >
-                          <>
-                            <TableRow>
-                              <TableCell>
-                                <CollapsibleTrigger asChild>
-                                  <Button variant="ghost" size="sm">
-                                    {expandedClientId === entry.id ? (
-                                      <ChevronDown className="h-4 w-4" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4" />
-                                    )}
-                                  </Button>
-                                </CollapsibleTrigger>
-                              </TableCell>
-                              <TableCell className="font-medium">
-                                {entry.client_name}
-                              </TableCell>
-                              <TableCell className={`text-right font-semibold ${
-                                entry.total_balance > 0 ? 'text-orange-600' : 
-                                entry.total_balance < 0 ? 'text-red-600' : 'text-green-600'
-                              }`}>
-                                {fmt(entry.total_balance)}
-                              </TableCell>
-                              {!isReadOnly && (
-                              <TableCell className="text-right">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleOpenModal(entry)}
-                                  title="Editar"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleDelete(entry.id)}
-                                  title="Eliminar"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </TableCell>
-                              )}
-                            </TableRow>
-                            <CollapsibleContent asChild>
+                      {filteredEntries.map(entry => {
+                        const hasMovementsInQuarter = (entry as any)._hasMovementsInQuarter as boolean;
+                        const movementsLoaded = (entry as any)._movementsLoaded as boolean;
+                        // Movimientos del trimestre para la vista expandida
+                        const allMovements = clientMovements[entry.id] ?? [];
+                        const quarterMovements = allMovements.filter(
+                          m => m.movement_date >= selectedQuarter.startDate && m.movement_date <= selectedQuarter.endDate
+                        );
+
+                        return (
+                          <Collapsible
+                            key={entry.id}
+                            open={expandedClientId === entry.id}
+                            onOpenChange={(open) => setExpandedClientId(open ? entry.id : null)}
+                            asChild
+                          >
+                            <>
                               <TableRow>
-                                <TableCell colSpan={4} className="bg-muted/30 p-4">
-                                  <div className="space-y-2">
-                                    <h4 className="font-medium text-sm">Historial de Movimientos</h4>
-                                    {!clientMovements[entry.id] ? (
-                                      <div className="text-sm text-muted-foreground">Cargando...</div>
-                                    ) : clientMovements[entry.id].length === 0 ? (
-                                      <div className="text-sm text-muted-foreground">No hay movimientos registrados</div>
-                                    ) : (
-                                      <div className="border rounded-lg overflow-hidden bg-background">
-                                        <Table>
-                                          <TableHeader>
-                                            <TableRow>
-                                              <TableHead>Fecha</TableHead>
-                                              <TableHead>Asiento</TableHead>
-                                              <TableHead>Glosa</TableHead>
-                                              <TableHead>Tipo</TableHead>
-                                              <TableHead className="text-right">Monto</TableHead>
-                                            </TableRow>
-                                          </TableHeader>
-                                          <TableBody>
-                                            {clientMovements[entry.id].map((movement) => {
-                                              const isInitialBalance = movement.journal_entry_id === 'INITIAL_BALANCE';
-                                              const journalEntry = isInitialBalance 
-                                                ? null 
-                                                : journalEntries.find(je => je.id === movement.journal_entry_id);
-                                              const memo = isInitialBalance 
-                                                ? 'Saldo inicial de apertura' 
-                                                : (journalEntry?.memo || '-');
-                                              
-                                              return (
-                                                <TableRow key={movement.id}>
-                                                  <TableCell>{movement.movement_date}</TableCell>
-                                                  <TableCell className="font-mono text-sm">{movement.journal_entry_id}</TableCell>
-                                                  <TableCell className="text-sm">{memo}</TableCell>
-                                                  <TableCell>
-                                                    {movement.movement_type === 'INCREASE' ? (
-                                                      <span className="inline-flex items-center gap-1 text-green-600">
-                                                        <TrendingUp className="w-3 h-3" />
-                                                        DEBE
-                                                      </span>
-                                                    ) : (
-                                                      <span className="inline-flex items-center gap-1 text-blue-600">
-                                                        <TrendingDown className="w-3 h-3" />
-                                                        HABER
-                                                      </span>
-                                                    )}
-                                                  </TableCell>
-                                                  <TableCell className="text-right font-mono text-sm">
-                                                    {fmt(movement.amount)}
-                                                  </TableCell>
-                                                </TableRow>
-                                              );
-                                            })}
-                                          </TableBody>
-                                        </Table>
-                                      </div>
-                                    )}
-                                  </div>
+                                <TableCell>
+                                  <CollapsibleTrigger asChild>
+                                    <Button variant="ghost" size="sm">
+                                      {expandedClientId === entry.id ? (
+                                        <ChevronDown className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </CollapsibleTrigger>
                                 </TableCell>
+                                <TableCell className="font-medium">
+                                  {entry.client_name}
+                                </TableCell>
+                                <TableCell>
+                                  {!movementsLoaded ? (
+                                    <Badge variant="outline" className="text-xs">Cargando...</Badge>
+                                  ) : hasMovementsInQuarter ? (
+                                    <Badge className="text-xs bg-primary/10 text-primary border-primary/20">
+                                      <TrendingUp className="w-3 h-3 mr-1" />
+                                      Activo
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="text-xs">
+                                      <Clock className="w-3 h-3 mr-1" />
+                                      Saldo anterior
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className={`text-right font-semibold ${
+                                  entry.total_balance > 0 ? 'text-orange-600' : 
+                                  entry.total_balance < 0 ? 'text-destructive' : 'text-green-600'
+                                }`}>
+                                  {fmt(entry.total_balance)}
+                                </TableCell>
+                                {!isReadOnly && (
+                                  <TableCell className="text-right">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleOpenModal(entry)}
+                                      title="Editar"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleDelete(entry.id)}
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </TableCell>
+                                )}
                               </TableRow>
-                            </CollapsibleContent>
-                          </>
-                        </Collapsible>
-                      ))}
+                              <CollapsibleContent asChild>
+                                <TableRow>
+                                  <TableCell colSpan={5} className="bg-muted/30 p-4">
+                                    <div className="space-y-3">
+                                      <h4 className="font-medium text-sm">
+                                        Movimientos en {selectedQuarter.label}
+                                        {quarterMovements.length > 0 && (
+                                          <span className="ml-2 text-muted-foreground font-normal">
+                                            ({quarterMovements.length} movimiento{quarterMovements.length !== 1 ? 's' : ''})
+                                          </span>
+                                        )}
+                                      </h4>
+                                      {!clientMovements[entry.id] ? (
+                                        <div className="text-sm text-muted-foreground">Cargando...</div>
+                                      ) : quarterMovements.length === 0 ? (
+                                        <div className="text-sm text-muted-foreground">
+                                          Sin movimientos en este trimestre — saldo arrastrado de períodos anteriores
+                                        </div>
+                                      ) : (
+                                        <div className="border rounded-lg overflow-hidden bg-background">
+                                          <Table>
+                                            <TableHeader>
+                                              <TableRow>
+                                                <TableHead>Fecha</TableHead>
+                                                <TableHead>Asiento</TableHead>
+                                                <TableHead>Glosa</TableHead>
+                                                <TableHead>Tipo</TableHead>
+                                                <TableHead className="text-right">Monto</TableHead>
+                                              </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                              {quarterMovements.map((movement) => {
+                                                const isInitialBalance = movement.journal_entry_id === 'INITIAL_BALANCE';
+                                                const journalEntry = isInitialBalance 
+                                                  ? null 
+                                                  : journalEntries.find(je => je.id === movement.journal_entry_id);
+                                                const memo = isInitialBalance 
+                                                  ? 'Saldo inicial de apertura' 
+                                                  : (journalEntry?.memo || '-');
+                                                
+                                                return (
+                                                  <TableRow key={movement.id}>
+                                                    <TableCell>{movement.movement_date}</TableCell>
+                                                    <TableCell className="font-mono text-sm">{movement.journal_entry_id}</TableCell>
+                                                    <TableCell className="text-sm">{memo}</TableCell>
+                                                    <TableCell>
+                                                      {movement.movement_type === 'INCREASE' ? (
+                                                        <span className="inline-flex items-center gap-1 text-primary">
+                                                          <TrendingUp className="w-3 h-3" />
+                                                          DEBE
+                                                        </span>
+                                                      ) : (
+                                                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                                          <TrendingDown className="w-3 h-3" />
+                                                          HABER
+                                                        </span>
+                                                      )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono text-sm">
+                                                      {fmt(movement.amount)}
+                                                    </TableCell>
+                                                  </TableRow>
+                                                );
+                                              })}
+                                            </TableBody>
+                                          </Table>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              </CollapsibleContent>
+                            </>
+                          </Collapsible>
+                        );
+                      })}
                       <TableRow className="bg-muted/50 font-bold hover:bg-muted/50">
                         <TableCell></TableCell>
                         <TableCell className="font-bold">TOTAL DE SALDOS</TableCell>
+                        <TableCell></TableCell>
                         <TableCell className={`text-right font-bold ${
                           totalBalance > 0 ? 'text-orange-600' : 
-                          totalBalance < 0 ? 'text-red-600' : 'text-green-600'
+                          totalBalance < 0 ? 'text-destructive' : 'text-green-600'
                         }`}>
                           {fmt(totalBalance)}
                         </TableCell>
