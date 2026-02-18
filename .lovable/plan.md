@@ -1,81 +1,134 @@
 
-## Plan: Corregir Asientos Descuadrados y Prevenir Futuros Errores
+## Filtrado de Libros Auxiliares por Trimestre
 
-### Parte 1: Corregir los 2 asientos existentes
+### El Problema
 
-Se ajustará la línea de mayor importe Debe en cada asiento, sumándole 0,01 para igualar Debe = Haber.
+En los libros auxiliares hay clientes/proveedores que ya saldaron su deuda (saldo = 0,00) en trimestres anteriores, pero siguen apareciendo en la vista actual porque no hay forma de filtrar por período. Por ejemplo: "Ronaldo Gutierrez" pagó en Q4-25, pero sigue apareciendo en Q1-26.
 
-**Correcciones SQL a ejecutar:**
-
-| Asiento | Línea ID | Acción | Valor actual → Nuevo |
-|---------|----------|--------|---------------------|
-| 153-Q4-25 | 735 | +0,01 al Debe | 1.282,60 → 1.282,61 |
-| 154-Q4-25 | 753 | +0,01 al Debe | 21.885,78 → 21.885,79 |
-
-```sql
--- Corregir asiento 153-Q4-25 (línea 735)
-UPDATE journal_lines SET debit = 1282.61 WHERE id = 735;
-
--- Corregir asiento 154-Q4-25 (línea 753)
-UPDATE journal_lines SET debit = 21885.79 WHERE id = 753;
-```
+El usuario quiere que el libro auxiliar sea **consciente del trimestre**: si un cliente ya tenía saldo cero al final del trimestre anterior, que no aparezca en el siguiente, salvo que tenga nuevos movimientos.
 
 ---
 
-### Parte 2: Agregar redondeo final al calcular saldos de cuentas
+### Solución: Selector de Trimestre + Filtrado Inteligente
 
-**Archivo**: `src/components/reports/BalanceSheetReport.tsx`
+La solución consiste en agregar un **selector de trimestre** a la página de Libros Auxiliares. Al elegir un trimestre, el sistema filtrará qué clientes deben aparecer y calculará sus saldos **solo hasta el final de ese trimestre**.
 
-Actualmente el saldo se acumula así:
+**Lógica de visualización:**
+
+Un cliente aparece en el trimestre seleccionado si:
+1. Tiene **algún movimiento dentro del trimestre** (sea de aumento o disminución), O
+2. Tiene un **saldo distinto de cero al final del trimestre** (es decir, tiene movimientos acumulados anteriores que aún no se han saldado).
+
+Si el saldo al final del trimestre es cero Y no tiene movimientos en ese trimestre, el cliente NO aparece (quedó saldado en un período anterior).
+
+**Cálculo de saldo por trimestre:**
+
+El saldo de cada cliente se calcula considerando solo los movimientos cuya `movement_date` sea menor o igual a la fecha de fin del trimestre seleccionado. Esto se hace en el frontend, sin necesidad de cambios en la base de datos.
+
+---
+
+### Cambios Técnicos
+
+#### 1. `src/pages/auxiliary-ledgers/Index.tsx`
+
+**Estado nuevo:**
 ```typescript
-for (const l of e.lines) {
-  if (l.account_id !== a.id) continue;
-  bal += signedBalanceFor(l.debit, l.credit, a.normal_side);
-}
-// ... luego se asigna:
-if (acc) acc.balance = bal;  // ← Sin redondeo final
+const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getCurrentQuarter());
 ```
 
-**Cambiar a:**
+**Lógica de filtrado con trimestre** (reemplaza el `filteredEntries` actual):
 ```typescript
-if (acc) acc.balance = round2(bal);  // ← Con redondeo de seguridad
+const filteredEntries = useMemo(() => {
+  if (!selectedDefinitionId || !selectedDefinition) return [];
+  
+  const baseEntries = auxiliaryEntries.filter(entry => 
+    entry.definition_id === selectedDefinitionId || 
+    entry.account_id === selectedDefinition.account_id
+  );
+  
+  // Para cada entrada, calcular saldo hasta el fin del trimestre
+  // usando los movimientos ya cargados en clientMovements
+  // y filtrar los que no tienen actividad relevante
+  return baseEntries
+    .map(entry => {
+      // Calcular saldo hasta fin del trimestre usando movimientos ya cargados
+      // Si no están cargados aún, usar total_balance (se actualizará al expandir)
+      const movements = clientMovements[entry.id];
+      if (!movements) return entry; // Sin movimientos cargados, mostrar con saldo actual
+      
+      const quarterEnd = selectedQuarter.endDate;
+      const relevantMovements = movements.filter(m => m.movement_date <= quarterEnd);
+      const quarterBalance = relevantMovements.reduce((sum, m) => 
+        sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount), 0
+      );
+      const hasMovementsInQuarter = movements.some(m => 
+        m.movement_date >= selectedQuarter.startDate && m.movement_date <= quarterEnd
+      );
+      
+      return { ...entry, total_balance: round2(quarterBalance), hasMovementsInQuarter };
+    })
+    .filter(entry => {
+      // Mostrar si tiene actividad en el trimestre O saldo pendiente al cierre
+      const movements = clientMovements[entry.id];
+      if (!movements) return true; // Aún no cargados: mostrar por defecto
+      return entry.hasMovementsInQuarter || Math.abs(entry.total_balance) >= 0.01;
+    });
+}, [auxiliaryEntries, selectedDefinitionId, selectedDefinition, selectedQuarter, clientMovements]);
 ```
 
-Esto se aplica en:
-- Línea ~140: `if (acc) acc.balance = round2(bal);`
-- Línea ~145: `if (acc) acc.balance = round2(bal);`
-- Línea ~149: `if (acc) acc.balance = round2(bal);`
+**Nuevo problema:** actualmente los movimientos se cargan solo al expandir un cliente. Para que el filtro funcione sin tener que expandir todos uno por uno, necesitamos **cargar todos los movimientos del libro auxiliar seleccionado al cambiar de definición o trimestre**.
 
----
-
-### Parte 3: Agregar indicador visual de asientos descuadrados
-
-**Archivo**: `src/components/journal/JournalEntriesTable.tsx`
-
-Agregar lógica para detectar asientos descuadrados y mostrar un indicador:
-
+**Cambio en la carga de movimientos:**
 ```typescript
-const entryDiff = entry.lines.reduce((sum, l) => sum + l.debit - l.credit, 0);
-const isUnbalanced = Math.abs(round2(entryDiff)) >= 0.01;
+// Al seleccionar un libro auxiliar, cargar TODOS los movimientos de sus clientes
+useEffect(() => {
+  const loadAllMovements = async () => {
+    if (!selectedDefinitionId) return;
+    const baseEntries = auxiliaryEntries.filter(entry => 
+      entry.definition_id === selectedDefinitionId || 
+      entry.account_id === selectedDefinition?.account_id
+    );
+    const ids = baseEntries.map(e => e.id);
+    // Cargar en paralelo
+    const results = await Promise.all(ids.map(id => adapter.loadAuxiliaryDetails(id)));
+    const map: Record<string, AuxiliaryMovementDetail[]> = {};
+    ids.forEach((id, i) => { map[id] = results[i]; });
+    setClientMovements(map);
+  };
+  loadAllMovements();
+}, [selectedDefinitionId, auxiliaryEntries]);
 ```
 
-Mostrar un ícono o badge rojo cuando `isUnbalanced === true`.
+**UI nueva:** Añadir selector de trimestre junto al selector de libro auxiliar, usando el componente `QuarterSelector` ya existente o un `Select` con `getAllQuartersFromStart`.
+
+**Columnas de la tabla:** Al filtrar por trimestre, mostrar una columna adicional que indique si tuvo movimiento en ese período (badge "Activo") vs si solo arrastra saldo ("Saldo anterior").
 
 ---
 
-### Resumen de cambios
+### Archivos a Modificar
 
-| Tipo | Archivo / Ubicación | Acción |
-|------|---------------------|--------|
-| **Datos** | Base de datos | UPDATE 2 líneas (id 735 y 753) |
-| **Código** | `BalanceSheetReport.tsx` | Aplicar `round2()` al asignar `acc.balance` |
-| **Código** | `JournalEntriesTable.tsx` | Mostrar indicador de descuadre |
+| Archivo | Cambio |
+|---------|--------|
+| `src/pages/auxiliary-ledgers/Index.tsx` | Agregar selector de trimestre, lógica de filtrado temporal, carga anticipada de movimientos |
+
+No se requieren cambios en base de datos ni en el adaptador, ya que los movimientos tienen fecha (`movement_date`) que permite el cálculo temporal en el frontend.
 
 ---
 
-### Resultado esperado
+### Comportamiento Esperado
 
-- Balance General: Activos = Pasivo + Patrimonio (diferencia = 0,00 ✓)
-- Los 2 asientos corregidos cuadrarán perfectamente
-- Futuras acumulaciones de saldos estarán protegidas contra errores de punto flotante
-- El usuario podrá ver inmediatamente si algún asiento está descuadrado
+- **Q4 2025:** "Ronaldo Gutierrez" aparece (tuvo movimiento en Q4 y quedó en saldo 0 ese trimestre).
+- **Q1 2026:** "Ronaldo Gutierrez" NO aparece (saldo 0 al cierre de Q4-25, sin movimientos en Q1-26).
+- **Q1 2026:** "1 iPhone 14 Pro Max" SÍ aparece (tiene saldo pendiente de 3.647 que se arrastra).
+- Si se selecciona "Todos los trimestres" (opción adicional), aparecen todos sin filtro.
+
+---
+
+### Resumen
+
+- Sin cambios en base de datos.
+- Solo 1 archivo a modificar: `src/pages/auxiliary-ledgers/Index.tsx`.
+- Agrega selector de trimestre.
+- Carga anticipada de movimientos al cambiar de libro auxiliar.
+- Filtra clientes según actividad y saldo en el período elegido.
+- El saldo mostrado refleja el estado al cierre del trimestre seleccionado.
