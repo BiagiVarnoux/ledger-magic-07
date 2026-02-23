@@ -12,50 +12,87 @@ type Msg = { role: "user" | "assistant"; content: string };
 
 function buildAccountingContext(accounts: any[], entries: any[], auxiliaryDefinitions: any[]) {
   const lines: string[] = [];
+  const accMap = new Map<string, any>();
+  accounts.forEach((a) => accMap.set(a.id, a));
+  const accName = (id: string) => { const a = accMap.get(id); return a ? `${id} ${a.name}` : id; };
 
-  // Accounts summary
+  // 1. Plan de Cuentas
   lines.push("## Plan de Cuentas");
-  lines.push("Código | Nombre | Tipo | Saldo Normal | Categoría Gasto | Activa");
+  lines.push("Código | Nombre | Tipo | Saldo Normal | Categoría Gasto | Corriente | Equiv. Efectivo | Activa");
   accounts.forEach((a) => {
     lines.push(
-      `${a.id} | ${a.name} | ${a.type} | ${a.normalSide} | ${a.expenseCategory || "-"} | ${a.isActive ? "Sí" : "No"}`
+      `${a.id} | ${a.name} | ${a.type} | ${a.normal_side} | ${a.expense_category || "-"} | ${a.is_current != null ? (a.is_current ? "Sí" : "No") : "-"} | ${a.is_cash_equivalent ? "Sí" : "No"} | ${a.is_active ? "Sí" : "No"}`
     );
   });
 
-  // Totals by type
-  const typeTotals: Record<string, { debit: number; credit: number }> = {};
+  // 2. Saldos por Cuenta (Mayor)
+  const balances: Record<string, { debit: number; credit: number }> = {};
   entries.forEach((e) => {
     e.lines?.forEach((l: any) => {
-      const acc = accounts.find((a) => a.id === l.accountId);
-      if (acc) {
-        if (!typeTotals[acc.type]) typeTotals[acc.type] = { debit: 0, credit: 0 };
-        typeTotals[acc.type].debit += l.debit || 0;
-        typeTotals[acc.type].credit += l.credit || 0;
-      }
+      const id = l.account_id;
+      if (!balances[id]) balances[id] = { debit: 0, credit: 0 };
+      balances[id].debit += l.debit || 0;
+      balances[id].credit += l.credit || 0;
     });
+  });
+
+  lines.push("\n## Libro Mayor – Saldos por Cuenta");
+  lines.push("Cuenta | Débitos | Créditos | Saldo");
+  Object.entries(balances).forEach(([id, b]) => {
+    const acc = accMap.get(id);
+    const side = acc?.normal_side;
+    const saldo = side === "DEBE" ? b.debit - b.credit : b.credit - b.debit;
+    lines.push(`${accName(id)} | ${b.debit.toFixed(2)} | ${b.credit.toFixed(2)} | ${saldo.toFixed(2)}`);
+  });
+
+  // 3. Totales por Tipo de Cuenta
+  const typeTotals: Record<string, { debit: number; credit: number }> = {};
+  Object.entries(balances).forEach(([id, b]) => {
+    const acc = accMap.get(id);
+    if (acc) {
+      if (!typeTotals[acc.type]) typeTotals[acc.type] = { debit: 0, credit: 0 };
+      typeTotals[acc.type].debit += b.debit;
+      typeTotals[acc.type].credit += b.credit;
+    }
   });
   lines.push("\n## Totales por Tipo de Cuenta");
   Object.entries(typeTotals).forEach(([type, t]) => {
-    lines.push(`${type}: Débitos=${t.debit.toFixed(2)}, Créditos=${t.credit.toFixed(2)}`);
+    const saldo = type === "ACTIVO" || type === "GASTO" ? t.debit - t.credit : t.credit - t.debit;
+    lines.push(`${type}: Débitos=${t.debit.toFixed(2)}, Créditos=${t.credit.toFixed(2)}, Saldo=${saldo.toFixed(2)}`);
   });
 
-  // Recent entries (last 20)
-  const recent = entries.slice(-20);
-  if (recent.length > 0) {
-    lines.push("\n## Últimas 20 Entradas del Libro Diario");
-    recent.forEach((e) => {
-      lines.push(`\nFecha: ${e.date} | ID: ${e.id} | Memo: ${e.memo || "-"}`);
+  // 4. Balance General resumido
+  const totalActivo = (typeTotals["ACTIVO"]?.debit || 0) - (typeTotals["ACTIVO"]?.credit || 0);
+  const totalPasivo = (typeTotals["PASIVO"]?.credit || 0) - (typeTotals["PASIVO"]?.debit || 0);
+  const totalPatrimonio = (typeTotals["PATRIMONIO"]?.credit || 0) - (typeTotals["PATRIMONIO"]?.debit || 0);
+  const totalIngreso = (typeTotals["INGRESO"]?.credit || 0) - (typeTotals["INGRESO"]?.debit || 0);
+  const totalGasto = (typeTotals["GASTO"]?.debit || 0) - (typeTotals["GASTO"]?.credit || 0);
+  const utilidad = totalIngreso - totalGasto;
+  lines.push("\n## Balance General Resumido");
+  lines.push(`Total Activo: ${totalActivo.toFixed(2)}`);
+  lines.push(`Total Pasivo: ${totalPasivo.toFixed(2)}`);
+  lines.push(`Total Patrimonio: ${totalPatrimonio.toFixed(2)}`);
+  lines.push(`Utilidad del Ejercicio: ${utilidad.toFixed(2)}`);
+  lines.push(`Activo = Pasivo + Patrimonio + Utilidad: ${totalActivo.toFixed(2)} = ${(totalPasivo + totalPatrimonio + utilidad).toFixed(2)}`);
+
+  // 5. Todas las Entradas del Libro Diario
+  if (entries.length > 0) {
+    lines.push(`\n## Libro Diario Completo (${entries.length} entradas)`);
+    entries.forEach((e) => {
+      const voidTag = e.void_of ? ` [ANULA: ${e.void_of}]` : "";
+      lines.push(`\nFecha: ${e.date} | ID: ${e.id} | Memo: ${e.memo || "-"}${voidTag}`);
       e.lines?.forEach((l: any) => {
-        lines.push(`  ${l.accountId}: Débito=${l.debit || 0}, Crédito=${l.credit || 0}`);
+        const memo = l.line_memo ? ` (${l.line_memo})` : "";
+        lines.push(`  ${accName(l.account_id)}: Débito=${l.debit || 0}, Crédito=${l.credit || 0}${memo}`);
       });
     });
   }
 
-  // Auxiliary definitions
+  // 6. Definiciones de Libros Auxiliares
   if (auxiliaryDefinitions.length > 0) {
     lines.push("\n## Definiciones de Libros Auxiliares");
     auxiliaryDefinitions.forEach((d) => {
-      lines.push(`${d.name} → Cuenta: ${d.accountId}`);
+      lines.push(`${d.name} → Cuenta: ${accName(d.account_id)}`);
     });
   }
 
