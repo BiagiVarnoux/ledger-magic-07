@@ -188,7 +188,7 @@ export const LocalAdapter: IDataAdapter = {
 export const SupaAdapter: IDataAdapter = {
   async loadAccounts(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
-    const { data, error } = await supa.from("accounts").select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current").order("id");
+    const { data, error } = await supa.from("accounts").select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda").order("id");
     if (error) throw error; return (data||[]) as Account[];
   },
   async upsertAccount(a){
@@ -202,6 +202,14 @@ export const SupaAdapter: IDataAdapter = {
       expense_category: a.expense_category ?? null,
       is_cash_equivalent: a.is_cash_equivalent ?? false,
       is_current: a.is_current ?? null,
+      clasificacion_resultado: a.clasificacion_resultado ?? null,
+      subclasificacion_resultado: a.subclasificacion_resultado ?? null,
+      clasificacion_flujo: a.clasificacion_flujo ?? 'no_aplica',
+      es_partida_no_monetaria: a.es_partida_no_monetaria ?? false,
+      es_capital_trabajo: a.es_capital_trabajo ?? false,
+      es_financiera: a.es_financiera ?? false,
+      es_extraordinaria: a.es_extraordinaria ?? false,
+      afecta_ebitda: a.afecta_ebitda ?? true,
     };
     const { error } = await supa.from("accounts").upsert(accountWithUser);
     if (error) throw error;

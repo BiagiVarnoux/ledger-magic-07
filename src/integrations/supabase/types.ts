@@ -16,7 +16,14 @@ export type Database = {
     Tables: {
       accounts: {
         Row: {
+          afecta_ebitda: boolean | null
+          clasificacion_flujo: string | null
+          clasificacion_resultado: string | null
           created_at: string
+          es_capital_trabajo: boolean | null
+          es_extraordinaria: boolean | null
+          es_financiera: boolean | null
+          es_partida_no_monetaria: boolean | null
           expense_category: string | null
           id: string
           is_active: boolean
@@ -24,11 +31,19 @@ export type Database = {
           is_current: boolean | null
           name: string
           normal_side: string
+          subclasificacion_resultado: string | null
           type: string
           user_id: string
         }
         Insert: {
+          afecta_ebitda?: boolean | null
+          clasificacion_flujo?: string | null
+          clasificacion_resultado?: string | null
           created_at?: string
+          es_capital_trabajo?: boolean | null
+          es_extraordinaria?: boolean | null
+          es_financiera?: boolean | null
+          es_partida_no_monetaria?: boolean | null
           expense_category?: string | null
           id: string
           is_active?: boolean
@@ -36,11 +51,19 @@ export type Database = {
           is_current?: boolean | null
           name: string
           normal_side: string
+          subclasificacion_resultado?: string | null
           type: string
           user_id: string
         }
         Update: {
+          afecta_ebitda?: boolean | null
+          clasificacion_flujo?: string | null
+          clasificacion_resultado?: string | null
           created_at?: string
+          es_capital_trabajo?: boolean | null
+          es_extraordinaria?: boolean | null
+          es_financiera?: boolean | null
+          es_partida_no_monetaria?: boolean | null
           expense_category?: string | null
           id?: string
           is_active?: boolean
@@ -48,6 +71,7 @@ export type Database = {
           is_current?: boolean | null
           name?: string
           normal_side?: string
+          subclasificacion_resultado?: string | null
           type?: string
           user_id?: string
         }
