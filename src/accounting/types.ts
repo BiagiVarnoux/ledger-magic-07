@@ -3,20 +3,51 @@ export const ACCOUNT_TYPES = ["ACTIVO", "PASIVO", "PATRIMONIO", "INGRESO", "GAST
 export const SIDES = ["DEBE", "HABER"] as const;
 export const EXPENSE_CATEGORIES = ["COSTO_VENTAS", "GASTO_OPERATIVO", "OTRO_GASTO"] as const;
 
+export const CLASIFICACION_RESULTADO = [
+  'ingreso_operativo', 'ingreso_no_operativo',
+  'costo_ventas', 'gasto_operativo', 'gasto_no_operativo', 'impuesto'
+] as const;
+
+export const SUBCLASIFICACION_RESULTADO = [
+  'ventas', 'devoluciones', 'otros_ingresos_operativos',
+  'costo_mercaderia', 'costo_produccion', 'costo_servicios',
+  'administrativos', 'ventas_marketing', 'logistica', 'depreciacion', 'amortizacion',
+  'intereses', 'comisiones_bancarias', 'diferencial_cambiario',
+  'otro'
+] as const;
+
+export const CLASIFICACION_FLUJO = [
+  'operacion', 'inversion', 'financiamiento', 'no_aplica'
+] as const;
+
 export type AccountType = typeof ACCOUNT_TYPES[number];
 export type Side = typeof SIDES[number];
 export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
+export type ClasificacionResultado = typeof CLASIFICACION_RESULTADO[number];
+export type SubclasificacionResultado = typeof SUBCLASIFICACION_RESULTADO[number];
+export type ClasificacionFlujo = typeof CLASIFICACION_FLUJO[number];
 
 export interface Account {
-  id: string;         // ej. "A.1"
+  id: string;
   name: string;
-  type: AccountType;  // ACTIVO | PASIVO | PATRIMONIO | INGRESO | GASTO
-  normal_side: Side;  // DEBE | HABER
+  type: AccountType;
+  normal_side: Side;
   is_active: boolean;
-  // Classification fields
-  expense_category?: ExpenseCategory | null;  // Solo para tipo GASTO
-  is_cash_equivalent?: boolean;                // Solo para tipo ACTIVO
-  is_current?: boolean | null;                 // Para ACTIVO y PASIVO
+  // Legacy classification fields (kept for backward compatibility)
+  expense_category?: ExpenseCategory | null;
+  is_cash_equivalent?: boolean;
+  is_current?: boolean | null;
+  // Advanced classification - Income Statement
+  clasificacion_resultado?: ClasificacionResultado | null;
+  subclasificacion_resultado?: SubclasificacionResultado | string | null;
+  // Advanced classification - Cash Flow
+  clasificacion_flujo?: ClasificacionFlujo | null;
+  // Financial properties
+  es_partida_no_monetaria?: boolean;
+  es_capital_trabajo?: boolean;
+  es_financiera?: boolean;
+  es_extraordinaria?: boolean;
+  afecta_ebitda?: boolean;
 }
 
 export interface JournalLine { 
@@ -43,21 +74,20 @@ export interface AuxiliaryLedgerDefinition {
 export interface AuxiliaryLedgerEntry {
   id: string;
   client_name: string;
-  account_id: string;  // Mantener por compatibilidad
-  definition_id?: string;  // Nuevo: FK a AuxiliaryLedgerDefinition
-  total_balance: number;  // calculated from movements
+  account_id: string;
+  definition_id?: string;
+  total_balance: number;
 }
 
 export interface AuxiliaryMovementDetail {
   id: string;
-  aux_entry_id: string; // ID del cliente en auxiliary_ledger
-  journal_entry_id: string; // ID del asiento de diario
+  aux_entry_id: string;
+  journal_entry_id: string;
   movement_date: string;
   amount: number;
-  movement_type: 'INCREASE' | 'DECREASE'; // Aumento o Disminución
+  movement_type: 'INCREASE' | 'DECREASE';
 }
 
-// Kárdex Types (Costo Promedio Ponderado)
 export interface KardexDefinition {
   id: string;
   name: string;
@@ -88,6 +118,41 @@ export interface KardexMovement {
   journal_entry_id?: string;
   created_at: string;
 }
+
+// Label maps for UI display
+export const CLASIFICACION_RESULTADO_LABELS: Record<ClasificacionResultado, string> = {
+  ingreso_operativo: 'Ingreso Operativo',
+  ingreso_no_operativo: 'Ingreso No Operativo',
+  costo_ventas: 'Costo de Ventas',
+  gasto_operativo: 'Gasto Operativo',
+  gasto_no_operativo: 'Gasto No Operativo',
+  impuesto: 'Impuesto',
+};
+
+export const CLASIFICACION_FLUJO_LABELS: Record<ClasificacionFlujo, string> = {
+  operacion: 'Operación',
+  inversion: 'Inversión',
+  financiamiento: 'Financiamiento',
+  no_aplica: 'No Aplica',
+};
+
+export const SUBCLASIFICACION_RESULTADO_LABELS: Record<SubclasificacionResultado, string> = {
+  ventas: 'Ventas',
+  devoluciones: 'Devoluciones',
+  otros_ingresos_operativos: 'Otros Ingresos Operativos',
+  costo_mercaderia: 'Costo de Mercadería',
+  costo_produccion: 'Costo de Producción',
+  costo_servicios: 'Costo de Servicios',
+  administrativos: 'Administrativos',
+  ventas_marketing: 'Ventas y Marketing',
+  logistica: 'Logística',
+  depreciacion: 'Depreciación',
+  amortizacion: 'Amortización',
+  intereses: 'Intereses',
+  comisiones_bancarias: 'Comisiones Bancarias',
+  diferencial_cambiario: 'Diferencial Cambiario',
+  otro: 'Otro',
+};
 
 // Seeds (ES)
 export const seedAccounts: Account[] = [
