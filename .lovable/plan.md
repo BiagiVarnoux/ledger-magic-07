@@ -1,84 +1,58 @@
+## Corregir el Asistente IA: datos "undefined" y acceso limitado
 
+### Problemas encontrados
 
-## Asistente de IA Contable con Gemini
+Hay dos problemas claros en el codigo actual:
 
-### Que hace
+1. **Cuentas aparecen como "undefined"**: La funcion `buildAccountingContext` usa nombres de propiedades en camelCase (`l.accountId`, `a.normalSide`, `a.isActive`) pero los datos reales usan snake_case (`l.account_id`, `a.normal_side`, `a.is_active`). Por eso todo aparece como "undefined".
+2. **Solo 20 entradas**: La funcion solo envia las ultimas 20 entradas del libro diario (`entries.slice(-20)`), lo cual es insuficiente para analizar trimestres completos.
 
-Agrega una nueva pestana **"Asistente IA"** en la navegacion. Al abrirla, veras un chat donde puedes hacer preguntas sobre tu contabilidad. La IA tendra acceso completo a:
+### Solucion
 
-- Plan de cuentas con tipos y saldos
-- Libro diario (entradas recientes)
-- Resumen del Balance General y Estado de Resultados
-- Libros auxiliares y definiciones
+Modificar **un solo archivo**: `src/pages/ai-assistant/Index.tsx`
 
-Podras pedirle cosas como:
-- "Cual es mi margen bruto este trimestre?"
-- "Dame un resumen ejecutivo de mis finanzas"
-- "Compara mis gastos Q3 vs Q4"
-- "Que cuentas tienen saldo inusual?"
+#### Cambios en `buildAccountingContext`:
 
-### Sobre modificar el codigo
+1. **Corregir los nombres de propiedades** a snake_case para que coincidan con los tipos reales:
+  - `a.normalSide` -> `a.normal_side`
+  - `a.isActive` -> `a.is_active`
+  - `a.expenseCategory` -> `a.expense_category`
+  - `l.accountId` -> `l.account_id`
+  - `d.accountId` -> `d.account_id`
+2. **Enviar TODAS las entradas** del libro diario en vez de solo las ultimas 20. Cambiar el titulo de la seccion y eliminar el `.slice(-20)`.
+3. **Resolver los nombres de cuenta** en las lineas del diario: en vez de mostrar solo el codigo de cuenta, buscar el nombre completo de la cuenta para dar mejor contexto a la IA. Ejemplo: en vez de `A.1: Debito=660`, mostrara `A.1 Banco MN: Debito=660`.
+4. **Agregar saldos por cuenta**: Calcular y mostrar el saldo acumulado de cada cuenta para que la IA tenga acceso a los balances sin necesidad de calcularlo ella misma.
+5. **Incluir informacion de equivalentes de efectivo**: Agregar la columna `is_cash_equivalent` en el resumen del plan de cuentas para que la IA pueda identificar cuentas de efectivo al analizar flujos de caja.
+6. EL ASISTENTE IA TIENE QUE TENER ACCESO A LOS LIBROS MAYORES, A LOS BALANCES, AL PLAN DE CUENTAS, ETC. NO SOLO A LOS LIBROS DIARIOS !!!!!
+  &nbsp;
 
-Una aplicacion web desplegada **no puede auto-editarse**. Sin embargo, la IA SI podra:
-- **Analizar la estructura** del programa (le pasamos un resumen de las paginas y funcionalidades)
-- **Sugerir mejoras** especificas que luego puedes copiar y pegar aqui en Lovable
-- Por ejemplo: "Sugiereme como agregar una columna de porcentaje al Balance General" y la IA te dara la sugerencia que pegas en este chat
+### Resultado esperado
 
----
+Despues de estos cambios, cuando le preguntes al Asistente IA sobre tu flujo de caja del Q4 2025:
 
-### Cambios Tecnicos
+- Vera todas las entradas de ese periodo (no solo 20)
+- Las cuentas apareceran con sus nombres correctos (no "undefined")
+- Tendra los saldos calculados de cada cuenta
+- Podra identificar cuentas de efectivo correctamente
 
-#### 1. Edge Function: `supabase/functions/chat/index.ts` (CREAR)
+### Detalles tecnicos
 
-- Recibe mensajes del usuario + contexto contable (cuentas, saldos, entradas)
-- Llama al gateway de Lovable AI (Gemini) con streaming SSE
-- System prompt especializado: asistente contable experto en NIIF, responde en espanol
-- Maneja errores 429 (rate limit) y 402 (creditos)
+Archivo a modificar: `src/pages/ai-assistant/Index.tsx`
 
-#### 2. Nueva pagina: `src/pages/ai-assistant/Index.tsx` (CREAR)
+La funcion `buildAccountingContext` se reescribira para:
 
-- Chat con mensajes usuario/IA, scroll automatico
-- Al cargar, recopila automaticamente el contexto contable desde `useAccounting()`
-- Streaming token por token (respuesta fluida)
-- Renderizado markdown para respuestas formateadas (tablas, listas, negritas)
-- Indicador "escribiendo..." mientras genera
+```text
+Antes:
+  l.accountId        -> undefined
+  a.normalSide       -> undefined  
+  a.isActive         -> undefined
+  entries.slice(-20) -> solo 20 entradas
 
-El contexto contable que se envia incluye:
-- Lista completa de cuentas con tipo, saldo normal y categoria
-- Ultimas 20 entradas del libro diario con sus lineas
-- Totales por tipo de cuenta (total activos, pasivos, patrimonio, ingresos, gastos)
-- Definiciones de libros auxiliares
+Despues:
+  l.account_id       -> "A.1"
+  a.normal_side      -> "DEBE"
+  a.is_active        -> true
+  entries (completo)  -> todas las entradas
+```
 
-#### 3. Navegacion y ruta
-
-- **`src/App.tsx`**: Agregar ruta `/ai-assistant`
-- **`src/components/layout/AppShell.tsx`**: Agregar boton "Asistente IA" en la nav (visible para owners)
-
-#### 4. Configuracion
-
-- **`supabase/config.toml`**: Registrar funcion `chat` con `verify_jwt = false`
-- Usa `LOVABLE_API_KEY` (ya disponible automaticamente, no necesitas configurar nada)
-
----
-
-### Archivos a crear/modificar
-
-| Archivo | Accion |
-|---------|--------|
-| `supabase/functions/chat/index.ts` | Crear - Edge function con streaming |
-| `supabase/config.toml` | Modificar - Registrar funcion chat |
-| `src/pages/ai-assistant/Index.tsx` | Crear - Pagina del chat |
-| `src/App.tsx` | Modificar - Agregar ruta |
-| `src/components/layout/AppShell.tsx` | Modificar - Agregar enlace en nav |
-
----
-
-### Flujo de uso
-
-1. Clic en "Asistente IA" en la barra de navegacion
-2. Se abre el chat, el sistema carga tu contexto contable automaticamente
-3. Escribes una pregunta o solicitud
-4. La IA responde en tiempo real con acceso a todos tus datos
-5. Puedes continuar la conversacion con preguntas de seguimiento
-6. Si pides sugerencias de codigo, la IA te dara texto que puedes copiar y pegar en Lovable
-
+Se agrega una seccion nueva de "Saldos por Cuenta" que calcula debitos totales menos creditos totales por cada cuenta, para que la IA tenga los balances directamente disponibles.
