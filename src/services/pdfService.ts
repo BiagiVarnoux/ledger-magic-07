@@ -122,18 +122,30 @@ export interface IncomeStatementData {
 }
 
 export interface NIIFIncomeStatementData {
-  ventas: Array<{ id: string; name: string; amount: number }>;
-  totalVentas: number;
+  ingresosOperativos: Array<{ id: string; name: string; amount: number }>;
+  devoluciones: Array<{ id: string; name: string; amount: number }>;
+  ingresosNetos: number;
+  otrosIngresosOperativos: Array<{ id: string; name: string; amount: number }>;
+  totalIngresosOperativos: number;
   costoVentas: Array<{ id: string; name: string; amount: number }>;
   totalCostoVentas: number;
   utilidadBruta: number;
   margenBruto: number;
   gastosOperativos: Array<{ id: string; name: string; amount: number }>;
+  depreciacionAmortizacion: Array<{ id: string; name: string; amount: number }>;
+  totalGastosOperativosSinDA: number;
+  totalDA: number;
   totalGastosOperativos: number;
-  utilidadOperativa: number;
+  ebitda: number;
+  margenEbitda: number;
+  ebit: number;
   margenOperativo: number;
-  otrosGastos: Array<{ id: string; name: string; amount: number }>;
-  totalOtrosGastos: number;
+  ingresosFinancieros: Array<{ id: string; name: string; amount: number }>;
+  gastosFinancieros: Array<{ id: string; name: string; amount: number }>;
+  resultadoFinanciero: number;
+  ebt: number;
+  extraordinarios: Array<{ id: string; name: string; amount: number }>;
+  totalExtraordinarios: number;
   utilidadAntesImpuestos: number;
   impuesto: number;
   tasaImpuesto: number;
@@ -142,40 +154,137 @@ export interface NIIFIncomeStatementData {
   margenNeto: number;
 }
 
-export function exportIncomeStatementNIIFToPDF(data: NIIFIncomeStatementData, period: string): void {
+export function exportIncomeStatementNIIFToPDF(data: NIIFIncomeStatementData, period: string, previousData?: NIIFIncomeStatementData): void {
   const doc = new jsPDF();
   let startY = addReportHeader(doc, { title: 'Estado de Resultados (NIIF)', period: `Período: ${period}` });
 
-  const body: any[] = [
-    [{ content: 'INGRESOS POR VENTAS', colSpan: 3, styles: { fillColor: [200, 230, 200], fontStyle: 'bold' } }],
-    ...data.ventas.map(v => [v.id, v.name, fmt(v.amount)]),
-    [{ content: '', styles: { fontStyle: 'bold' } }, 'Total Ingresos', { content: fmt(data.totalVentas), styles: { fontStyle: 'bold' } }],
-    [{ content: '(-) COSTO DE VENTAS', colSpan: 3, styles: { fillColor: [255, 230, 200], fontStyle: 'bold' } }],
-    ...data.costoVentas.map(c => [c.id, c.name, `(${fmt(c.amount)})`]),
-    [{ content: 'UTILIDAD BRUTA', colSpan: 2, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } }, 
-     { content: `${fmt(data.utilidadBruta)} (${data.margenBruto.toFixed(1)}%)`, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } }],
-    [{ content: '(-) GASTOS OPERATIVOS', colSpan: 3, styles: { fillColor: [230, 200, 240], fontStyle: 'bold' } }],
-    ...data.gastosOperativos.map(g => [g.id, g.name, `(${fmt(g.amount)})`]),
-    [{ content: 'UTILIDAD OPERATIVA', colSpan: 2, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } },
-     { content: `${fmt(data.utilidadOperativa)} (${data.margenOperativo.toFixed(1)}%)`, styles: { fillColor: [200, 220, 255], fontStyle: 'bold' } }],
-  ];
+  const hasPrev = !!previousData;
+  const head = hasPrev
+    ? [['Código', 'Concepto', 'Actual', 'Anterior', 'Var.']]
+    : [['Código', 'Concepto', 'Monto']];
 
-  if (data.otrosGastos.length > 0) {
-    body.push([{ content: '(-) OTROS GASTOS', colSpan: 3, styles: { fillColor: [230, 230, 230], fontStyle: 'bold' } }]);
-    data.otrosGastos.forEach(o => body.push([o.id, o.name, `(${fmt(o.amount)})`]));
+  const fmtRow = (id: string, name: string, amount: number, prevAmount?: number, isExpense = false) => {
+    const val = isExpense ? `(${fmt(amount)})` : fmt(amount);
+    if (!hasPrev) return [id, name, val];
+    const prevVal = prevAmount !== undefined ? (isExpense ? `(${fmt(prevAmount)})` : fmt(prevAmount)) : '—';
+    const varPct = prevAmount && prevAmount !== 0 ? `${(((amount - prevAmount) / Math.abs(prevAmount)) * 100).toFixed(1)}%` : '—';
+    return [id, name, val, prevVal, varPct];
+  };
+
+  const sectionHeader = (title: string, color: [number, number, number]) => {
+    const colSpan = hasPrev ? 5 : 3;
+    return [{ content: title, colSpan, styles: { fillColor: color, fontStyle: 'bold' } }];
+  };
+
+  const highlightRow = (label: string, value: number, margin?: number, color: [number, number, number] = [200, 220, 255], prevValue?: number) => {
+    const text = margin !== undefined ? `${fmt(value)} (${margin.toFixed(1)}%)` : fmt(value);
+    const colSpan = 2;
+    const row: any[] = [
+      { content: label, colSpan, styles: { fillColor: color, fontStyle: 'bold' } },
+      { content: text, styles: { fillColor: color, fontStyle: 'bold' } },
+    ];
+    if (hasPrev) {
+      const prevText = prevValue !== undefined ? fmt(prevValue) : '—';
+      const varPct = prevValue !== undefined && prevValue !== 0 ? `${(((value - prevValue) / Math.abs(prevValue)) * 100).toFixed(1)}%` : '—';
+      row.push({ content: prevText, styles: { fillColor: color } });
+      row.push({ content: varPct, styles: { fillColor: color } });
+    }
+    return row;
+  };
+
+  const body: any[] = [];
+
+  // 1. Ingresos Operativos
+  body.push(sectionHeader('1. INGRESOS OPERATIVOS', [200, 230, 200]));
+  data.ingresosOperativos.forEach(v => {
+    const prev = previousData?.ingresosOperativos.find(p => p.id === v.id);
+    body.push(fmtRow(v.id, v.name, v.amount, prev?.amount));
+  });
+  if (data.devoluciones.length > 0) {
+    data.devoluciones.forEach(d => {
+      const prev = previousData?.devoluciones.find(p => p.id === d.id);
+      body.push(fmtRow(d.id, `(-) ${d.name}`, d.amount, prev?.amount, true));
+    });
+  }
+  if (data.otrosIngresosOperativos.length > 0) {
+    data.otrosIngresosOperativos.forEach(o => {
+      const prev = previousData?.otrosIngresosOperativos.find(p => p.id === o.id);
+      body.push(fmtRow(o.id, o.name, o.amount, prev?.amount));
+    });
+  }
+  body.push(highlightRow('Total Ingresos Operativos', data.totalIngresosOperativos, undefined, [180, 220, 180], previousData?.totalIngresosOperativos));
+
+  // 2. Costo de Ventas
+  body.push(sectionHeader('2. (-) COSTO DE VENTAS', [255, 230, 200]));
+  data.costoVentas.forEach(c => {
+    const prev = previousData?.costoVentas.find(p => p.id === c.id);
+    body.push(fmtRow(c.id, c.name, c.amount, prev?.amount, true));
+  });
+
+  // Utilidad Bruta
+  body.push(highlightRow('UTILIDAD BRUTA', data.utilidadBruta, data.margenBruto, [200, 220, 255], previousData?.utilidadBruta));
+
+  // 3. Gastos Operativos
+  body.push(sectionHeader('3. (-) GASTOS OPERATIVOS', [230, 200, 240]));
+  data.gastosOperativos.forEach(g => {
+    const prev = previousData?.gastosOperativos.find(p => p.id === g.id);
+    body.push(fmtRow(g.id, g.name, g.amount, prev?.amount, true));
+  });
+  if (data.depreciacionAmortizacion.length > 0) {
+    data.depreciacionAmortizacion.forEach(d => {
+      const prev = previousData?.depreciacionAmortizacion.find(p => p.id === d.id);
+      body.push(fmtRow(d.id, `D&A: ${d.name}`, d.amount, prev?.amount, true));
+    });
   }
 
-  body.push([{ content: 'UTILIDAD ANTES DE IMPUESTOS', colSpan: 2, styles: { fillColor: [255, 243, 205], fontStyle: 'bold' } },
-    { content: fmt(data.utilidadAntesImpuestos), styles: { fillColor: [255, 243, 205], fontStyle: 'bold' } }]);
+  // EBITDA
+  body.push(highlightRow('EBITDA', data.ebitda, data.margenEbitda, [200, 240, 240], previousData?.ebitda));
 
-  if (data.taxEnabled) {
-    body.push(['—', `(-) Impuesto (${data.tasaImpuesto}%)`, `(${fmt(data.impuesto)})`]);
+  // EBIT
+  body.push(highlightRow('EBIT (Resultado Operativo)', data.ebit, data.margenOperativo, [200, 220, 255], previousData?.ebit));
+
+  // 4. Resultado Financiero
+  if (data.ingresosFinancieros.length > 0 || data.gastosFinancieros.length > 0) {
+    body.push(sectionHeader('4. RESULTADO FINANCIERO', [220, 220, 230]));
+    data.ingresosFinancieros.forEach(f => {
+      const prev = previousData?.ingresosFinancieros.find(p => p.id === f.id);
+      body.push(fmtRow(f.id, `(+) ${f.name}`, f.amount, prev?.amount));
+    });
+    data.gastosFinancieros.forEach(f => {
+      const prev = previousData?.gastosFinancieros.find(p => p.id === f.id);
+      body.push(fmtRow(f.id, `(-) ${f.name}`, f.amount, prev?.amount, true));
+    });
+    body.push(highlightRow('Resultado Financiero', data.resultadoFinanciero, undefined, [220, 220, 230], previousData?.resultadoFinanciero));
   }
 
-  body.push([{ content: 'UTILIDAD NETA', colSpan: 2, styles: { fillColor: data.utilidadNeta >= 0 ? [200, 230, 200] : [255, 200, 200], fontStyle: 'bold' } },
-    { content: `${fmt(data.utilidadNeta)} (${data.margenNeto.toFixed(1)}%)`, styles: { fillColor: data.utilidadNeta >= 0 ? [200, 230, 200] : [255, 200, 200], fontStyle: 'bold' } }]);
+  // EBT
+  body.push(highlightRow('EBT (Antes de Impuestos)', data.ebt, undefined, [255, 243, 205], previousData?.ebt));
 
-  autoTable(doc, { startY, head: [['Código', 'Concepto', 'Monto']], body, styles: { fontSize: 9 }, headStyles: { fillColor: [66, 66, 66] }, columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } } });
+  // 5. Extraordinarios
+  if (data.extraordinarios.length > 0) {
+    body.push(sectionHeader('5. (-) PARTIDAS EXTRAORDINARIAS', [230, 230, 230]));
+    data.extraordinarios.forEach(e => {
+      const prev = previousData?.extraordinarios.find(p => p.id === e.id);
+      body.push(fmtRow(e.id, e.name, e.amount, prev?.amount, true));
+    });
+  }
+
+  // Impuestos
+  if (data.taxEnabled || data.impuesto > 0) {
+    body.push(fmtRow('—', `(-) Impuesto (${data.tasaImpuesto}%)`, data.impuesto, previousData?.impuesto, true));
+  }
+
+  // Utilidad Neta
+  const netColor: [number, number, number] = data.utilidadNeta >= 0 ? [200, 230, 200] : [255, 200, 200];
+  body.push(highlightRow('UTILIDAD NETA', data.utilidadNeta, data.margenNeto, netColor, previousData?.utilidadNeta));
+
+  const colStyles: Record<number, any> = { 0: { cellWidth: 25 }, 2: { halign: 'right' } };
+  if (hasPrev) {
+    colStyles[3] = { halign: 'right' };
+    colStyles[4] = { halign: 'right' };
+  }
+
+  autoTable(doc, { startY, head, body, styles: { fontSize: 9 }, headStyles: { fillColor: [66, 66, 66] }, columnStyles: colStyles });
   addFooter(doc);
   doc.save(`estado-resultados-niif-${period.replace(/\s/g, '-')}.pdf`);
 }
