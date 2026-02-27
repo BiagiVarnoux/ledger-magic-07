@@ -24,8 +24,8 @@ export interface AIParseResult {
   raw_interpretation: string;
 }
 
-const GEMINI_API_KEY = 'AIzaSyBCnbzs1cuQwVuXykAYaxNIDlOO9ZWw8eY';
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_API_KEY = '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';
+const GEMINI_API_URL = `https://api.groq.com/openai/v1`;
 
 function buildPrompt(accounts: Account[], userText: string, today: string, yesterdayISO: string): string {
   const accountList = accounts
