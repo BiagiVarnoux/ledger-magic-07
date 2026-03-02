@@ -8,11 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Trash2, Save, Banknote, Calendar, Tag, BarChart3, TrendingUp, Settings2 } from 'lucide-react';
+import { Pencil, Trash2, Save, Banknote, Calendar, Tag, BarChart3, TrendingUp, Settings2, FileDown, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
+import { AccountsBulkUploadModal } from '@/components/accounts/AccountsBulkUploadModal';
+import { exportChartOfAccountsToPDF } from '@/services/pdfService';
+import { downloadCSV } from '@/services/exportService';
 import {
   Account, ACCOUNT_TYPES, SIDES,
   CLASIFICACION_RESULTADO, ClasificacionResultado, CLASIFICACION_RESULTADO_LABELS,
@@ -60,6 +63,27 @@ export default function AccountsPage() {
   const [accDraft, setAccDraft] = useState<Partial<Account>>(getDefaultDraft());
   const [editingAccId, setEditingAccId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+
+  function exportAccountsToCSV() {
+    const headers = ['codigo','nombre','tipo','lado_normal','activa','clasificacion_resultado','subclasificacion_resultado','clasificacion_flujo','es_efectivo','es_corriente','es_partida_no_monetaria','es_capital_trabajo','es_financiera','es_extraordinaria','afecta_ebitda'];
+    const rows = accounts.map(a => [
+      a.id, a.name, a.type, a.normal_side, String(a.is_active),
+      a.clasificacion_resultado || '', a.subclasificacion_resultado || '', a.clasificacion_flujo || '',
+      String(!!a.is_cash_equivalent), a.is_current === null ? '' : String(a.is_current),
+      String(!!a.es_partida_no_monetaria), String(!!a.es_capital_trabajo),
+      String(!!a.es_financiera), String(!!a.es_extraordinaria), String(a.afecta_ebitda !== false),
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(x => `"${(x ?? '').toString().replace(/"/g, '""')}"`).join(',')).join('\n');
+    downloadCSV(csv, 'plan_de_cuentas.csv');
+  }
+
+  async function handleBulkImport(importedAccounts: Account[]) {
+    for (const acc of importedAccounts) {
+      await adapter.upsertAccount(acc);
+    }
+    setAccounts(await adapter.loadAccounts());
+  }
 
   async function upsertAccount() {
     if (isReadOnly) { toast.error("No tienes permisos para modificar cuentas"); return; }
@@ -134,8 +158,21 @@ export default function AccountsPage() {
       <ReadOnlyBanner />
 
       <Card className="shadow-sm">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle>Plan de Cuentas</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportChartOfAccountsToPDF(accounts)}>
+              <FileDown className="w-4 h-4 mr-1" />PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportAccountsToCSV}>
+              <FileDown className="w-4 h-4 mr-1" />CSV
+            </Button>
+            {!isReadOnly && (
+              <Button variant="outline" size="sm" onClick={() => setShowBulkUpload(true)}>
+                <Upload className="w-4 h-4 mr-1" />Carga Masiva
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {!isReadOnly && (
@@ -388,6 +425,13 @@ export default function AccountsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <AccountsBulkUploadModal
+        isOpen={showBulkUpload}
+        onClose={() => setShowBulkUpload(false)}
+        onImport={handleBulkImport}
+        existingAccounts={accounts}
+      />
     </div>
   );
 }

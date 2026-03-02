@@ -590,3 +590,55 @@ export function exportCashFlowToPDF(data: CashFlowData, period: string): void {
   addFooter(doc);
   doc.save(`flujo-caja-${period.replace(/\s/g, '-')}.pdf`);
 }
+
+export interface ChartOfAccountsRow {
+  id: string;
+  name: string;
+  type: string;
+  normal_side: string;
+  is_active: boolean;
+  clasificacion_resultado?: string | null;
+  subclasificacion_resultado?: string | null;
+  clasificacion_flujo?: string | null;
+  is_cash_equivalent?: boolean;
+  is_current?: boolean | null;
+  es_partida_no_monetaria?: boolean;
+  es_capital_trabajo?: boolean;
+  es_financiera?: boolean;
+  es_extraordinaria?: boolean;
+  afecta_ebitda?: boolean;
+}
+
+export function exportChartOfAccountsToPDF(accounts: ChartOfAccountsRow[]): void {
+  const doc = new jsPDF('landscape');
+  const startY = addReportHeader(doc, { title: 'Plan de Cuentas', date: new Date().toLocaleDateString('es') });
+
+  const boolLabel = (v?: boolean | null) => v === true ? 'Sí' : v === false ? 'No' : '—';
+
+  autoTable(doc, {
+    startY,
+    head: [['Código', 'Nombre', 'Tipo', 'Lado', 'Estado', 'Clasif. Resultado', 'Subclas.', 'Flujo', 'Efectivo', 'Corriente', 'No Mon.', 'Financ.', 'Extrao.', 'EBITDA']],
+    body: accounts.map(a => [
+      a.id,
+      a.name,
+      a.type,
+      a.normal_side,
+      a.is_active ? 'Activa' : 'Inactiva',
+      a.clasificacion_resultado || '—',
+      a.subclasificacion_resultado || '—',
+      a.clasificacion_flujo || '—',
+      boolLabel(a.is_cash_equivalent),
+      boolLabel(a.is_current),
+      boolLabel(a.es_partida_no_monetaria),
+      boolLabel(a.es_financiera),
+      boolLabel(a.es_extraordinaria),
+      boolLabel(a.afecta_ebitda),
+    ]),
+    styles: { fontSize: 7 },
+    headStyles: { fillColor: [66, 66, 66], fontSize: 7 },
+    columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 35 } },
+  });
+
+  addFooter(doc);
+  doc.save('plan-de-cuentas.pdf');
+}
