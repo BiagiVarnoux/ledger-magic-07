@@ -333,7 +333,7 @@ export default function JournalPage() {
       credit: line.credit > 0 ? String(line.credit) : '',
     }));
     // Pad with empty lines if needed (minimum 3)
-    while (draftLines.length < 3) draftLines.push({});
+    while (draftLines.length < 3) draftLines.push({ account_id: '', debit: '', credit: '' });
     form.setLines(draftLines);
     // Scroll to form
     document.querySelector('[data-journal-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

@@ -54,12 +54,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
                   _user_id: session.user.id
                 });
                 
-                if (data?.success) {
+                const result = data as Record<string, unknown> | null;
+                if (result?.success) {
                   localStorage.removeItem('pending_invitation_code');
                   console.log('Invitation code redeemed successfully');
                   window.location.reload();
                 } else {
-                  console.error('Failed to redeem code:', data?.error);
+                  console.error('Failed to redeem code:', (result as any)?.error);
                   localStorage.removeItem('pending_invitation_code');
                 }
               } catch (error) {
