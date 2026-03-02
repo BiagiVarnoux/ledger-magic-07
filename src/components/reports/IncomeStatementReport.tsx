@@ -72,10 +72,9 @@ export interface ProfessionalIncomeStatement {
   // UTILIDAD ANTES DE IMPUESTOS
   utilidadAntesImpuestos: number;
 
-  // IMPUESTO
+  // 6. IMPUESTOS
+  impuestosCuentas: AccountDetail[];
   impuesto: number;
-  tasaImpuesto: number;
-  taxEnabled: boolean;
 
   // UTILIDAD NETA
   utilidadNeta: number;
@@ -157,8 +156,7 @@ function computeIncomeStatement(
   accounts: Account[],
   entries: JournalEntry[],
   isInPeriod: (date: string) => boolean,
-  settings: { tax_rate: number; tax_enabled: boolean; cost_of_sales_keywords: string[]; operating_expense_keywords: string[]; other_expense_keywords: string[] },
-  periodType: PeriodType
+  settings: { cost_of_sales_keywords: string[]; operating_expense_keywords: string[]; other_expense_keywords: string[] },
 ): ProfessionalIncomeStatement {
   const maps: Record<AccountClassification, Map<string, AccountDetail>> = {
     ingreso_operativo: new Map(),
@@ -241,12 +239,8 @@ function computeIncomeStatement(
   const totalExtraordinarios = round2(extraordinarios.reduce((s, x) => s + x.amount, 0));
   const utilidadAntesImpuestos = round2(ebt - totalExtraordinarios);
 
-  // Tax: from classified tax accounts OR settings-based annual calculation
-  const totalImpuestoCuentas = round2(impuestosCuentas.reduce((s, x) => s + x.amount, 0));
-  const taxEnabled = periodType === 'annual' && settings.tax_enabled;
-  const impuesto = totalImpuestoCuentas > 0
-    ? totalImpuestoCuentas
-    : (taxEnabled && utilidadAntesImpuestos > 0 ? round2(utilidadAntesImpuestos * (settings.tax_rate / 100)) : 0);
+  // Tax: only from classified tax accounts
+  const impuesto = round2(impuestosCuentas.reduce((s, x) => s + x.amount, 0));
 
   const utilidadNeta = round2(utilidadAntesImpuestos - impuesto);
 
@@ -281,9 +275,8 @@ function computeIncomeStatement(
     extraordinarios,
     totalExtraordinarios,
     utilidadAntesImpuestos,
+    impuestosCuentas,
     impuesto,
-    tasaImpuesto: settings.tax_rate,
-    taxEnabled,
     utilidadNeta,
     margenNeto: calcMargin(utilidadNeta),
   };
@@ -319,13 +312,13 @@ export function IncomeStatementReport({
   }, [periodType, currentQuarter, selectedYear]);
 
   const current = useMemo(
-    () => computeIncomeStatement(accounts, entries, isInPeriod, settings, periodType),
-    [accounts, entries, isInPeriod, settings, periodType]
+    () => computeIncomeStatement(accounts, entries, isInPeriod, settings),
+    [accounts, entries, isInPeriod, settings]
   );
 
   const previous = useMemo(
-    () => computeIncomeStatement(accounts, entries, isInPreviousPeriod, settings, periodType),
-    [accounts, entries, isInPreviousPeriod, settings, periodType]
+    () => computeIncomeStatement(accounts, entries, isInPreviousPeriod, settings),
+    [accounts, entries, isInPreviousPeriod, settings]
   );
 
   const hasPreviousData = previous.totalIngresosOperativos !== 0 || previous.totalCostoVentas !== 0 || previous.totalGastosOperativos !== 0;
@@ -576,23 +569,17 @@ export function IncomeStatementReport({
                 </>
               )}
 
-              {/* IMPUESTOS */}
-              {(current.impuesto > 0 || current.taxEnabled) && (
-                <TableRow>
-                  <TableCell className="font-mono text-xs">—</TableCell>
-                  <TableCell>(-) Impuesto a la Renta ({current.tasaImpuesto}%)</TableCell>
-                  <TableCell className="text-right text-red-600">({fmt(current.impuesto)})</TableCell>
-                  {hasPreviousData && (
-                    <>
-                      <TableCell className="text-right text-red-400">
-                        {previous.impuesto > 0 ? `(${fmt(previous.impuesto)})` : '—'}
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
-                        {previous.impuesto > 0 ? fmtVar(current.impuesto, previous.impuesto) : '—'}
-                      </TableCell>
-                    </>
-                  )}
-                </TableRow>
+              {/* 6. IMPUESTOS */}
+              {current.impuestosCuentas.length > 0 && (
+                <>
+                  <TableRow className="bg-red-50 dark:bg-red-950/30">
+                    <TableCell colSpan={colSpanFull} className="font-semibold text-red-700 dark:text-red-400">
+                      6. (-) IMPUESTOS
+                    </TableCell>
+                  </TableRow>
+                  {renderDetailRows(current.impuestosCuentas, previous.impuestosCuentas, true)}
+                  {renderSubtotalRow('Total Impuestos', current.impuesto, 'bg-red-100 dark:bg-red-950/50', previous.impuesto)}
+                </>
               )}
 
               {/* UTILIDAD NETA */}
@@ -655,13 +642,6 @@ export function IncomeStatementReport({
             </CardContent>
           </Card>
         </div>
-
-        {/* Tax Notice */}
-        {periodType === 'annual' && !settings.tax_enabled && (
-          <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg">
-            💡 El cálculo de impuestos está deshabilitado. Puedes habilitarlo en Configuración → Impuestos.
-          </div>
-        )}
 
         {hasPreviousData && (
           <div className="text-xs text-muted-foreground mt-2">

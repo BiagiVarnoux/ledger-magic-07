@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { BackupRestoreModal } from '@/components/backup/BackupRestoreModal';
 import { AuditLogModal } from '@/components/audit/AuditLogModal';
-import { TaxSettingsCard } from '@/components/settings/TaxSettingsCard';
+
 
 interface InvitationCode {
   id: string;
@@ -273,9 +273,6 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-bold">Configuración</h1>
         <p className="text-muted-foreground">Gestiona el acceso de usuarios y respaldos</p>
       </div>
-
-      {/* Tax Settings */}
-      <TaxSettingsCard />
 
       {/* Backup & Audit Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
