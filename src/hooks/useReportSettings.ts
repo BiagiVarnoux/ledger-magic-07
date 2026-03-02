@@ -6,16 +6,12 @@ import { useToast } from '@/hooks/use-toast';
 
 export interface ReportSettings {
   id: string;
-  tax_rate: number;
-  tax_enabled: boolean;
   cost_of_sales_keywords: string[];
   operating_expense_keywords: string[];
   other_expense_keywords: string[];
 }
 
 const defaultSettings: Omit<ReportSettings, 'id'> = {
-  tax_rate: 25,
-  tax_enabled: false,
   cost_of_sales_keywords: ['costo de venta', 'costo de mercancia', 'costo de mercadería', 'costo mercaderia', 'costo producto'],
   operating_expense_keywords: ['gasto', 'administrativo', 'venta', 'flete', 'operativo', 'general'],
   other_expense_keywords: ['it', 'interes', 'interés', 'comision', 'comisión', 'bancario', 'financiero'],
@@ -45,8 +41,6 @@ export function useReportSettings() {
       if (data) {
         setSettings({
           id: data.id,
-          tax_rate: Number(data.tax_rate),
-          tax_enabled: data.tax_enabled,
           cost_of_sales_keywords: data.cost_of_sales_keywords || defaultSettings.cost_of_sales_keywords,
           operating_expense_keywords: data.operating_expense_keywords || defaultSettings.operating_expense_keywords,
           other_expense_keywords: data.other_expense_keywords || defaultSettings.other_expense_keywords,
@@ -67,8 +61,6 @@ export function useReportSettings() {
         if (newData) {
           setSettings({
             id: newData.id,
-            tax_rate: Number(newData.tax_rate),
-            tax_enabled: newData.tax_enabled,
             cost_of_sales_keywords: newData.cost_of_sales_keywords || defaultSettings.cost_of_sales_keywords,
             operating_expense_keywords: newData.operating_expense_keywords || defaultSettings.operating_expense_keywords,
             other_expense_keywords: newData.other_expense_keywords || defaultSettings.other_expense_keywords,

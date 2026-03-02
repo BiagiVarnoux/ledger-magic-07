@@ -147,9 +147,8 @@ export interface NIIFIncomeStatementData {
   extraordinarios: Array<{ id: string; name: string; amount: number }>;
   totalExtraordinarios: number;
   utilidadAntesImpuestos: number;
+  impuestosCuentas: Array<{ id: string; name: string; amount: number }>;
   impuesto: number;
-  tasaImpuesto: number;
-  taxEnabled: boolean;
   utilidadNeta: number;
   margenNeto: number;
 }
@@ -269,9 +268,13 @@ export function exportIncomeStatementNIIFToPDF(data: NIIFIncomeStatementData, pe
     });
   }
 
-  // Impuestos
-  if (data.taxEnabled || data.impuesto > 0) {
-    body.push(fmtRow('—', `(-) Impuesto (${data.tasaImpuesto}%)`, data.impuesto, previousData?.impuesto, true));
+  // 6. Impuestos
+  if (data.impuestosCuentas.length > 0) {
+    body.push(sectionHeader('6. (-) IMPUESTOS', [255, 200, 200]));
+    data.impuestosCuentas.forEach(t => {
+      const prev = previousData?.impuestosCuentas.find(p => p.id === t.id);
+      body.push(fmtRow(t.id, t.name, t.amount, prev?.amount, true));
+    });
   }
 
   // Utilidad Neta
