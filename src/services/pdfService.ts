@@ -360,6 +360,7 @@ export function exportBalanceSheetNIIFToPDF(data: BalanceSheetNIIFData, date: st
 }
 
 export interface CashFlowNIIFData {
+  metodo: 'directo' | 'indirecto';
   initialCashBalance: number;
   operacionDetalle: Array<{ id: string; name: string; amount: number }>;
   flujoOperacion: number;
@@ -370,18 +371,71 @@ export interface CashFlowNIIFData {
   flujoNeto: number;
   finalCashBalance: number;
   ratioCobertura: number | null;
+  // Indirect method fields
+  utilidadNeta?: number;
+  ajustesNoMonetarios?: Array<{ id: string; name: string; amount: number }>;
+  totalAjustesNoMonetarios?: number;
+  variacionesCapitalTrabajo?: Array<{ id: string; name: string; amount: number }>;
+  totalVariacionesCT?: number;
+  flujoOperativoIndirecto?: number;
 }
 
 export function exportCashFlowNIIFToPDF(data: CashFlowNIIFData, period: string): void {
   const doc = new jsPDF();
-  let startY = addReportHeader(doc, { title: 'Estado de Flujo de Efectivo (NIC 7)', period: `Período: ${period}` });
+  const metodoLabel = data.metodo === 'indirecto' ? 'Método Indirecto' : 'Método Directo';
+  let startY = addReportHeader(doc, { title: 'Estado de Flujo de Efectivo (NIC 7)', subtitle: metodoLabel, period: `Período: ${period}` });
 
   autoTable(doc, { startY, body: [['SALDO INICIAL DE EFECTIVO', fmt(data.initialCashBalance)]], styles: { fontSize: 11, fontStyle: 'bold' }, bodyStyles: { fillColor: [230, 230, 230] }, columnStyles: { 1: { halign: 'right' } } });
   // @ts-ignore
   startY = doc.lastAutoTable.finalY + 6;
 
+  if (data.metodo === 'indirecto') {
+    // Indirect operating section
+    const indirectBody: any[] = [];
+    indirectBody.push([{ content: 'Utilidad Neta del Período', styles: { fontStyle: 'bold' } }, '', fmt(data.utilidadNeta ?? 0)]);
+
+    if (data.ajustesNoMonetarios && data.ajustesNoMonetarios.length > 0) {
+      indirectBody.push([{ content: '(+) Ajustes por partidas no monetarias', colSpan: 3, styles: { fillColor: [240, 240, 240], fontStyle: 'italic' } }]);
+      for (const item of data.ajustesNoMonetarios) {
+        indirectBody.push([item.id, item.name, (item.amount >= 0 ? '+' : '') + fmt(item.amount)]);
+      }
+      indirectBody.push(['', { content: 'Subtotal Ajustes No Monetarios', styles: { fontStyle: 'bold' } }, (data.totalAjustesNoMonetarios! >= 0 ? '+' : '') + fmt(data.totalAjustesNoMonetarios!)]);
+    }
+
+    if (data.variacionesCapitalTrabajo && data.variacionesCapitalTrabajo.length > 0) {
+      indirectBody.push([{ content: '(+/-) Variaciones en Capital de Trabajo', colSpan: 3, styles: { fillColor: [240, 240, 240], fontStyle: 'italic' } }]);
+      for (const item of data.variacionesCapitalTrabajo) {
+        const label = item.amount >= 0 ? `Disminución en ${item.name}` : `(Aumento) en ${item.name}`;
+        indirectBody.push([item.id, label, (item.amount >= 0 ? '+' : '') + fmt(item.amount)]);
+      }
+      indirectBody.push(['', { content: 'Subtotal Variaciones C.T.', styles: { fontStyle: 'bold' } }, (data.totalVariacionesCT! >= 0 ? '+' : '') + fmt(data.totalVariacionesCT!)]);
+    }
+
+    autoTable(doc, {
+      startY,
+      head: [['ACTIVIDADES DE OPERACIÓN (Método Indirecto)', '', '']],
+      body: indirectBody,
+      foot: [['', 'Flujo Neto de Operación', (data.flujoOperacion >= 0 ? '+' : '') + fmt(data.flujoOperacion)]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [33, 150, 243] },
+      footStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } },
+    });
+    // @ts-ignore
+    startY = doc.lastAutoTable.finalY + 6;
+  } else {
+    // Direct operating section
+    if (data.operacionDetalle.length > 0) {
+      autoTable(doc, { startY, head: [['ACTIVIDADES DE OPERACIÓN', '', '']], body: data.operacionDetalle.map(i => [i.id, i.name, (i.amount >= 0 ? '+' : '') + fmt(i.amount)]),
+        foot: [['', 'Flujo Neto', (data.flujoOperacion >= 0 ? '+' : '') + fmt(data.flujoOperacion)]], styles: { fontSize: 9 }, headStyles: { fillColor: [33, 150, 243] as [number, number, number] },
+        footStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold' }, columnStyles: { 0: { cellWidth: 25 }, 2: { halign: 'right' } } });
+      // @ts-ignore
+      startY = doc.lastAutoTable.finalY + 6;
+    }
+  }
+
+  // Investment & Financing (same for both methods)
   const sections = [
-    { title: 'ACTIVIDADES DE OPERACIÓN', items: data.operacionDetalle, total: data.flujoOperacion, color: [33, 150, 243] },
     { title: 'ACTIVIDADES DE INVERSIÓN', items: data.inversionDetalle, total: data.flujoInversion, color: [156, 39, 176] },
     { title: 'ACTIVIDADES DE FINANCIACIÓN', items: data.financiacionDetalle, total: data.flujoFinanciacion, color: [255, 152, 0] },
   ];
@@ -406,7 +460,7 @@ export function exportCashFlowNIIFToPDF(data: CashFlowNIIFData, period: string):
   }
 
   addFooter(doc);
-  doc.save(`flujo-efectivo-nic7-${period.replace(/\s/g, '-')}.pdf`);
+  doc.save(`flujo-efectivo-nic7-${data.metodo}-${period.replace(/\s/g, '-')}.pdf`);
 }
 
 export interface JournalEntryPDF {
