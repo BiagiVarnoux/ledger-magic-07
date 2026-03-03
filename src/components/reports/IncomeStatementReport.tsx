@@ -152,7 +152,7 @@ function classifyAccount(
   return 'gasto_operativo';
 }
 
-function computeIncomeStatement(
+export function computeIncomeStatement(
   accounts: Account[],
   entries: JournalEntry[],
   isInPeriod: (date: string) => boolean,
