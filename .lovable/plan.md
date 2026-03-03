@@ -1,53 +1,74 @@
 
 
-# Plan: Eliminar configuración de impuestos y usar cuentas clasificadas
+# Fase 3: Flujo de Efectivo — Método Indirecto (NIC 7)
 
 ## Resumen
 
-Eliminar el sistema de tasa de impuesto configurable (`tax_rate`, `tax_enabled` en settings) y en su lugar usar directamente las cuentas contables con `clasificacion_resultado = 'impuesto'` para calcular el impuesto en el Estado de Resultados. Esto es más correcto contablemente: el impuesto se registra como un asiento en el libro diario contra cuentas de tipo GASTO con clasificación "impuesto".
+Agregar el método indirecto al reporte de Flujo de Efectivo, que parte de la **Utilidad Neta** del Estado de Resultados y la ajusta por partidas no monetarias y variaciones en capital de trabajo. El usuario podrá elegir entre método directo (actual) o indirecto. Se reutiliza `computeIncomeStatement` del EE.RR. para obtener la Utilidad Neta.
+
+## Estructura del Método Indirecto (NIC 7.18-20)
+
+```text
+UTILIDAD NETA (del EE.RR.)
+
++ Ajustes por partidas no monetarias:
+  + Depreciación y Amortización (es_partida_no_monetaria = true)
+  + Provisiones (subclasificacion heurística)
+  + Pérdidas/ganancias por disposición de activos
+
+= Flujo Operativo antes de cambios en Capital de Trabajo
+
++/- Variaciones en Capital de Trabajo:
+  - (Aumento) / Disminución en Cuentas por Cobrar
+  - (Aumento) / Disminución en Inventarios
+  + Aumento / (Disminución) en Cuentas por Pagar
+  (usa es_capital_trabajo = true o heurísticas)
+
+= FLUJO NETO DE OPERACIÓN
+
++/- Actividades de Inversión (igual que método directo)
++/- Actividades de Financiación (igual que método directo)
+
+= VARIACIÓN NETA DE EFECTIVO
++ Saldo Inicial
+= SALDO FINAL
+```
 
 ## Cambios
 
-### 1. Eliminar `TaxSettingsCard` del Settings
+### 1. `src/components/reports/CashFlowReport.tsx` (refactor mayor)
 
-**Archivo**: `src/pages/settings/Index.tsx`
-- Quitar el import y uso de `<TaxSettingsCard />`
+- Agregar toggle "Método Directo / Método Indirecto" en el header
+- **Método Indirecto — Actividades de Operación:**
+  - Importar y usar `computeIncomeStatement` (extraer como función reutilizable si es necesario) para obtener `utilidadNeta`
+  - Calcular ajustes no monetarios: filtrar cuentas con `es_partida_no_monetaria === true` y sumar sus movimientos en el periodo (D&A, provisiones)
+  - Calcular variaciones en capital de trabajo: para cada cuenta con `es_capital_trabajo === true` (o tipo ACTIVO corriente / PASIVO corriente), comparar saldo al inicio vs fin del periodo. Para activos: aumento = negativo. Para pasivos: aumento = positivo
+  - Usar `clasificacion_flujo` como fuente primaria para clasificar cuentas en operación/inversión/financiación, con fallback a `classifyMovementNIC7` existente
+- **Inversión y Financiación**: reutilizar la lógica actual del método directo (movimientos de efectivo clasificados por contraparte)
+- Mantener el método directo intacto como opción
 
-**Archivo**: `src/components/settings/TaxSettingsCard.tsx`
-- Eliminar el archivo completo (ya no se necesita)
+### 2. `src/services/pdfService.ts`
 
-### 2. Simplificar `useReportSettings`
+- Extender `CashFlowNIIFData` con campos del método indirecto: `metodo`, `utilidadNeta`, `ajustesNoMonetarios`, `variacionesCapitalTrabajo`, `flujoOperativoIndirecto`
+- Actualizar `exportCashFlowNIIFToPDF` para renderizar la estructura indirecta cuando `metodo === 'indirecto'`
 
-**Archivo**: `src/hooks/useReportSettings.ts`
-- Quitar `tax_rate` y `tax_enabled` de la interface `ReportSettings` y de `defaultSettings`
-- Mantener los keywords que aún se usan como fallback
+## Campos de Account utilizados
 
-### 3. Simplificar cálculo de impuesto en Income Statement
-
-**Archivo**: `src/components/reports/IncomeStatementReport.tsx`
-- En `computeIncomeStatement`: el impuesto se toma **solo** de las cuentas clasificadas como `impuesto` (ya clasificadas en `maps.impuesto`). Eliminar el fallback de `settings.tax_rate * utilidadAntesImpuestos`
-- Quitar `tasaImpuesto` y `taxEnabled` de la interface `ProfessionalIncomeStatement`
-- En el UI: quitar el banner "El cálculo de impuestos está deshabilitado" y la referencia a la tasa porcentual. Mostrar las cuentas de impuesto como filas detalle (igual que cualquier otra sección)
-- Agregar una sección "6. IMPUESTOS" con las cuentas individuales de impuesto, similar a las demás secciones
-
-### 4. Actualizar PDF
-
-**Archivo**: `src/services/pdfService.ts`
-- En `NIIFIncomeStatementData`: quitar `tasaImpuesto` y `taxEnabled`
-- Agregar `impuestosCuentas: AccountDetail[]` para listar las cuentas de impuesto
-- En la generación del PDF: mostrar las cuentas de impuesto como filas detalle en lugar de una sola línea con porcentaje
-
-### 5. No se elimina la tabla `report_settings` ni sus columnas
-
-Las columnas `tax_rate`/`tax_enabled` se mantienen en la DB para no romper nada; simplemente se dejan de usar. Los keywords sí se siguen usando.
+| Campo | Uso |
+|-------|-----|
+| `is_cash_equivalent` | Identificar cuentas de efectivo |
+| `es_partida_no_monetaria` | Ajustes por D&A, provisiones |
+| `es_capital_trabajo` | Variaciones en capital de trabajo |
+| `clasificacion_flujo` | Clasificar en operación/inversión/financiación |
+| `is_current` | Distinguir corriente vs no corriente para capital de trabajo |
+| `type` | Determinar signo de variación (activo vs pasivo) |
 
 ## Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/components/settings/TaxSettingsCard.tsx` | Eliminar |
-| `src/pages/settings/Index.tsx` | Quitar import y uso de TaxSettingsCard |
-| `src/hooks/useReportSettings.ts` | Quitar tax_rate/tax_enabled de la interface |
-| `src/components/reports/IncomeStatementReport.tsx` | Simplificar impuesto: solo cuentas clasificadas, nueva sección UI |
-| `src/services/pdfService.ts` | Quitar tasaImpuesto/taxEnabled, agregar cuentas de impuesto detalladas |
+| `src/components/reports/CashFlowReport.tsx` | Toggle de método, lógica completa del método indirecto |
+| `src/services/pdfService.ts` | Soporte PDF para método indirecto |
+
+No se necesitan cambios en base de datos.
 
