@@ -332,7 +332,7 @@ export default function ShipmentsPage() {
 
       {/* Modal nuevo embarque */}
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nuevo Embarque — {draft.numero}</DialogTitle>
           </DialogHeader>
@@ -357,8 +357,24 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
   onCancel: () => void;
 }) {
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
-    onChange({ ...draft, products: draft.products.map(p => p.id === id ? { ...p, ...patch } : p) });
+    const updated = draft.products.map(p => {
+      if (p.id !== id) return p;
+      const next = { ...p, ...patch };
+      // Recalcular T/C si se cambia precio_usd o precio_bs_pagado
+      if ('precio_usd' in patch || 'precio_bs_pagado' in patch) {
+        const usd = next.precio_usd;
+        const bs = next.precio_bs_pagado;
+        if (usd && usd > 0 && bs && bs > 0) {
+          next.tc_producto = round2(bs / usd);
+        } else {
+          next.tc_producto = undefined;
+        }
+      }
+      return next;
+    });
+    onChange({ ...draft, products: updated });
   }
+
   function addProduct() {
     onChange({ ...draft, products: [...draft.products, emptyProduct(draft.id)] });
   }
@@ -368,10 +384,10 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Datos generales */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2">
+      <div className="grid grid-cols-4 gap-4">
+        <div className="col-span-3">
           <Label>Descripción <span className="text-muted-foreground font-normal">(opcional)</span></Label>
           <Input
             value={draft.descripcion}
@@ -380,12 +396,13 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
           />
         </div>
         <div>
-          <Label>T/C Paralelo</Label>
+          <Label>T/C Referencia</Label>
           <Input
             type="number" step="0.01"
             value={draft.tc_paralelo}
             onChange={e => onChange({ ...draft, tc_paralelo: parseFloat(e.target.value) || 0 })}
           />
+          <p className="text-xs text-muted-foreground mt-1">Se usa si el producto no tiene T/C propio</p>
         </div>
       </div>
 
@@ -400,84 +417,117 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
           </Button>
         </div>
 
-        <div className="space-y-3">
-          {draft.products.map((p) => (
-            <Card key={p.id} className="p-3 bg-muted/30">
-              <div className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-3">
-                  <Label className="text-xs">Nombre del producto</Label>
-                  <Input placeholder="iPhone 14 Pro" value={p.nombre}
-                    onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">Categoría</Label>
-                  <Select value={p.categoria} onValueChange={v => updateProduct(p.id, { categoria: v as ProductCategory })}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(PRODUCT_CATEGORY_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="col-span-1">
-                  <Label className="text-xs">Cant.</Label>
-                  <Input type="number" min="1" value={p.cantidad}
-                    onChange={e => updateProduct(p.id, { cantidad: parseInt(e.target.value) || 1 })} />
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">Precio USD</Label>
-                  <Input type="number" step="0.01" value={p.precio_usd || ''}
-                    onChange={e => updateProduct(p.id, { precio_usd: parseFloat(e.target.value) || 0 })} />
-                </div>
-                <div className="col-span-1">
-                  <Label className="text-xs">Tax %</Label>
-                  <Input type="number" step="0.1" value={p.tax_pct || ''}
-                    onChange={e => updateProduct(p.id, { tax_pct: parseFloat(e.target.value) || 0 })} />
-                </div>
-                <div className="col-span-1">
-                  <Label className="text-xs">GA %</Label>
-                  <Input type="number" value={p.ga_pct}
-                    onChange={e => updateProduct(p.id, { ga_pct: parseFloat(e.target.value) || 0 })} />
-                </div>
-                <div className="col-span-1">
-                  <Label className="text-xs">Fecha compra</Label>
-                  <Input type="date" value={p.fecha_compra}
-                    onChange={e => updateProduct(p.id, { fecha_compra: e.target.value })} />
-                </div>
-                <div className="col-span-1 flex items-center justify-center mt-4">
-                  <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
-                    disabled={draft.products.length <= 1}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Batería + preview */}
-              <div className="flex items-center gap-4 mt-2">
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id={`bat-${p.id}`} checked={p.tiene_bateria}
-                    onChange={e => updateProduct(p.id, { tiene_bateria: e.target.checked })}
-                    className="w-4 h-4 rounded" />
-                  <Label htmlFor={`bat-${p.id}`} className="text-xs cursor-pointer">Certificado de batería</Label>
-                </div>
-                {p.tiene_bateria && (
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs">Costo Bs:</Label>
-                    <Input type="number" step="0.01" value={p.costo_bateria || ''}
-                      onChange={e => updateProduct(p.id, { costo_bateria: parseFloat(e.target.value) || 0 })}
-                      className="w-24 h-8 text-xs" />
+        <div className="space-y-4">
+          {draft.products.map((p) => {
+            const tcEfectivo = p.tc_producto ?? draft.tc_paralelo;
+            return (
+              <Card key={p.id} className="p-4 bg-muted/30">
+                {/* Fila 1: Nombre, Categoría, Cantidad, Fecha */}
+                <div className="grid grid-cols-12 gap-3 items-end mb-3">
+                  <div className="col-span-4">
+                    <Label className="text-xs">Nombre del producto</Label>
+                    <Input placeholder="iPhone 14 Pro" value={p.nombre}
+                      onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
                   </div>
-                )}
-                {p.precio_usd > 0 && (
-                  <p className="text-xs text-muted-foreground ml-auto">
-                    Precio Bs: <strong>{fmt(calcPrecioBs(p, draft.tc_paralelo))}</strong>
-                    {' · '}BOB tributos: <strong>{fmt(calcPrecioBOB(p, draft.tc_oficial))}</strong>
-                  </p>
-                )}
-              </div>
-            </Card>
-          ))}
+                  <div className="col-span-3">
+                    <Label className="text-xs">Categoría</Label>
+                    <Select value={p.categoria} onValueChange={v => updateProduct(p.id, { categoria: v as ProductCategory })}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(PRODUCT_CATEGORY_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-1">
+                    <Label className="text-xs">Cant.</Label>
+                    <Input type="number" min="1" value={p.cantidad}
+                      onChange={e => updateProduct(p.id, { cantidad: parseInt(e.target.value) || 1 })} />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">Fecha compra</Label>
+                    <Input type="date" value={p.fecha_compra}
+                      onChange={e => updateProduct(p.id, { fecha_compra: e.target.value })} />
+                  </div>
+                  <div className="col-span-1">
+                    <Label className="text-xs">GA %</Label>
+                    <Input type="number" value={p.ga_pct}
+                      onChange={e => updateProduct(p.id, { ga_pct: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div className="col-span-1 flex items-center justify-center mt-4">
+                    <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
+                      disabled={draft.products.length <= 1}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Fila 2: Precio USD, Precio Bs pagado, T/C calculado, Tax */}
+                <div className="grid grid-cols-12 gap-3 items-end">
+                  <div className="col-span-3">
+                    <Label className="text-xs">Precio USD <span className="text-muted-foreground">(sin tax)</span></Label>
+                    <Input type="number" step="0.01" placeholder="0.00" value={p.precio_usd || ''}
+                      onChange={e => updateProduct(p.id, { precio_usd: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div className="col-span-3">
+                    <Label className="text-xs">
+                      Precio Bs pagado
+                      <span className="text-muted-foreground ml-1">(para calcular T/C)</span>
+                    </Label>
+                    <Input type="number" step="0.01" placeholder="0.00"
+                      value={p.precio_bs_pagado || ''}
+                      onChange={e => updateProduct(p.id, { precio_bs_pagado: parseFloat(e.target.value) || undefined })} />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">T/C calculado</Label>
+                    <div className={`h-9 px-3 flex items-center rounded-md border text-sm font-semibold
+                      ${p.tc_producto ? 'bg-green-50 dark:bg-green-900/20 border-green-300 text-green-700 dark:text-green-300' : 'bg-muted text-muted-foreground'}`}>
+                      {p.tc_producto ? p.tc_producto.toFixed(4) : `≈ ${draft.tc_paralelo} (ref.)`}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">Tax %</Label>
+                    <Input type="number" step="0.1" placeholder="0" value={p.tax_pct || ''}
+                      onChange={e => updateProduct(p.id, { tax_pct: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div className="col-span-2">
+                    {p.precio_usd > 0 && (
+                      <div className="h-9 px-3 flex flex-col justify-center rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                        <span className="text-[10px] text-blue-600 dark:text-blue-400">Precio Bs</span>
+                        <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                          {fmt(calcPrecioBs(p, tcEfectivo))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Fila 3: Batería */}
+                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/50">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id={`bat-${p.id}`} checked={p.tiene_bateria}
+                      onChange={e => updateProduct(p.id, { tiene_bateria: e.target.checked })}
+                      className="w-4 h-4 rounded" />
+                    <Label htmlFor={`bat-${p.id}`} className="text-xs cursor-pointer">🔋 Certificado de batería</Label>
+                  </div>
+                  {p.tiene_bateria && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs">Costo Bs:</Label>
+                      <Input type="number" step="0.01" value={p.costo_bateria || ''}
+                        onChange={e => updateProduct(p.id, { costo_bateria: parseFloat(e.target.value) || 0 })}
+                        className="w-28 h-8 text-xs" />
+                    </div>
+                  )}
+                  {p.precio_usd > 0 && (
+                    <p className="text-xs text-muted-foreground ml-auto">
+                      BOB para tributos: <strong>{fmt(calcPrecioBOB(p, draft.tc_oficial))}</strong>
+                    </p>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
 
@@ -717,6 +767,9 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
               <TableCell className="text-right">{p.tax_pct > 0 ? `${p.tax_pct}%` : '—'}</TableCell>
               <TableCell className="text-right font-medium">
                 {fmt(calcPrecioBs(p, s.tc_paralelo) * p.cantidad)}
+                {p.tc_producto && (
+                  <span className="block text-[10px] text-green-600 font-normal">T/C: {p.tc_producto.toFixed(4)}</span>
+                )}
               </TableCell>
               <TableCell className="text-right">{p.ga_pct}%</TableCell>
               <TableCell className="text-xs text-muted-foreground">{p.fecha_compra}</TableCell>
