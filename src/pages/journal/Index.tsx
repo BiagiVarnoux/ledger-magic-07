@@ -281,6 +281,26 @@ export default function JournalPage() {
       setEntries(await adapter.loadEntries());
       toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
       form.clearForm();
+
+      // Detect cost-of-sales lines for inventory exit
+      const costLines = je.lines
+        .map(line => {
+          const acct = accounts.find(a => a.id === line.account_id);
+          if (acct && (acct as any).clasificacion_resultado === 'costo_ventas') {
+            return { accountId: line.account_id, amount: line.debit || line.credit };
+          }
+          return null;
+        })
+        .filter(Boolean) as Array<{ accountId: string; amount: number }>;
+
+      if (costLines.length > 0) {
+        setInventoryExitState({
+          isOpen: true,
+          journalEntryId: je.id,
+          journalDate: je.date,
+          costLines,
+        });
+      }
     } catch (e: any) {
       toast.error(e.message || 'Error guardando asiento');
     }
