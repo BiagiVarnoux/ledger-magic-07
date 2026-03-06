@@ -27,6 +27,7 @@ import { JournalEntriesTable } from '@/components/journal/JournalEntriesTable';
 import { JournalFiltersComponent, JournalFilters, defaultFilters } from '@/components/journal/JournalFilters';
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
+import { InventoryExitModal } from '@/components/inventory/InventoryExitModal';
 import {
   AlertDialog,
   AlertDialogAction,
