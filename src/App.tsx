@@ -15,7 +15,6 @@ import LedgerPage from "./pages/ledger/Index";
 import ReportsPage from "./pages/reports/Index";
 import SettingsPage from "./pages/settings/Index";
 import ViewerDashboardPage from "./pages/viewer-dashboard/Index";
-import ShipmentsPage from "./pages/shipments/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -52,7 +51,6 @@ function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         {/* Settings only for owners */}
         {isOwner && <Route path="settings" element={<SettingsPage />} />}
-        {isOwner && <Route path="shipments" element={<ShipmentsPage />} />}
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
