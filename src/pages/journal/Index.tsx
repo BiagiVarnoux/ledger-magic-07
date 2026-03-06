@@ -476,6 +476,15 @@ export default function JournalPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <InventoryExitModal
+        isOpen={inventoryExitState.isOpen}
+        onClose={() => setInventoryExitState({ ...inventoryExitState, isOpen: false })}
+        journalEntryId={inventoryExitState.journalEntryId}
+        journalDate={inventoryExitState.journalDate}
+        costLines={inventoryExitState.costLines}
+        onSave={() => setInventoryExitState({ ...inventoryExitState, isOpen: false })}
+      />
     </div>
   );
 }
