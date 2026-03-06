@@ -71,6 +71,12 @@ export default function JournalPage() {
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+  const [inventoryExitState, setInventoryExitState] = useState<{
+    isOpen: boolean;
+    journalEntryId: string;
+    journalDate: string;
+    costLines: Array<{ accountId: string; amount: number }>;
+  }>({ isOpen: false, journalEntryId: '', journalDate: '', costLines: [] });
 
   // Use custom hook for form management
   const form = useJournalForm({
