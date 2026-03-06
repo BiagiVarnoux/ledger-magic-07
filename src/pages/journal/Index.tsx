@@ -27,6 +27,7 @@ import { JournalEntriesTable } from '@/components/journal/JournalEntriesTable';
 import { JournalFiltersComponent, JournalFilters, defaultFilters } from '@/components/journal/JournalFilters';
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
+import { InventoryExitModal } from '@/components/inventory/InventoryExitModal';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,6 +71,12 @@ export default function JournalPage() {
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+  const [inventoryExitState, setInventoryExitState] = useState<{
+    isOpen: boolean;
+    journalEntryId: string;
+    journalDate: string;
+    costLines: Array<{ accountId: string; amount: number }>;
+  }>({ isOpen: false, journalEntryId: '', journalDate: '', costLines: [] });
 
   // Use custom hook for form management
   const form = useJournalForm({
@@ -274,6 +281,26 @@ export default function JournalPage() {
       setEntries(await adapter.loadEntries());
       toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
       form.clearForm();
+
+      // Detect cost-of-sales lines for inventory exit
+      const costLines = je.lines
+        .map(line => {
+          const acct = accounts.find(a => a.id === line.account_id);
+          if (acct && (acct as any).clasificacion_resultado === 'costo_ventas') {
+            return { accountId: line.account_id, amount: line.debit || line.credit };
+          }
+          return null;
+        })
+        .filter(Boolean) as Array<{ accountId: string; amount: number }>;
+
+      if (costLines.length > 0) {
+        setInventoryExitState({
+          isOpen: true,
+          journalEntryId: je.id,
+          journalDate: je.date,
+          costLines,
+        });
+      }
     } catch (e: any) {
       toast.error(e.message || 'Error guardando asiento');
     }
@@ -449,6 +476,15 @@ export default function JournalPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <InventoryExitModal
+        isOpen={inventoryExitState.isOpen}
+        onClose={() => setInventoryExitState({ ...inventoryExitState, isOpen: false })}
+        journalEntryId={inventoryExitState.journalEntryId}
+        journalDate={inventoryExitState.journalDate}
+        costLines={inventoryExitState.costLines}
+        onSave={() => setInventoryExitState({ ...inventoryExitState, isOpen: false })}
+      />
     </div>
   );
 }
