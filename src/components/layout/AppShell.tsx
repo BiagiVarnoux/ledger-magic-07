@@ -31,6 +31,7 @@ export function AppShell() {
       items.push({ path: '/ledger', label: 'Libro Mayor' });
       items.push({ path: '/reports', label: 'Reportes' });
       items.push({ path: '/shipments', label: 'Embarques' });
+      items.push({ path: '/inventory', label: 'Inventario' });
       items.push({ path: '/settings', label: 'Configuración' });
     }
 
