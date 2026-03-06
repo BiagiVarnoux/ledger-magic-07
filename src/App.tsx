@@ -16,6 +16,7 @@ import ReportsPage from "./pages/reports/Index";
 import SettingsPage from "./pages/settings/Index";
 import ViewerDashboardPage from "./pages/viewer-dashboard/Index";
 import ShipmentsPage from "./pages/shipments/Index";
+import InventoryPage from "./pages/inventory/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
