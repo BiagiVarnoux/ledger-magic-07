@@ -255,29 +255,44 @@ export default function InventoryPage() {
         editProduct={editProduct}
       />
 
-      {/* Double-confirmation delete dialog */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }}>
+      {/* Double-confirmation delete dialog - Step 1 */}
+      <AlertDialog open={!!deleteTarget && deleteConfirmStep === 1} onOpenChange={v => { if (!v) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteConfirmStep === 1
-                ? '¿Eliminar este producto?'
-                : '¿Estás completamente seguro?'}
-            </AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar este producto?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteConfirmStep === 1
-                ? `Estás a punto de eliminar "${deleteTarget?.nombre}" (${deleteTarget?.codigo}). El producto se desactivará y ya no aparecerá en el inventario.`
-                : `Esta acción no se puede deshacer fácilmente. El producto "${deleteTarget?.nombre}" y sus movimientos dejarán de ser visibles. Confirma para proceder.`}
+              Estás a punto de eliminar "{deleteTarget?.nombre}" ({deleteTarget?.codigo}). El producto se desactivará y ya no aparecerá en el inventario.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => setDeleteConfirmStep(2)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Sí, eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Double-confirmation delete dialog - Step 2 */}
+      <AlertDialog open={!!deleteTarget && deleteConfirmStep === 2} onOpenChange={v => { if (!v) { setDeleteTarget(null); setDeleteConfirmStep(1); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás completamente seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer fácilmente. El producto "{deleteTarget?.nombre}" y sus movimientos dejarán de ser visibles. Confirma para proceder.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setDeleteTarget(null); setDeleteConfirmStep(1); }}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? 'Eliminando...' : deleteConfirmStep === 1 ? 'Sí, eliminar' : 'Confirmar eliminación'}
+              {deleting ? 'Eliminando...' : 'Confirmar eliminación'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
