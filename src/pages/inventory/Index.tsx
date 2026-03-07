@@ -97,11 +97,6 @@ export default function InventoryPage() {
   }
 
   async function handleDeleteConfirm() {
-    if (deleteConfirmStep === 1) {
-      setDeleteConfirmStep(2);
-      return;
-    }
-    // Step 2: actually delete (soft delete via is_active = false)
     setDeleting(true);
     try {
       const { error } = await supabase
@@ -111,6 +106,7 @@ export default function InventoryPage() {
       if (error) throw error;
       toast.success(`Producto "${deleteTarget!.nombre}" eliminado`);
       setDeleteTarget(null);
+      setDeleteConfirmStep(1);
       loadData();
     } catch (e: any) {
       toast.error(e.message || 'Error al eliminar producto');
