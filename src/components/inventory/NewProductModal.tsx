@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,13 +16,26 @@ const CATEGORIAS = [
   { value: 'otros', label: 'Otros' },
 ];
 
+export interface ProductData {
+  id: string;
+  nombre: string;
+  codigo: string;
+  categoria: string | null;
+  cuenta_inventario_id: string | null;
+  descripcion: string | null;
+  unidad_medida: string;
+  is_active: boolean;
+  user_id: string;
+}
+
 interface NewProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
+  editProduct?: ProductData | null;
 }
 
-export function NewProductModal({ isOpen, onClose, onSaved }: NewProductModalProps) {
+export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewProductModalProps) {
   const { accounts } = useAccounting();
   const [nombre, setNombre] = useState('');
   const [codigo, setCodigo] = useState('');
@@ -32,7 +45,25 @@ export function NewProductModal({ isOpen, onClose, onSaved }: NewProductModalPro
   const [unidadMedida, setUnidadMedida] = useState('unidad');
   const [saving, setSaving] = useState(false);
 
+  const isEditing = !!editProduct;
   const activoAccounts = accounts.filter(a => a.type === 'ACTIVO' && a.is_active);
+
+  useEffect(() => {
+    if (editProduct) {
+      setNombre(editProduct.nombre);
+      setCodigo(editProduct.codigo);
+      setCategoria(editProduct.categoria || 'otros');
+      setCuentaId(editProduct.cuenta_inventario_id || '');
+      setDescripcion(editProduct.descripcion || '');
+      setUnidadMedida(editProduct.unidad_medida || 'unidad');
+    } else {
+      resetFields();
+    }
+  }, [editProduct, isOpen]);
+
+  function resetFields() {
+    setNombre(''); setCodigo(''); setCategoria('otros'); setCuentaId(''); setDescripcion(''); setUnidadMedida('unidad');
+  }
 
   async function handleSave() {
     if (!nombre.trim() || !codigo.trim()) {
@@ -44,28 +75,36 @@ export function NewProductModal({ isOpen, onClose, onSaved }: NewProductModalPro
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No autenticado');
 
-      const { error } = await supabase.from('products').insert({
+      const payload = {
         nombre: nombre.trim(),
         codigo: codigo.trim(),
         categoria,
         cuenta_inventario_id: cuentaId || null,
         descripcion: descripcion.trim() || null,
         unidad_medida: unidadMedida.trim() || 'unidad',
-        user_id: user.id,
-      });
-      if (error) throw error;
-      toast.success('Producto creado');
+      };
+
+      if (isEditing) {
+        const { error } = await supabase.from('products').update(payload).eq('id', editProduct!.id);
+        if (error) throw error;
+        toast.success('Producto actualizado');
+      } else {
+        const { error } = await supabase.from('products').insert({ ...payload, user_id: user.id });
+        if (error) throw error;
+        toast.success('Producto creado');
+      }
+
       onSaved();
       resetAndClose();
     } catch (e: any) {
-      toast.error(e.message || 'Error al crear producto');
+      toast.error(e.message || 'Error al guardar producto');
     } finally {
       setSaving(false);
     }
   }
 
   function resetAndClose() {
-    setNombre(''); setCodigo(''); setCategoria('otros'); setCuentaId(''); setDescripcion(''); setUnidadMedida('unidad');
+    resetFields();
     onClose();
   }
 
@@ -73,7 +112,7 @@ export function NewProductModal({ isOpen, onClose, onSaved }: NewProductModalPro
     <Dialog open={isOpen} onOpenChange={v => !v && resetAndClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Nuevo Producto</DialogTitle>
+          <DialogTitle>{isEditing ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -113,7 +152,7 @@ export function NewProductModal({ isOpen, onClose, onSaved }: NewProductModalPro
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={resetAndClose}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : isEditing ? 'Actualizar' : 'Guardar'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
