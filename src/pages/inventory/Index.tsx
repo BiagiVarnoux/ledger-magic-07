@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, Eye, Plus } from 'lucide-react';
+import { Package, Eye, Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
@@ -12,29 +12,37 @@ import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt } from '@/accounting/utils';
 import { calcularEstadoProducto, InventoryMovement } from '@/components/inventory/inventory-utils';
 import { ProductKardexModal } from '@/components/inventory/ProductKardexModal';
-import { NewProductModal } from '@/components/inventory/NewProductModal';
-
-interface Product {
-  id: string;
-  nombre: string;
-  codigo: string;
-  categoria: string | null;
-  cuenta_inventario_id: string | null;
-  descripcion: string | null;
-  unidad_medida: string;
-  is_active: boolean;
-  user_id: string;
-}
+import { NewProductModal, ProductData } from '@/components/inventory/NewProductModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export default function InventoryPage() {
   const { accounts } = useAccounting();
   const { isReadOnly } = useUserAccess();
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductData[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [kardexProduct, setKardexProduct] = useState<Product | null>(null);
+  const [kardexProduct, setKardexProduct] = useState<ProductData | null>(null);
   const [showNewProduct, setShowNewProduct] = useState(false);
+  const [editProduct, setEditProduct] = useState<ProductData | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProductData | null>(null);
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState<1 | 2>(1);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -49,18 +57,17 @@ export default function InventoryPage() {
         supabase.from('inventory_movements').select('*').eq('user_id', user.id),
       ]);
 
-      setProducts((prodsRes.data || []) as Product[]);
+      setProducts((prodsRes.data || []) as ProductData[]);
       setMovements((movsRes.data || []) as InventoryMovement[]);
-    } catch (e: any) {
+    } catch {
       toast.error('Error cargando inventario');
     } finally {
       setLoading(false);
     }
   }
 
-  // Group products by cuenta_inventario_id
   const accountGroups = useMemo(() => {
-    const groups: Record<string, Product[]> = {};
+    const groups: Record<string, ProductData[]> = {};
     for (const p of products) {
       const key = p.cuenta_inventario_id || '__sin_cuenta__';
       if (!groups[key]) groups[key] = [];
@@ -69,8 +76,7 @@ export default function InventoryPage() {
     return groups;
   }, [products]);
 
-  // Compute total value per account group
-  function getGroupValue(prods: Product[]): number {
+  function getGroupValue(prods: ProductData[]): number {
     return prods.reduce((sum, p) => {
       const productMovs = movements.filter(m => m.product_id === p.id);
       const state = calcularEstadoProducto(productMovs);
@@ -78,13 +84,39 @@ export default function InventoryPage() {
     }, 0);
   }
 
-  const selectedProducts = selectedAccountId
-    ? accountGroups[selectedAccountId] || []
-    : [];
+  const selectedProducts = selectedAccountId ? accountGroups[selectedAccountId] || [] : [];
 
   function getProductState(productId: string) {
     const productMovs = movements.filter(m => m.product_id === productId);
     return calcularEstadoProducto(productMovs);
+  }
+
+  function handleDeleteClick(product: ProductData) {
+    setDeleteTarget(product);
+    setDeleteConfirmStep(1);
+  }
+
+  async function handleDeleteConfirm() {
+    if (deleteConfirmStep === 1) {
+      setDeleteConfirmStep(2);
+      return;
+    }
+    // Step 2: actually delete (soft delete via is_active = false)
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ is_active: false })
+        .eq('id', deleteTarget!.id);
+      if (error) throw error;
+      toast.success(`Producto "${deleteTarget!.nombre}" eliminado`);
+      setDeleteTarget(null);
+      loadData();
+    } catch (e: any) {
+      toast.error(e.message || 'Error al eliminar producto');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (loading) {
@@ -97,7 +129,7 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Inventario</h1>
         {!isReadOnly && (
-          <Button onClick={() => setShowNewProduct(true)}>
+          <Button onClick={() => { setEditProduct(null); setShowNewProduct(true); }}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo Producto
           </Button>
         )}
@@ -169,9 +201,31 @@ export default function InventoryPage() {
                       <TableCell className="text-right font-medium">Bs {fmt(s.saldoValorado)}</TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">{s.ultimaFecha || '—'}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setKardexProduct(p)}>
-                          <Eye className="w-4 h-4 mr-1" /> Kárdex
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => setKardexProduct(p)}>
+                            <Eye className="w-4 h-4 mr-1" /> Kárdex
+                          </Button>
+                          {!isReadOnly && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => { setEditProduct(p); setShowNewProduct(true); }}>
+                                  <Pencil className="w-4 h-4 mr-2" /> Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => handleDeleteClick(p)}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -196,9 +250,38 @@ export default function InventoryPage() {
 
       <NewProductModal
         isOpen={showNewProduct}
-        onClose={() => setShowNewProduct(false)}
+        onClose={() => { setShowNewProduct(false); setEditProduct(null); }}
         onSaved={loadData}
+        editProduct={editProduct}
       />
+
+      {/* Double-confirmation delete dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirmStep === 1
+                ? '¿Eliminar este producto?'
+                : '¿Estás completamente seguro?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirmStep === 1
+                ? `Estás a punto de eliminar "${deleteTarget?.nombre}" (${deleteTarget?.codigo}). El producto se desactivará y ya no aparecerá en el inventario.`
+                : `Esta acción no se puede deshacer fácilmente. El producto "${deleteTarget?.nombre}" y sus movimientos dejarán de ser visibles. Confirma para proceder.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? 'Eliminando...' : deleteConfirmStep === 1 ? 'Sí, eliminar' : 'Confirmar eliminación'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
