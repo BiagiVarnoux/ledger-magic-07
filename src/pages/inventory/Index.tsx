@@ -254,7 +254,7 @@ export default function InventoryPage() {
       {/* Double-confirmation delete dialog - Step 1 */}
       <AlertDialog
         open={!!deleteTarget && deleteConfirmStep === 1}
-        onOpenChange={v => {
+        onOpenChange={(v) => {
           if (!v) {
             setDeleteTarget(null);
             setDeleteConfirmStep(1);
@@ -262,7 +262,14 @@ export default function InventoryPage() {
         }}
       >
         <AlertDialogContent>
-...
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este producto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Estás a punto de eliminar "{deleteTarget?.nombre}" ({deleteTarget?.codigo}). El producto se desactivará y ya no aparecerá en el inventario.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
