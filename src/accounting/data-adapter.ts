@@ -16,6 +16,7 @@ export interface IDataAdapter {
   loadEntries(): Promise<JournalEntry[]>;
   saveEntry(e: JournalEntry): Promise<void>;
   deleteEntry(id: string): Promise<void>;
+  renumberEntries(changes: Array<{ oldId: string; newId: string }>): Promise<void>;
   loadAuxiliaryDefinitions(): Promise<AuxiliaryLedgerDefinition[]>;
   upsertAuxiliaryDefinition(d: AuxiliaryLedgerDefinition): Promise<void>;
   deleteAuxiliaryDefinition(id: string): Promise<void>;
@@ -66,6 +67,22 @@ export const LocalAdapter: IDataAdapter = {
   async deleteEntry(id){ 
     const list = await this.loadEntries(); 
     localStorage.setItem(LS_ENTRIES, JSON.stringify(list.filter(e=>e.id!==id))); 
+  },
+  async renumberEntries(changes: Array<{ oldId: string; newId: string }>): Promise<void> {
+    if (changes.length === 0) return;
+    const list = await this.loadEntries();
+    // First pass: rename to temp IDs
+    for (const { oldId } of changes) {
+      const entry = list.find(e => e.id === oldId);
+      if (entry) entry.id = `_TMP_${oldId}`;
+    }
+    // Second pass: rename to final IDs
+    for (const { oldId, newId } of changes) {
+      const entry = list.find(e => e.id === `_TMP_${oldId}`);
+      if (entry) entry.id = newId;
+    }
+    list.sort((a, b) => cmpDate(a.date, b.date) || a.id.localeCompare(b.id));
+    localStorage.setItem(LS_ENTRIES, JSON.stringify(list));
   },
   async loadAuxiliaryDefinitions(){ 
     const raw = localStorage.getItem(LS_AUX_DEFINITIONS); 
@@ -229,6 +246,50 @@ export const SupaAdapter: IDataAdapter = {
     for (const h of (heads||[])) map.set(h.id, { id: h.id, date: String(h.date), memo: (h as any).memo || undefined, void_of: (h as any).void_of || undefined, lines: [] });
     for (const l of (lines||[])) { const e = map.get((l as any).entry_id)!; e.lines.push({ account_id: (l as any).account_id, debit: Number((l as any).debit)||0, credit: Number((l as any).credit)||0, line_memo: (l as any).line_memo||undefined }); }
     return Array.from(map.values()).sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id));
+  },
+  async renumberEntries(changes: Array<{ oldId: string; newId: string }>): Promise<void> {
+    if (changes.length === 0) return;
+    const supa = await getSupabase();
+    if (!supa) return LocalAdapter.renumberEntries(changes);
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+
+    // Step 1: Rename all to temporary IDs to avoid PK conflicts
+    for (const { oldId } of changes) {
+      const tmpId = `_TMP_${oldId}`;
+      // Update FK references first
+      await supa.from("journal_lines").update({ entry_id: tmpId }).eq("entry_id", oldId);
+      await supa.from("kardex_movements").update({ journal_entry_id: tmpId }).eq("journal_entry_id", oldId).eq("user_id", user.id);
+      await supa.from("auxiliary_movement_details").update({ journal_entry_id: tmpId }).eq("journal_entry_id", oldId).eq("user_id", user.id);
+      await supa.from("inventory_movements").update({ journal_entry_id: tmpId }).eq("journal_entry_id", oldId).eq("user_id", user.id);
+      // Update the PK
+      const { data: entry } = await supa.from("journal_entries").select("date,memo,void_of,created_at").eq("id", oldId).single();
+      if (entry) {
+        await supa.from("journal_entries").insert({ id: tmpId, date: entry.date, memo: entry.memo, void_of: entry.void_of, user_id: user.id });
+        await supa.from("journal_entries").delete().eq("id", oldId);
+      }
+    }
+
+    // Step 2: Rename from temporary to final IDs
+    for (const { oldId, newId } of changes) {
+      const tmpId = `_TMP_${oldId}`;
+      // Update FK references
+      await supa.from("journal_lines").update({ entry_id: newId }).eq("entry_id", tmpId);
+      await supa.from("kardex_movements").update({ journal_entry_id: newId }).eq("journal_entry_id", tmpId).eq("user_id", user.id);
+      await supa.from("auxiliary_movement_details").update({ journal_entry_id: newId }).eq("journal_entry_id", tmpId).eq("user_id", user.id);
+      await supa.from("inventory_movements").update({ journal_entry_id: newId }).eq("journal_entry_id", tmpId).eq("user_id", user.id);
+      // Update the PK
+      const { data: entry } = await supa.from("journal_entries").select("date,memo,void_of,created_at").eq("id", tmpId).single();
+      if (entry) {
+        await supa.from("journal_entries").insert({ id: newId, date: entry.date, memo: entry.memo, void_of: entry.void_of, user_id: user.id });
+        await supa.from("journal_entries").delete().eq("id", tmpId);
+      }
+    }
+
+    // Step 3: Fix void_of references
+    for (const { oldId, newId } of changes) {
+      await supa.from("journal_entries").update({ void_of: newId }).eq("void_of", oldId).eq("user_id", user.id);
+    }
   },
   async saveEntry(e){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
