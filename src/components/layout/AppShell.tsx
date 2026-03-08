@@ -1,10 +1,16 @@
 // src/components/layout/AppShell.tsx
 import React from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
-import { Eye } from 'lucide-react';
+import { Eye, Settings, Package } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export function AppShell() {
   const location = useLocation();
