@@ -14,6 +14,7 @@ import {
 
 export function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { signOut } = useAuth();
   const { isOwner, isViewer, isReadOnly, permissions, loading } = useUserAccess();
 
@@ -30,21 +31,19 @@ export function AppShell() {
       if (permissions.can_view_ledger) items.push({ path: '/ledger', label: 'Libro Mayor' });
       if (permissions.can_view_reports) items.push({ path: '/reports', label: 'Reportes' });
     } else {
-      // Owner: show all sections
+      // Owner: show all sections (except Embarques/Inventario which will be in dropdown)
       items.push({ path: '/accounts', label: 'Plan de Cuentas' });
       items.push({ path: '/journal', label: 'Libro Diario' });
       items.push({ path: '/auxiliary-ledgers', label: 'Libros Auxiliares' });
       items.push({ path: '/ledger', label: 'Libro Mayor' });
       items.push({ path: '/reports', label: 'Reportes' });
-      items.push({ path: '/shipments', label: 'Embarques' });
-      items.push({ path: '/inventory', label: 'Inventario' });
-      items.push({ path: '/settings', label: 'Configuración' });
     }
 
     return items;
   };
 
   const navItems = getNavItems();
+  const isInventoryMenuActive = location.pathname === '/shipments' || location.pathname === '/inventory';
 
   return (
     <div className="min-h-screen bg-background">
