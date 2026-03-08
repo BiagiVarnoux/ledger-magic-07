@@ -16,6 +16,7 @@ export interface IDataAdapter {
   loadEntries(): Promise<JournalEntry[]>;
   saveEntry(e: JournalEntry): Promise<void>;
   deleteEntry(id: string): Promise<void>;
+  renumberEntries(changes: Array<{ oldId: string; newId: string }>): Promise<void>;
   loadAuxiliaryDefinitions(): Promise<AuxiliaryLedgerDefinition[]>;
   upsertAuxiliaryDefinition(d: AuxiliaryLedgerDefinition): Promise<void>;
   deleteAuxiliaryDefinition(id: string): Promise<void>;
