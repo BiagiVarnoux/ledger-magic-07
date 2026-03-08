@@ -1,1 +1,4 @@
 project_id = "glhflhqpsjlyrymquzsn"
+
+[functions.ai-journal]
+verify_jwt = false
