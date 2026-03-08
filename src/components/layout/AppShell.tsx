@@ -1,13 +1,20 @@
 // src/components/layout/AppShell.tsx
 import React from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
-import { Eye } from 'lucide-react';
+import { Eye, Settings, Package } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { signOut } = useAuth();
   const { isOwner, isViewer, isReadOnly, permissions, loading } = useUserAccess();
 
@@ -24,21 +31,19 @@ export function AppShell() {
       if (permissions.can_view_ledger) items.push({ path: '/ledger', label: 'Libro Mayor' });
       if (permissions.can_view_reports) items.push({ path: '/reports', label: 'Reportes' });
     } else {
-      // Owner: show all sections
+      // Owner: show all sections (except Embarques/Inventario which will be in dropdown)
       items.push({ path: '/accounts', label: 'Plan de Cuentas' });
       items.push({ path: '/journal', label: 'Libro Diario' });
       items.push({ path: '/auxiliary-ledgers', label: 'Libros Auxiliares' });
       items.push({ path: '/ledger', label: 'Libro Mayor' });
       items.push({ path: '/reports', label: 'Reportes' });
-      items.push({ path: '/shipments', label: 'Embarques' });
-      items.push({ path: '/inventory', label: 'Inventario' });
-      items.push({ path: '/settings', label: 'Configuración' });
     }
 
     return items;
   };
 
   const navItems = getNavItems();
+  const isInventoryMenuActive = location.pathname === '/shipments' || location.pathname === '/inventory';
 
   return (
     <div className="min-h-screen bg-background">
@@ -65,6 +70,42 @@ export function AppShell() {
                 <Link to={item.path}>{item.label}</Link>
               </Button>
             ))}
+            
+            {/* Dropdown for Embarques/Inventario (owner only) */}
+            {!loading && isOwner && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={isInventoryMenuActive ? "default" : "ghost"}
+                    size="sm"
+                    className="flex items-center gap-1"
+                  >
+                    <Package className="h-4 w-4" />
+                    Inventario
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => navigate('/shipments')}>
+                    Embarques
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/inventory')}>
+                    Inventario
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            
+            {/* Settings icon (owner only) */}
+            {!loading && isOwner && (
+              <Button
+                variant={location.pathname === '/settings' ? "default" : "ghost"}
+                size="sm"
+                onClick={() => navigate('/settings')}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            )}
+            
             <Button
               variant="outline"
               size="sm"
