@@ -70,6 +70,42 @@ export function AppShell() {
                 <Link to={item.path}>{item.label}</Link>
               </Button>
             ))}
+            
+            {/* Dropdown for Embarques/Inventario (owner only) */}
+            {!loading && isOwner && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={isInventoryMenuActive ? "default" : "ghost"}
+                    size="sm"
+                    className="flex items-center gap-1"
+                  >
+                    <Package className="h-4 w-4" />
+                    Inventario
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => navigate('/shipments')}>
+                    Embarques
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/inventory')}>
+                    Inventario
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            
+            {/* Settings icon (owner only) */}
+            {!loading && isOwner && (
+              <Button
+                variant={location.pathname === '/settings' ? "default" : "ghost"}
+                size="sm"
+                onClick={() => navigate('/settings')}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            )}
+            
             <Button
               variant="outline"
               size="sm"
