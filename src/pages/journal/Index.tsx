@@ -327,8 +327,24 @@ export default function JournalPage() {
     if (!entryToDelete) return;
 
     try {
+      const entryToDeleteData = entries.find(e => e.id === entryToDelete);
       await adapter.deleteEntry(entryToDelete);
-      setEntries(await adapter.loadEntries());
+      
+      // Renumber after deletion
+      if (entryToDeleteData) {
+        const updatedEntries = await adapter.loadEntries();
+        const quarterIdent = getQuarterIdentifier(entryToDeleteData.date);
+        const renumberChanges = computeRenumberingMap(updatedEntries, quarterIdent);
+        if (renumberChanges.length > 0) {
+          await adapter.renumberEntries(renumberChanges);
+          setEntries(await adapter.loadEntries());
+        } else {
+          setEntries(updatedEntries);
+        }
+      } else {
+        setEntries(await adapter.loadEntries());
+      }
+      
       toast.success('Asiento eliminado');
       setDeleteDialogOpen(false);
       setEntryToDelete(null);
