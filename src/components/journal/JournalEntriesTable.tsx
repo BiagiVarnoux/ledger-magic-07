@@ -67,7 +67,7 @@ export function JournalEntriesTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedEntries.map(e => {
+                sortedEntries.filter(e => e.lines.length > 0).map(e => {
                   const entryDiff = e.lines.reduce((sum, l) => sum + l.debit - l.credit, 0);
                   const isUnbalanced = Math.abs(round2(entryDiff)) >= 0.01;
                   
