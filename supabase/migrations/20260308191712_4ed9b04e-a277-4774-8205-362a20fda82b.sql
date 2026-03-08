@@ -1,0 +1,1 @@
+DELETE FROM public.journal_entries WHERE id LIKE '%\_TMP\_%' AND NOT EXISTS (SELECT 1 FROM public.journal_lines WHERE entry_id = journal_entries.id);
