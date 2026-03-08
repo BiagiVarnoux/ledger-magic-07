@@ -24,7 +24,7 @@ export interface AIParseResult {
   raw_interpretation: string;
 }
 
-const GROQ_API_KEY = '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';
+const GROQ_API_KEY = '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';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
