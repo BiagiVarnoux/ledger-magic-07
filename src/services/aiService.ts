@@ -1,8 +1,9 @@
 // src/services/aiService.ts
-// Servicio de IA para generación automática de asientos contables — powered by Groq
+// Servicio de IA para generación automática de asientos contables — powered by Groq via Edge Function
 
 import { Account } from '@/accounting/types';
 import { todayISO } from '@/accounting/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface AIJournalLine {
   account_id: string;
@@ -23,10 +24,6 @@ export interface AIParseResult {
   suggestions: AIJournalSuggestion[];
   raw_interpretation: string;
 }
-
-const GROQ_API_KEY = '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';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 function buildSystemPrompt(accounts: Account[]): string {
   const accountList = accounts
@@ -101,43 +98,27 @@ export async function generateJournalEntries(
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   const yesterdayISO = yesterdayDate.toISOString().slice(0, 10);
 
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
+  const { data, error } = await supabase.functions.invoke('ai-journal', {
+    body: {
+      systemPrompt: buildSystemPrompt(accounts),
+      userPrompt: `Hoy es ${today} (ayer fue ${yesterdayISO}).\n\nGenera los asientos contables para las siguientes transacciones:\n\n${userText}`,
     },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      temperature: 0.1,
-      max_tokens: 1500,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: buildSystemPrompt(accounts),
-        },
-        {
-          role: 'user',
-          content: `Hoy es ${today} (ayer fue ${yesterdayISO}).\n\nGenera los asientos contables para las siguientes transacciones:\n\n${userText}`,
-        },
-      ],
-    }),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Error de API Groq: ${response.status}`);
+  if (error) {
+    throw new Error(error.message || 'Error al llamar al servicio de IA');
   }
 
-  const data = await response.json();
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+
   const rawText: string = data?.choices?.[0]?.message?.content ?? '';
 
   if (!rawText) {
     throw new Error('Groq no devolvió respuesta. Intenta de nuevo.');
   }
 
-  // Clean possible markdown code blocks just in case
   const clean = rawText
     .replace(/```json\n?/g, '')
     .replace(/```\n?/g, '')
