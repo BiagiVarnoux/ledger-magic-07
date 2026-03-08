@@ -68,6 +68,22 @@ export const LocalAdapter: IDataAdapter = {
     const list = await this.loadEntries(); 
     localStorage.setItem(LS_ENTRIES, JSON.stringify(list.filter(e=>e.id!==id))); 
   },
+  async renumberEntries(changes: Array<{ oldId: string; newId: string }>): Promise<void> {
+    if (changes.length === 0) return;
+    const list = await this.loadEntries();
+    // First pass: rename to temp IDs
+    for (const { oldId } of changes) {
+      const entry = list.find(e => e.id === oldId);
+      if (entry) entry.id = `_TMP_${oldId}`;
+    }
+    // Second pass: rename to final IDs
+    for (const { oldId, newId } of changes) {
+      const entry = list.find(e => e.id === `_TMP_${oldId}`);
+      if (entry) entry.id = newId;
+    }
+    list.sort((a, b) => cmpDate(a.date, b.date) || a.id.localeCompare(b.id));
+    localStorage.setItem(LS_ENTRIES, JSON.stringify(list));
+  },
   async loadAuxiliaryDefinitions(){ 
     const raw = localStorage.getItem(LS_AUX_DEFINITIONS); 
     return raw ? JSON.parse(raw) : []; 
