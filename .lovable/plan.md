@@ -1,74 +1,57 @@
 
 
-# Fase 3: Flujo de Efectivo — Método Indirecto (NIC 7)
+# Plan: Auto-renumbering of Journal Entry IDs by Chronological Order
 
-## Resumen
+## Problem
+Currently, new journal entries get the next sequential ID regardless of date. When an entry is recorded with an earlier date, its ID appears out of chronological order (e.g., entry 012 has date 02/16 but entry 011 has date 02/18).
 
-Agregar el método indirecto al reporte de Flujo de Efectivo, que parte de la **Utilidad Neta** del Estado de Resultados y la ajusta por partidas no monetarias y variaciones en capital de trabajo. El usuario podrá elegir entre método directo (actual) o indirecto. Se reutiliza `computeIncomeStatement` del EE.RR. para obtener la Utilidad Neta.
+## Solution
+After saving a new entry (not editing), re-sort all entries in the same quarter by date and reassign sequential IDs. Update all references across tables.
 
-## Estructura del Método Indirecto (NIC 7.18-20)
+## Files to Modify
+
+### 1. `src/accounting/utils.ts`
+- Add a new function `renumberQuarterEntries(entries: JournalEntry[], quarterIdentifier: string)` that:
+  - Filters entries belonging to that quarter
+  - Sorts by date ASC, then by `created_at` or current ID as tiebreaker
+  - Returns a map of `oldId -> newId` for entries that need renumbering
+
+### 2. `src/pages/journal/Index.tsx` — `handleFinalSave`
+- After saving a new entry (not editing), call a renumbering routine:
+  1. Reload entries from adapter
+  2. Get all entries in the same quarter, sorted by date ASC then current ID ASC
+  3. Compute new sequential IDs (001-QX-YY, 002-QX-YY, ...)
+  4. For any entry where oldId !== newId, update in Supabase:
+     - Update `journal_entries.id` (delete old + insert new since `id` is PK)
+     - Update `journal_lines.entry_id`
+     - Update `kardex_movements.journal_entry_id`
+     - Update `auxiliary_movement_details.journal_entry_id`
+     - Update `inventory_movements.journal_entry_id`
+  5. Reload entries again to reflect new IDs
+
+### 3. `src/accounting/data-adapter.ts`
+- Add a new method `renumberEntry(oldId: string, newId: string): Promise<void>` to `IDataAdapter` that handles the atomic rename of an entry ID across all tables. Implementation:
+  - Read the entry + lines
+  - Insert new entry with new ID
+  - Update all foreign references (`journal_lines`, `kardex_movements`, `auxiliary_movement_details`, `inventory_movements`)
+  - Delete old entry
+
+## Renumbering Algorithm
 
 ```text
-UTILIDAD NETA (del EE.RR.)
-
-+ Ajustes por partidas no monetarias:
-  + Depreciación y Amortización (es_partida_no_monetaria = true)
-  + Provisiones (subclasificacion heurística)
-  + Pérdidas/ganancias por disposición de activos
-
-= Flujo Operativo antes de cambios en Capital de Trabajo
-
-+/- Variaciones en Capital de Trabajo:
-  - (Aumento) / Disminución en Cuentas por Cobrar
-  - (Aumento) / Disminución en Inventarios
-  + Aumento / (Disminución) en Cuentas por Pagar
-  (usa es_capital_trabajo = true o heurísticas)
-
-= FLUJO NETO DE OPERACIÓN
-
-+/- Actividades de Inversión (igual que método directo)
-+/- Actividades de Financiación (igual que método directo)
-
-= VARIACIÓN NETA DE EFECTIVO
-+ Saldo Inicial
-= SALDO FINAL
+1. After save, get quarterIdentifier from entry date
+2. Load all entries in that quarter
+3. Sort by (date ASC, created_at ASC)
+4. Assign IDs: 001-QX-YY, 002-QX-YY, ...
+5. Collect pairs where oldId != newId
+6. If no changes needed, skip
+7. Otherwise, rename each entry in order (process from end to avoid conflicts)
+8. Show toast: "IDs renumerados cronológicamente"
 ```
 
-## Cambios
-
-### 1. `src/components/reports/CashFlowReport.tsx` (refactor mayor)
-
-- Agregar toggle "Método Directo / Método Indirecto" en el header
-- **Método Indirecto — Actividades de Operación:**
-  - Importar y usar `computeIncomeStatement` (extraer como función reutilizable si es necesario) para obtener `utilidadNeta`
-  - Calcular ajustes no monetarios: filtrar cuentas con `es_partida_no_monetaria === true` y sumar sus movimientos en el periodo (D&A, provisiones)
-  - Calcular variaciones en capital de trabajo: para cada cuenta con `es_capital_trabajo === true` (o tipo ACTIVO corriente / PASIVO corriente), comparar saldo al inicio vs fin del periodo. Para activos: aumento = negativo. Para pasivos: aumento = positivo
-  - Usar `clasificacion_flujo` como fuente primaria para clasificar cuentas en operación/inversión/financiación, con fallback a `classifyMovementNIC7` existente
-- **Inversión y Financiación**: reutilizar la lógica actual del método directo (movimientos de efectivo clasificados por contraparte)
-- Mantener el método directo intacto como opción
-
-### 2. `src/services/pdfService.ts`
-
-- Extender `CashFlowNIIFData` con campos del método indirecto: `metodo`, `utilidadNeta`, `ajustesNoMonetarios`, `variacionesCapitalTrabajo`, `flujoOperativoIndirecto`
-- Actualizar `exportCashFlowNIIFToPDF` para renderizar la estructura indirecta cuando `metodo === 'indirecto'`
-
-## Campos de Account utilizados
-
-| Campo | Uso |
-|-------|-----|
-| `is_cash_equivalent` | Identificar cuentas de efectivo |
-| `es_partida_no_monetaria` | Ajustes por D&A, provisiones |
-| `es_capital_trabajo` | Variaciones en capital de trabajo |
-| `clasificacion_flujo` | Clasificar en operación/inversión/financiación |
-| `is_current` | Distinguir corriente vs no corriente para capital de trabajo |
-| `type` | Determinar signo de variación (activo vs pasivo) |
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/reports/CashFlowReport.tsx` | Toggle de método, lógica completa del método indirecto |
-| `src/services/pdfService.ts` | Soporte PDF para método indirecto |
-
-No se necesitan cambios en base de datos.
+## Edge Cases
+- Editing an existing entry (date change): should also trigger renumbering
+- Voiding an entry: the void entry gets a new ID, so renumber after
+- Deleting an entry: should also trigger renumbering to close gaps
+- Conflict avoidance: rename to temporary IDs first, then to final IDs, to avoid PK conflicts
 
