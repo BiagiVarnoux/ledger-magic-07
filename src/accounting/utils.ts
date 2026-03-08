@@ -142,28 +142,3 @@ export function signForLine(account: Account | undefined, line: { debit?: number
   if (!side) return "";
   return side === increaseSideFor(account.type) ? "+" : "-";
 }
-
-/**
- * Computes the renumbering map for a quarter's entries.
- * Sorts entries by date ASC, then by current ID ASC as tiebreaker.
- * Returns array of { oldId, newId } for entries that need renaming.
- */
-export function computeRenumberingMap(
-  entries: JournalEntry[],
-  quarterIdentifier: string
-): Array<{ oldId: string; newId: string }> {
-  const quarterEntries = entries
-    .filter(e => e.id.endsWith(`-${quarterIdentifier}`))
-    .sort((a, b) => cmpDate(a.date, b.date) || a.id.localeCompare(b.id));
-
-  const changes: Array<{ oldId: string; newId: string }> = [];
-
-  quarterEntries.forEach((entry, index) => {
-    const newId = `${String(index + 1).padStart(3, '0')}-${quarterIdentifier}`;
-    if (entry.id !== newId) {
-      changes.push({ oldId: entry.id, newId });
-    }
-  });
-
-  return changes;
-}

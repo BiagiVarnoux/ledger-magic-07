@@ -11,8 +11,7 @@ import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { JournalEntry } from '@/accounting/types';
-import { generateEntryId, generateChronologicalEntryId, computeRenumberingMap } from '@/accounting/utils';
-import { getQuarterIdentifier } from '@/accounting/quarterly-utils';
+import { generateEntryId, generateChronologicalEntryId } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { getCurrentKardexState } from '@/accounting/kardex-utils';
@@ -279,19 +278,8 @@ export default function JournalPage() {
         }
       }
       
-      const updatedEntries = await adapter.loadEntries();
-      
-      // Renumber entries chronologically
-      const quarterIdent = getQuarterIdentifier(je.date);
-      const renumberChanges = computeRenumberingMap(updatedEntries, quarterIdent);
-      if (renumberChanges.length > 0) {
-        await adapter.renumberEntries(renumberChanges);
-        setEntries(await adapter.loadEntries());
-        toast.success(`Asiento guardado. IDs renumerados cronológicamente.`);
-      } else {
-        setEntries(updatedEntries);
-        toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
-      }
+      setEntries(await adapter.loadEntries());
+      toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
       form.clearForm();
 
       // Detect cost-of-sales lines for inventory exit
@@ -327,24 +315,8 @@ export default function JournalPage() {
     if (!entryToDelete) return;
 
     try {
-      const entryToDeleteData = entries.find(e => e.id === entryToDelete);
       await adapter.deleteEntry(entryToDelete);
-      
-      // Renumber after deletion
-      if (entryToDeleteData) {
-        const updatedEntries = await adapter.loadEntries();
-        const quarterIdent = getQuarterIdentifier(entryToDeleteData.date);
-        const renumberChanges = computeRenumberingMap(updatedEntries, quarterIdent);
-        if (renumberChanges.length > 0) {
-          await adapter.renumberEntries(renumberChanges);
-          setEntries(await adapter.loadEntries());
-        } else {
-          setEntries(updatedEntries);
-        }
-      } else {
-        setEntries(await adapter.loadEntries());
-      }
-      
+      setEntries(await adapter.loadEntries());
       toast.success('Asiento eliminado');
       setDeleteDialogOpen(false);
       setEntryToDelete(null);
@@ -370,17 +342,8 @@ export default function JournalPage() {
     };
     try {
       await adapter.saveEntry(inv);
-      // Renumber after void
-      const updatedEntries = await adapter.loadEntries();
-      const quarterIdent = getQuarterIdentifier(orig.date);
-      const renumberChanges = computeRenumberingMap(updatedEntries, quarterIdent);
-      if (renumberChanges.length > 0) {
-        await adapter.renumberEntries(renumberChanges);
-        setEntries(await adapter.loadEntries());
-      } else {
-        setEntries(updatedEntries);
-      }
-      toast.success(`Asiento ${orig.id} anulado`);
+      setEntries(await adapter.loadEntries());
+      toast.success(`Asiento ${orig.id} anulado con ${inv.id}`);
     } catch (e: any) {
       toast.error(e.message || 'No se pudo anular');
     }
