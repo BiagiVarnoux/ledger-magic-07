@@ -370,8 +370,17 @@ export default function JournalPage() {
     };
     try {
       await adapter.saveEntry(inv);
-      setEntries(await adapter.loadEntries());
-      toast.success(`Asiento ${orig.id} anulado con ${inv.id}`);
+      // Renumber after void
+      const updatedEntries = await adapter.loadEntries();
+      const quarterIdent = getQuarterIdentifier(orig.date);
+      const renumberChanges = computeRenumberingMap(updatedEntries, quarterIdent);
+      if (renumberChanges.length > 0) {
+        await adapter.renumberEntries(renumberChanges);
+        setEntries(await adapter.loadEntries());
+      } else {
+        setEntries(updatedEntries);
+      }
+      toast.success(`Asiento ${orig.id} anulado`);
     } catch (e: any) {
       toast.error(e.message || 'No se pudo anular');
     }
