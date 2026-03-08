@@ -279,8 +279,19 @@ export default function JournalPage() {
         }
       }
       
-      setEntries(await adapter.loadEntries());
-      toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
+      const updatedEntries = await adapter.loadEntries();
+      
+      // Renumber entries chronologically
+      const quarterIdent = getQuarterIdentifier(je.date);
+      const renumberChanges = computeRenumberingMap(updatedEntries, quarterIdent);
+      if (renumberChanges.length > 0) {
+        await adapter.renumberEntries(renumberChanges);
+        setEntries(await adapter.loadEntries());
+        toast.success(`Asiento guardado. IDs renumerados cronológicamente.`);
+      } else {
+        setEntries(updatedEntries);
+        toast.success(`Asiento ${je.id} ${form.editingEntry ? 'actualizado' : 'guardado'}`);
+      }
       form.clearForm();
 
       // Detect cost-of-sales lines for inventory exit
