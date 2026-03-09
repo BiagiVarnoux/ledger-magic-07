@@ -414,6 +414,17 @@ export const SupaAdapter: IDataAdapter = {
     
     const { error } = await supa.from("auxiliary_movement_details").insert(payload);
     if (error) throw error;
+    
+    // Automatic reopening: Check if any affected clients are closed and reopen them
+    const affectedClientIds = Array.from(new Set(details.map(d => d.aux_entry_id)));
+    const entries = await this.loadAuxiliaryEntries();
+    
+    for (const auxId of affectedClientIds) {
+      const entry = entries.find(e => e.id === auxId);
+      if (entry?.closed_date) {
+        await this.reopenAuxiliaryEntry(auxId);
+      }
+    }
   },
   async loadKardexDefinitions(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadKardexDefinitions();
