@@ -80,55 +80,75 @@ export default function ShipmentsPage() {
   const { entries, setEntries, adapter } = useAccounting();
   const { isReadOnly } = useUserAccess();
 
-  const [shipments, setShipments] = useState<Shipment[]>(() => ShipmentStorage.load());
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
-  const [draft, setDraft] = useState<Shipment>(newShipment);
+  const [draft, setDraft] = useState<Shipment>(() => newShipment());
   const [closeConfirmState, setCloseConfirmState] = useState<{
     shipment: Shipment;
     costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: any }>;
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
 
+  const reloadShipments = useCallback(async () => {
+    try {
+      const list = await ShipmentStorage.load();
+      setShipments(list);
+      return list;
+    } catch (e: any) {
+      toast.error('Error al cargar embarques: ' + e.message);
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      // Auto-migrate from localStorage if needed
+      const migrated = await ShipmentStorage.migrateFromLocalStorage();
+      if (migrated > 0) {
+        toast.success(`${migrated} embarque(s) migrados de localStorage a Supabase`);
+      }
+      await reloadShipments();
+      setLoading(false);
+    })();
+  }, [reloadShipments]);
+
   const selected = useMemo(
     () => shipments.find(s => s.id === selectedId) ?? null,
     [shipments, selectedId]
   );
 
-  function persist(s: Shipment) {
-    ShipmentStorage.upsert(s);
-    setShipments(ShipmentStorage.load());
+  async function persist(s: Shipment) {
+    await ShipmentStorage.upsert(s);
+    await reloadShipments();
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     if (draft.products.length === 0 || draft.products.every(p => !p.nombre)) {
       toast.error('Agrega al menos un producto con nombre');
       return;
     }
-    persist(draft);
+    await persist(draft);
     setSelectedId(draft.id);
     setShowNewDialog(false);
-    setDraft(newShipment());
+    setDraft(newShipment(shipments));
     toast.success(`Embarque ${draft.numero} creado`);
   }
 
   function handleDeleteRequest(s: Shipment) {
-    if (s.status === 'CERRADO') {
-      setDeleteConfirm({ shipment: s, step: 1 });
-    } else {
-      setDeleteConfirm({ shipment: s, step: 1 });
-    }
+    setDeleteConfirm({ shipment: s, step: 1 });
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteConfirm) return;
     const { shipment, step } = deleteConfirm;
     if (shipment.status === 'CERRADO' && step === 1) {
       setDeleteConfirm({ shipment, step: 2 });
       return;
     }
-    ShipmentStorage.delete(shipment.id);
-    setShipments(ShipmentStorage.load());
+    await ShipmentStorage.delete(shipment.id);
+    await reloadShipments();
     if (selectedId === shipment.id) setSelectedId(null);
     setDeleteConfirm(null);
     toast.success('Embarque eliminado');
