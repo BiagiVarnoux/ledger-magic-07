@@ -78,51 +78,104 @@ export default function AuxiliaryLedgersPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDefinitionId, auxiliaryEntries]);
 
-  // Filtrado por trimestre: un cliente aparece si tiene saldo != 0 al cierre del trimestre
-  // O si tuvo algún movimiento dentro del trimestre seleccionado
-  const filteredEntries = useMemo(() => {
-    if (!selectedDefinitionId || !selectedDefinition) return [];
+  // Helper to determine quarter for a date
+  const getQuarterForDate = (date: string): Quarter | null => {
+    return availableQuarters.find(q => 
+      date >= q.startDate && date <= q.endDate
+    ) || null;
+  };
+
+  // Filtrado por trimestre con clasificación de clientes cerrados
+  const { activeEntries, closedEntries } = useMemo(() => {
+    if (!selectedDefinitionId || !selectedDefinition) {
+      return { activeEntries: [], closedEntries: [] };
+    }
 
     const baseEntries = auxiliaryEntries.filter(entry =>
-      entry.definition_id === selectedDefinitionId || entry.account_id === selectedDefinition.account_id
+      entry.definition_id === selectedDefinitionId || 
+      entry.account_id === selectedDefinition.account_id
     );
 
-    return baseEntries
-      .map(entry => {
-        const movements = clientMovements[entry.id];
-        if (!movements) {
-          // Movimientos aún no cargados: mostrar con saldo original
-          return { ...entry, _hasMovementsInQuarter: false, _movementsLoaded: false };
+    const active: typeof baseEntries = [];
+    const closed: typeof baseEntries = [];
+
+    baseEntries.forEach(entry => {
+      const movements = clientMovements[entry.id];
+      if (!movements) {
+        // Aún no cargado, mostrar como activo
+        active.push({ ...entry, _movementsLoaded: false } as any);
+        return;
+      }
+
+      const quarterEnd = selectedQuarter.endDate;
+      const quarterStart = selectedQuarter.startDate;
+
+      const quarterBalance = round2(
+        movements
+          .filter(m => m.movement_date <= quarterEnd)
+          .reduce((sum, m) => 
+            sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount), 0
+          )
+      );
+
+      const hasMovementsInQuarter = movements.some(
+        m => m.movement_date >= quarterStart && m.movement_date <= quarterEnd
+      );
+
+      const enrichedEntry = {
+        ...entry,
+        total_balance: quarterBalance,
+        _hasMovementsInQuarter: hasMovementsInQuarter,
+        _movementsLoaded: true,
+      } as any;
+
+      // Clasificación según estado de cierre
+      if (!entry.closed_date) {
+        // Cliente activo: mostrar si tiene saldo o movimientos
+        if (hasMovementsInQuarter || Math.abs(quarterBalance) >= 0.01) {
+          active.push(enrichedEntry);
+        }
+      } else {
+        // Cliente cerrado
+        const closureQuarter = getQuarterForDate(entry.closed_date);
+        
+        if (!closureQuarter) {
+          // Fecha inválida, tratar como activo
+          active.push(enrichedEntry);
+          return;
         }
 
-        const quarterEnd = selectedQuarter.endDate;
-        const quarterStart = selectedQuarter.startDate;
+        const isClosedInCurrentQuarter = 
+          selectedQuarter.label === closureQuarter.label;
+        const isClosedInFutureQuarter = 
+          selectedQuarter.startDate > entry.closed_date;
 
-        // Saldo acumulado hasta el fin del trimestre seleccionado
-        const quarterBalance = round2(
-          movements
-            .filter(m => m.movement_date <= quarterEnd)
-            .reduce((sum, m) => sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount), 0)
-        );
+        if (isClosedInFutureQuarter) {
+          // Trimestre posterior al cierre: NO mostrar
+          return;
+        }
 
-        // ¿Tuvo algún movimiento dentro del trimestre?
-        const hasMovementsInQuarter = movements.some(
-          m => m.movement_date >= quarterStart && m.movement_date <= quarterEnd
-        );
+        if (isClosedInCurrentQuarter) {
+          // Trimestre del cierre: sección "Cuentas Cerradas"
+          closed.push(enrichedEntry);
+        } else {
+          // Trimestre anterior al cierre: mostrar como activo histórico
+          if (hasMovementsInQuarter || Math.abs(quarterBalance) >= 0.01) {
+            active.push(enrichedEntry);
+          }
+        }
+      }
+    });
 
-        return {
-          ...entry,
-          total_balance: quarterBalance,
-          _hasMovementsInQuarter: hasMovementsInQuarter,
-          _movementsLoaded: true,
-        };
-      })
-      .filter(entry => {
-        if (!entry._movementsLoaded) return true; // Mostrar mientras carga
-        // Mostrar si tiene saldo pendiente o movió en el trimestre
-        return entry._hasMovementsInQuarter || Math.abs(entry.total_balance) >= 0.01;
-      });
-  }, [auxiliaryEntries, selectedDefinitionId, selectedDefinition, selectedQuarter, clientMovements]);
+    return { activeEntries: active, closedEntries: closed };
+  }, [
+    auxiliaryEntries, 
+    selectedDefinitionId, 
+    selectedDefinition, 
+    selectedQuarter, 
+    clientMovements,
+    availableQuarters
+  ]);
 
 
 
