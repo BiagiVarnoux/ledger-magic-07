@@ -28,6 +28,8 @@ import { JournalFiltersComponent, JournalFilters, defaultFilters } from '@/compo
 import { InlineKardexPopup, KardexData } from '@/components/kardex/InlineKardexPopup';
 import { AuxiliaryLedgerModal } from '@/components/auxiliary-ledger/AuxiliaryLedgerModal';
 import { InventoryExitModal } from '@/components/inventory/InventoryExitModal';
+import { FifoExitModal } from '@/components/inventory/FifoExitModal';
+import { InventoryLot } from '@/components/inventory/fifo-utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,12 +73,27 @@ export default function JournalPage() {
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+  
+  // CPP exit modal state
   const [inventoryExitState, setInventoryExitState] = useState<{
     isOpen: boolean;
     journalEntryId: string;
     journalDate: string;
     costLines: Array<{ accountId: string; amount: number }>;
   }>({ isOpen: false, journalEntryId: '', journalDate: '', costLines: [] });
+
+  // FIFO exit modal state
+  const [fifoExitState, setFifoExitState] = useState<{
+    isOpen: boolean;
+    journalEntryId: string;
+    journalDate: string;
+    product: { id: string; nombre: string; unidad_medida: string };
+    lots: InventoryLot[];
+    costAccountId: string;
+  }>({ isOpen: false, journalEntryId: '', journalDate: '', product: { id: '', nombre: '', unidad_medida: '' }, lots: [], costAccountId: '' });
+
+  // Track the saved entry for auto-fill after inventory exit
+  const [pendingSavedEntry, setPendingSavedEntry] = useState<JournalEntry | null>(null);
 
   // Use custom hook for form management
   const form = useJournalForm({
@@ -98,7 +115,6 @@ export default function JournalPage() {
   const filteredEntries = useMemo(() => {
     let result = entries.filter(entry => isDateInQuarter(entry.date, currentQuarter));
     
-    // Apply filters
     if (filters.searchText) {
       const search = filters.searchText.toLowerCase();
       result = result.filter(e => 
@@ -132,7 +148,6 @@ export default function JournalPage() {
     return result;
   }, [entries, currentQuarter, filters]);
 
-  // Available quarters for selection
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
 
   useEffect(() => {
@@ -147,7 +162,6 @@ export default function JournalPage() {
 
   function detectAuxiliaryLines(je: JournalEntry): Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> {
     const auxiliaryLines: Array<{ lineDraft: LineDraft; lineIndex: number; accountId: string; lineAmount: number; isIncrease: boolean }> = [];
-    
     const auxiliaryAccountIds = auxiliaryDefinitions.map(d => d.account_id);
     
     je.lines.forEach((line, index) => {
@@ -157,13 +171,7 @@ export default function JournalPage() {
         const account = accounts.find(a => a.id === line.account_id);
         const isIncrease = account?.normal_side === 'DEBE' ? line.debit > 0 : line.credit > 0;
         
-        auxiliaryLines.push({
-          lineDraft,
-          lineIndex: index,
-          accountId: line.account_id,
-          lineAmount,
-          isIncrease
-        });
+        auxiliaryLines.push({ lineDraft, lineIndex: index, accountId: line.account_id, lineAmount, isIncrease });
       }
     });
     
@@ -218,13 +226,9 @@ export default function JournalPage() {
             if (!kardexId) {
               const { data: newKardex, error: createError } = await supabase
                 .from('kardex_entries')
-                .insert({
-                  account_id: line.account_id,
-                  user_id: user.id
-                })
+                .insert({ account_id: line.account_id, user_id: user.id })
                 .select()
                 .single();
-              
               if (createError) throw createError;
               kardexId = newKardex.id;
             }
@@ -294,6 +298,47 @@ export default function JournalPage() {
         .filter(Boolean) as Array<{ accountId: string; amount: number }>;
 
       if (costLines.length > 0) {
+        // Save the entry reference for potential auto-fill after inventory exit
+        setPendingSavedEntry(je);
+        
+        // Check if any products use FIFO (have inventory_lots)
+        if (user) {
+          const { data: lotsData } = await supabase
+            .from('inventory_lots')
+            .select('*, products!inner(id, nombre, unidad_medida)')
+            .eq('user_id', user.id)
+            .gt('cantidad_disponible', 0);
+          
+          if (lotsData && lotsData.length > 0) {
+            // There are FIFO lots — group by product to check
+            const productMap = new Map<string, { product: { id: string; nombre: string; unidad_medida: string }; lots: InventoryLot[] }>();
+            for (const lot of lotsData) {
+              const prod = lot.products as any;
+              if (!productMap.has(prod.id)) {
+                productMap.set(prod.id, { product: { id: prod.id, nombre: prod.nombre, unidad_medida: prod.unidad_medida }, lots: [] });
+              }
+              productMap.get(prod.id)!.lots.push(lot as unknown as InventoryLot);
+            }
+            
+            // If there's exactly one product with FIFO lots, open FIFO modal directly
+            // Otherwise fall back to CPP modal (user can choose product there)
+            const fifoProducts = Array.from(productMap.values());
+            if (fifoProducts.length === 1) {
+              const fp = fifoProducts[0];
+              setFifoExitState({
+                isOpen: true,
+                journalEntryId: je.id,
+                journalDate: je.date,
+                product: fp.product,
+                lots: fp.lots,
+                costAccountId: costLines[0].accountId,
+              });
+              return;
+            }
+          }
+        }
+
+        // Default: open CPP modal
         setInventoryExitState({
           isOpen: true,
           journalEntryId: je.id,
@@ -304,6 +349,43 @@ export default function JournalPage() {
     } catch (e: any) {
       toast.error(e.message || 'Error guardando asiento');
     }
+  }
+
+  // Auto-update journal entry cost lines after inventory exit
+  async function handleInventoryExitSave(totalCosto: number) {
+    if (pendingSavedEntry && totalCosto > 0) {
+      try {
+        // Update the journal lines with the calculated cost
+        const je = pendingSavedEntry;
+        for (const line of je.lines) {
+          const acct = accounts.find(a => a.id === line.account_id);
+          if (acct && (acct as any).clasificacion_resultado === 'costo_ventas') {
+            // Update the debit on cost-of-sales line
+            await supabase
+              .from('journal_lines')
+              .update({ debit: totalCosto, credit: 0 })
+              .eq('entry_id', je.id)
+              .eq('account_id', line.account_id);
+          }
+          // Also update the inventory account credit (contra entry)
+          if (acct && acct.type === 'ACTIVO' && (acct as any).cuenta_inventario_id) {
+            await supabase
+              .from('journal_lines')
+              .update({ credit: totalCosto, debit: 0 })
+              .eq('entry_id', je.id)
+              .eq('account_id', line.account_id);
+          }
+        }
+        // Reload entries to reflect updated amounts
+        setEntries(await adapter.loadEntries());
+        toast.info(`Monto de costo de ventas actualizado a ${totalCosto.toFixed(2)}`);
+      } catch (e: any) {
+        console.error('Error updating journal amounts:', e);
+      }
+    }
+    setPendingSavedEntry(null);
+    setInventoryExitState({ ...inventoryExitState, isOpen: false });
+    setFifoExitState({ ...fifoExitState, isOpen: false });
   }
 
   const handleDeleteClick = (id: string) => {
@@ -349,20 +431,16 @@ export default function JournalPage() {
     }
   }
 
-  // Apply an AI suggestion to the journal form
   function applyAISuggestion(suggestion: AIJournalSuggestion) {
     form.setDate(suggestion.date);
     form.setMemo(suggestion.memo);
-    // Map AI lines to form LineDraft format
     const draftLines = suggestion.lines.map(line => ({
       account_id: line.account_id,
       debit: line.debit > 0 ? String(line.debit) : '',
       credit: line.credit > 0 ? String(line.credit) : '',
     }));
-    // Pad with empty lines if needed (minimum 3)
     while (draftLines.length < 3) draftLines.push({ account_id: '', debit: '', credit: '' });
     form.setLines(draftLines);
-    // Scroll to form
     document.querySelector('[data-journal-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -479,11 +557,21 @@ export default function JournalPage() {
 
       <InventoryExitModal
         isOpen={inventoryExitState.isOpen}
-        onClose={() => setInventoryExitState({ ...inventoryExitState, isOpen: false })}
+        onClose={() => { setInventoryExitState({ ...inventoryExitState, isOpen: false }); setPendingSavedEntry(null); }}
         journalEntryId={inventoryExitState.journalEntryId}
         journalDate={inventoryExitState.journalDate}
         costLines={inventoryExitState.costLines}
-        onSave={() => setInventoryExitState({ ...inventoryExitState, isOpen: false })}
+        onSave={handleInventoryExitSave}
+      />
+
+      <FifoExitModal
+        isOpen={fifoExitState.isOpen}
+        onClose={() => { setFifoExitState({ ...fifoExitState, isOpen: false }); setPendingSavedEntry(null); }}
+        product={fifoExitState.product}
+        lots={fifoExitState.lots}
+        journalEntryId={fifoExitState.journalEntryId}
+        journalDate={fifoExitState.journalDate}
+        onSaved={handleInventoryExitSave}
       />
     </div>
   );
