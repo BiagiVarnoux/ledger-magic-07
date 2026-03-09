@@ -144,6 +144,17 @@ export const LocalAdapter: IDataAdapter = {
     }
     
     localStorage.setItem(LS_AUX_MOVEMENTS, JSON.stringify(allMovements));
+    
+    // Automatic reopening: Check if any affected clients are closed and reopen them
+    const affectedClientIds = Array.from(new Set(details.map(d => d.aux_entry_id)));
+    const entries = await this.loadAuxiliaryEntries();
+    
+    for (const auxId of affectedClientIds) {
+      const entry = entries.find(e => e.id === auxId);
+      if (entry?.closed_date) {
+        await this.reopenAuxiliaryEntry(auxId);
+      }
+    }
   },
   async loadKardexDefinitions() {
     return []; // LocalStorage no soporta kárdex definitions
