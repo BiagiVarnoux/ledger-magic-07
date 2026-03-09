@@ -404,7 +404,7 @@ export default function ShipmentsPage() {
               shipment={selected}
               isReadOnly={isReadOnly}
               onSave={persist}
-              onDelete={() => handleDelete(selected.id)}
+              onDelete={() => handleDeleteRequest(selected)}
               onAdvance={() => handleAdvance(selected)}
               onClose={() => handleClose(selected)}
             />
