@@ -180,7 +180,7 @@ export default function ShipmentsPage() {
     }
 
     const next = flow[idx + 1];
-    persist({ ...s, status: next });
+    await persist({ ...s, status: next });
     toast.success(`Estado actualizado: ${SHIPMENT_STATUS_LABELS[next]}`);
   }
 
