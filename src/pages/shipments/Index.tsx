@@ -804,6 +804,11 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 // ─── Tab: Productos ────────────────────────────────────────────────────────────
 
 function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
+  const allCategories = getAllCategories();
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     onSave({ ...s, products: s.products.map(p => p.id === id ? { ...p, ...patch } : p) });
   }
@@ -815,83 +820,134 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
     onSave({ ...s, products: s.products.filter(p => p.id !== id) });
   }
 
+  function handleCategorySelect(productId: string, value: string) {
+    if (value === '__nueva__') {
+      setPendingProductId(productId);
+      setNewCategoryName('');
+      setShowCategoryDialog(true);
+    } else {
+      updateProduct(productId, { categoria: value });
+    }
+  }
+
+  function handleCreateCategory() {
+    if (!newCategoryName.trim()) return;
+    const slug = newCategoryName.toLowerCase().replace(/\s+/g, '_');
+    saveCustomCategory(slug, newCategoryName);
+    if (pendingProductId) {
+      updateProduct(pendingProductId, { categoria: slug });
+    }
+    setShowCategoryDialog(false);
+    setNewCategoryName('');
+    setPendingProductId(null);
+    toast.success(`Categoría "${newCategoryName}" creada`);
+  }
+
   const canEdit = !isReadOnly && !['EN_ADUANA', 'EN_ALMACEN', 'CERRADO'].includes(s.status);
 
   return (
-    <div className="space-y-3">
-      {canEdit && (
-        <div className="flex justify-end">
-          <Button size="sm" variant="outline" onClick={addProduct}>
-            <Plus className="w-4 h-4 mr-1" />Agregar producto
-          </Button>
-        </div>
-      )}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Producto</TableHead>
-            <TableHead>Categoría</TableHead>
-            <TableHead className="text-right">Cant.</TableHead>
-            <TableHead className="text-right">Precio USD</TableHead>
-            <TableHead className="text-right">Tax%</TableHead>
-            <TableHead className="text-right">Precio Bs</TableHead>
-            <TableHead className="text-right">GA%</TableHead>
-            <TableHead>Fecha</TableHead>
-            {canEdit && <TableHead />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {s.products.map(p => (
-            <TableRow key={p.id}>
-              <TableCell>
-                {canEdit ? (
-                  <Input value={p.nombre} className="h-8 min-w-[140px]"
-                    onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
-                ) : (
-                  <span className="font-medium">{p.nombre}</span>
-                )}
-                {p.tiene_bateria && (
-                  <Badge variant="outline" className="ml-1 text-[10px]">🔋 bat.</Badge>
-                )}
-              </TableCell>
-              <TableCell>
-                {canEdit ? (
-                  <Select value={p.categoria} onValueChange={v => updateProduct(p.id, { categoria: v as ProductCategory })}>
-                    <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(PRODUCT_CATEGORY_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span className="text-sm">{PRODUCT_CATEGORY_LABELS[p.categoria]}</span>
-                )}
-              </TableCell>
-              <TableCell className="text-right">{p.cantidad}</TableCell>
-              <TableCell className="text-right">{fmt(p.precio_usd)}</TableCell>
-              <TableCell className="text-right">{p.tax_pct > 0 ? `${p.tax_pct}%` : '—'}</TableCell>
-              <TableCell className="text-right font-medium">
-                {fmt(calcPrecioBs(p, s.tc_paralelo) * p.cantidad)}
-                {p.tc_producto && (
-                  <span className="block text-[10px] text-green-600 font-normal">T/C: {p.tc_producto.toFixed(4)}</span>
-                )}
-              </TableCell>
-              <TableCell className="text-right">{p.ga_pct}%</TableCell>
-              <TableCell className="text-xs text-muted-foreground">{p.fecha_compra}</TableCell>
-              {canEdit && (
-                <TableCell>
-                  <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
-                    disabled={s.products.length <= 1}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </TableCell>
-              )}
+    <>
+      <div className="space-y-3">
+        {canEdit && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={addProduct}>
+              <Plus className="w-4 h-4 mr-1" />Agregar producto
+            </Button>
+          </div>
+        )}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Producto</TableHead>
+              <TableHead>Categoría</TableHead>
+              <TableHead className="text-right">Cant.</TableHead>
+              <TableHead className="text-right">Precio USD</TableHead>
+              <TableHead className="text-right">Tax%</TableHead>
+              <TableHead className="text-right">Precio Bs</TableHead>
+              <TableHead className="text-right">GA%</TableHead>
+              <TableHead>Fecha</TableHead>
+              {canEdit && <TableHead />}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {s.products.map(p => (
+              <TableRow key={p.id}>
+                <TableCell>
+                  {canEdit ? (
+                    <Input value={p.nombre} className="h-8 min-w-[140px]"
+                      onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
+                  ) : (
+                    <span className="font-medium">{p.nombre}</span>
+                  )}
+                  {p.tiene_bateria && (
+                    <Badge variant="outline" className="ml-1 text-[10px]">🔋 bat.</Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {canEdit ? (
+                    <Select value={p.categoria} onValueChange={v => handleCategorySelect(p.id, v)}>
+                      <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(allCategories).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                        <SelectItem value="__nueva__">➕ Nueva categoría...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span className="text-sm">{allCategories[p.categoria] ?? p.categoria}</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">{p.cantidad}</TableCell>
+                <TableCell className="text-right">{fmt(p.precio_usd)}</TableCell>
+                <TableCell className="text-right">{p.tax_pct > 0 ? `${p.tax_pct}%` : '—'}</TableCell>
+                <TableCell className="text-right font-medium">
+                  {fmt(calcPrecioBs(p, s.tc_paralelo) * p.cantidad)}
+                  {p.tc_producto && (
+                    <span className="block text-[10px] text-success font-normal">T/C: {p.tc_producto.toFixed(4)}</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">{p.ga_pct}%</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{p.fecha_compra}</TableCell>
+                {canEdit && (
+                  <TableCell>
+                    <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
+                      disabled={s.products.length <= 1}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva Categoría</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nombre de la categoría</Label>
+              <Input
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+                placeholder="Ej: Textiles, Ferretería..."
+                onKeyDown={e => e.key === 'Enter' && handleCreateCategory()}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>Cancelar</Button>
+              <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim()}>
+                Crear Categoría
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
