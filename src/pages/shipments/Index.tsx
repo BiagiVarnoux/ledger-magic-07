@@ -25,14 +25,16 @@ import { useUserAccess } from '@/contexts/UserAccessContext';
 import {
   Shipment, ShipmentProduct, ShipmentExpense,
   ShipmentStatus, SHIPMENT_STATUS_LABELS, SHIPMENT_STATUS_COLORS,
-  ProductCategory, PRODUCT_CATEGORY_LABELS,
 } from '@/accounting/shipment-types';
 import { ShipmentStorage } from '@/accounting/shipment-storage';
 import {
   calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo,
   calcGAEstimado, calcIVAEstimado,
   calcCostoFinalPorProducto, generateShipmentNumber,
+  getAllCategories, saveCustomCategory,
 } from '@/accounting/shipment-utils';
+import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
+import { supabase } from '@/integrations/supabase/client';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
