@@ -1,6 +1,5 @@
 // src/services/backupService.ts
 import { supabase } from '@/integrations/supabase/client';
-import { ShipmentStorage } from '@/accounting/shipment-storage';
 
 export interface BackupData {
   version: string;
