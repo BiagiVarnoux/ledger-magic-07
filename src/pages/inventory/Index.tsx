@@ -250,6 +250,16 @@ export default function InventoryPage() {
         />
       )}
 
+      {fifoProduct && (
+        <FifoKardexModal
+          isOpen={!!fifoProduct}
+          onClose={() => setFifoProduct(null)}
+          product={fifoProduct}
+          onSaved={loadData}
+          isReadOnly={isReadOnly}
+        />
+      )}
+
       <NewProductModal
         isOpen={showNewProduct}
         onClose={() => { setShowNewProduct(false); setEditProduct(null); }}

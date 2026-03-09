@@ -314,23 +314,42 @@ export default function ShipmentsPage() {
       newIds.push(nationEntry.id);
       setEntries(await adapter.loadEntries());
 
-      // 3. Insert inventory movements
+      // 3. Create inventory_lots and inventory_movements (FIFO)
       for (const { product, costo_unitario } of costos) {
         const link = links.find(l => l.shipmentProductId === product.id);
         const productId = link?.isNew ? newProductIds[product.id] : link?.productId;
         if (!productId) continue;
 
-        await supabase.from('inventory_movements').insert({
+        // A) Create the lot
+        const { data: newLot, error: lotError } = await supabase
+          .from('inventory_lots')
+          .insert({
+            product_id: productId,
+            import_lot_id: null,
+            fecha_ingreso: todayISO(),
+            cantidad_inicial: product.cantidad,
+            cantidad_disponible: product.cantidad,
+            costo_unitario: costo_unitario,
+            user_id: user.user.id,
+          })
+          .select('id')
+          .single();
+        if (lotError) throw lotError;
+
+        // B) Insert movement linked to the lot
+        const { error: movError } = await supabase.from('inventory_movements').insert({
           product_id: productId,
+          inventory_lot_id: newLot.id,
           tipo: 'ENTRADA',
           cantidad: product.cantidad,
           costo_unitario,
           costo_total: round2(costo_unitario * product.cantidad),
           fecha: todayISO(),
           referencia: `${s.numero} — Importación cerrada`,
-          metodo_valuacion: 'CPP',
+          metodo_valuacion: 'FIFO',
           user_id: user.user.id,
         });
+        if (movError) throw movError;
       }
 
       // 4. Save closed shipment
