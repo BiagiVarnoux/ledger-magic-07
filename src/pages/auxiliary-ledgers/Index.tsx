@@ -274,6 +274,60 @@ export default function AuxiliaryLedgersPage() {
     }
   };
 
+  // Handler de cierre
+  const handleCloseClient = async (entry: AuxiliaryLedgerEntry) => {
+    if (isReadOnly) {
+      toast.error('No tienes permisos para cerrar clientes');
+      return;
+    }
+    
+    if (Math.abs(entry.total_balance) >= 0.01) {
+      toast.error('Solo puedes cerrar clientes con saldo exactamente 0');
+      return;
+    }
+    
+    if (!confirm(
+      `¿Cerrar el cliente "${entry.client_name}"?\n\n` +
+      `Se archivará a partir de hoy y no aparecerá en registros futuros.\n` +
+      `Puedes reabrirlo manualmente si lo necesitas.`
+    )) {
+      return;
+    }
+    
+    try {
+      await adapter.closeAuxiliaryEntry(entry.id, todayISO());
+      const updatedEntries = await adapter.loadAuxiliaryEntries();
+      setAuxiliaryEntries(updatedEntries);
+      toast.success(`Cliente "${entry.client_name}" cerrado exitosamente`);
+    } catch (error: any) {
+      toast.error(error.message || 'Error al cerrar el cliente');
+    }
+  };
+
+  // Handler de reapertura manual
+  const handleReopenClient = async (entry: AuxiliaryLedgerEntry) => {
+    if (isReadOnly) {
+      toast.error('No tienes permisos para reabrir clientes');
+      return;
+    }
+    
+    if (!confirm(
+      `¿Reabrir el cliente "${entry.client_name}"?\n\n` +
+      `Volverá a estar activo y visible en todos los trimestres.`
+    )) {
+      return;
+    }
+    
+    try {
+      await adapter.reopenAuxiliaryEntry(entry.id);
+      const updatedEntries = await adapter.loadAuxiliaryEntries();
+      setAuxiliaryEntries(updatedEntries);
+      toast.success(`Cliente "${entry.client_name}" reabierto exitosamente`);
+    } catch (error: any) {
+      toast.error(error.message || 'Error al reabrir el cliente');
+    }
+  };
+
   // Handler para agregar movimiento manual
   const handleAddManualMovement = async () => {
     if (isReadOnly) {
@@ -301,6 +355,17 @@ export default function AuxiliaryLedgersPage() {
       };
 
       await adapter.upsertAuxiliaryMovementDetails([movement]);
+
+      // NUEVO: Verificar si el cliente estaba cerrado y reabrirlo
+      const clientEntry = auxiliaryEntries.find(
+        e => e.id === manualMovementData.client_id
+      );
+      if (clientEntry?.closed_date) {
+        await adapter.reopenAuxiliaryEntry(clientEntry.id);
+        toast.info(
+          `Cliente "${clientEntry.client_name}" reabierto automáticamente`
+        );
+      }
 
       // Reload entries and movements
       const updatedEntries = await adapter.loadAuxiliaryEntries();
