@@ -48,7 +48,7 @@ export function FifoKardexModal({ isOpen, onClose, product, isReadOnly, onSaved 
   }, [isOpen, loadData]);
 
   const state = calcularEstadoFifo(lots);
-  const fifoMovs = movs.filter(m => m.metodo_valuacion === 'FIFO');
+  const fifoMovs = movs.filter(m => m.metodo_valuacion === 'PEPS');
 
   function handleExitSaved() {
     loadData();
