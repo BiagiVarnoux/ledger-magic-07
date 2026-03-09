@@ -12,6 +12,7 @@ import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt } from '@/accounting/utils';
 import { calcularEstadoProducto, InventoryMovement } from '@/components/inventory/inventory-utils';
 import { ProductKardexModal } from '@/components/inventory/ProductKardexModal';
+import { FifoKardexModal } from '@/components/inventory/FifoKardexModal';
 import { NewProductModal, ProductData } from '@/components/inventory/NewProductModal';
 import {
   AlertDialog,
