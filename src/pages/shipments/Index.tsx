@@ -1160,7 +1160,7 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 
   return (
     <div className="space-y-3">
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm text-blue-800 dark:text-blue-200">
+      <div className="bg-info/10 border border-info/20 rounded-lg p-3 text-sm text-info">
         <p className="font-medium">Mide los productos en tu almacén</p>
         <p className="text-xs mt-0.5">Con estos datos se calculará el peso volumen y se prorrateará el flete y el manipuleo automáticamente al cerrar el embarque.</p>
       </div>
@@ -1173,6 +1173,7 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
             <TableHead className="text-right">M2 (cm)</TableHead>
             <TableHead className="text-right">M3 (cm)</TableHead>
             <TableHead className="text-right">Peso bruto (kg)</TableHead>
+            <TableHead className="text-right">Batería (Bs)</TableHead>
             <TableHead className="text-right">Peso vol.</TableHead>
             <TableHead className="text-right">Peso efectivo</TableHead>
           </TableRow>
@@ -1183,7 +1184,10 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
             const pe = calcPesoEfectivo(p);
             return (
               <TableRow key={p.id}>
-                <TableCell className="font-medium text-sm">{p.nombre} <span className="text-muted-foreground font-normal">×{p.cantidad}</span></TableCell>
+                <TableCell className="font-medium text-sm">
+                  {p.nombre} {p.tiene_bateria && <Badge variant="outline" className="ml-1 text-[10px]">🔋</Badge>}
+                  <span className="text-muted-foreground font-normal"> ×{p.cantidad}</span>
+                </TableCell>
                 {(['m1', 'm2', 'm3'] as const).map(dim => (
                   <TableCell key={dim} className="text-right">
                     {canEdit ? (
@@ -1201,6 +1205,18 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
                       onChange={e => updateProduct(p.id, { peso_bruto: parseFloat(e.target.value) || undefined })}
                       placeholder="0.00" />
                   ) : <span>{p.peso_bruto ?? '—'}</span>}
+                </TableCell>
+                <TableCell className="text-right">
+                  {p.tiene_bateria && canEdit ? (
+                    <Input type="number" step="0.01" className="h-8 w-24 text-right ml-auto"
+                      value={p.costo_bateria || ''}
+                      onChange={e => updateProduct(p.id, { costo_bateria: parseFloat(e.target.value) || 0 })}
+                      placeholder="0.00" />
+                  ) : p.tiene_bateria ? (
+                    <span className="font-medium">{fmt(p.costo_bateria)}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right text-sm">
                   {pv != null ? <span className="font-medium">{pv}</span> : <span className="text-muted-foreground">—</span>}
