@@ -50,6 +50,7 @@ export default function AuxiliaryLedgersPage() {
     amount: '',
     movement_type: 'INCREASE' as 'INCREASE' | 'DECREASE'
   });
+  const [showClosedClients, setShowClosedClients] = useState(false);
 
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
   const selectedDefinition = auxiliaryDefinitions.find(d => d.id === selectedDefinitionId);
