@@ -196,6 +196,22 @@ export const LocalAdapter: IDataAdapter = {
   async saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void> {
     localStorage.setItem(`closures_${quarterEndDate}`, JSON.stringify(balances));
   },
+  async closeAuxiliaryEntry(id: string, closureDate: string): Promise<void> {
+    const entries = await this.loadAuxiliaryEntries();
+    const entry = entries.find(e => e.id === id);
+    if (entry) {
+      (entry as any).closed_date = closureDate;
+      localStorage.setItem(LS_AUXILIARY, JSON.stringify(entries));
+    }
+  },
+  async reopenAuxiliaryEntry(id: string): Promise<void> {
+    const entries = await this.loadAuxiliaryEntries();
+    const entry = entries.find(e => e.id === id);
+    if (entry) {
+      delete (entry as any).closed_date;
+      localStorage.setItem(LS_AUXILIARY, JSON.stringify(entries));
+    }
+  },
 };
 
 export const SupaAdapter: IDataAdapter = {
