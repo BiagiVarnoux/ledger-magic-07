@@ -1,5 +1,5 @@
 // src/pages/shipments/Index.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,11 +58,11 @@ function emptyProduct(shipment_id: string): ShipmentProduct {
   };
 }
 
-function newShipment(): Shipment {
+function newShipment(existingShipments: Shipment[] = []): Shipment {
   const id = crypto.randomUUID();
   return {
     id,
-    numero: generateShipmentNumber(ShipmentStorage.load()),
+    numero: generateShipmentNumber(existingShipments),
     descripcion: '',
     status: 'EN_COMPRA',
     created_at: todayISO(),
@@ -80,62 +80,82 @@ export default function ShipmentsPage() {
   const { entries, setEntries, adapter } = useAccounting();
   const { isReadOnly } = useUserAccess();
 
-  const [shipments, setShipments] = useState<Shipment[]>(() => ShipmentStorage.load());
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
-  const [draft, setDraft] = useState<Shipment>(newShipment);
+  const [draft, setDraft] = useState<Shipment>(() => newShipment());
   const [closeConfirmState, setCloseConfirmState] = useState<{
     shipment: Shipment;
     costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: any }>;
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
 
+  const reloadShipments = useCallback(async () => {
+    try {
+      const list = await ShipmentStorage.load();
+      setShipments(list);
+      return list;
+    } catch (e: any) {
+      toast.error('Error al cargar embarques: ' + e.message);
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      // Auto-migrate from localStorage if needed
+      const migrated = await ShipmentStorage.migrateFromLocalStorage();
+      if (migrated > 0) {
+        toast.success(`${migrated} embarque(s) migrados de localStorage a Supabase`);
+      }
+      await reloadShipments();
+      setLoading(false);
+    })();
+  }, [reloadShipments]);
+
   const selected = useMemo(
     () => shipments.find(s => s.id === selectedId) ?? null,
     [shipments, selectedId]
   );
 
-  function persist(s: Shipment) {
-    ShipmentStorage.upsert(s);
-    setShipments(ShipmentStorage.load());
+  async function persist(s: Shipment) {
+    await ShipmentStorage.upsert(s);
+    await reloadShipments();
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     if (draft.products.length === 0 || draft.products.every(p => !p.nombre)) {
       toast.error('Agrega al menos un producto con nombre');
       return;
     }
-    persist(draft);
+    await persist(draft);
     setSelectedId(draft.id);
     setShowNewDialog(false);
-    setDraft(newShipment());
+    setDraft(newShipment(shipments));
     toast.success(`Embarque ${draft.numero} creado`);
   }
 
   function handleDeleteRequest(s: Shipment) {
-    if (s.status === 'CERRADO') {
-      setDeleteConfirm({ shipment: s, step: 1 });
-    } else {
-      setDeleteConfirm({ shipment: s, step: 1 });
-    }
+    setDeleteConfirm({ shipment: s, step: 1 });
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteConfirm) return;
     const { shipment, step } = deleteConfirm;
     if (shipment.status === 'CERRADO' && step === 1) {
       setDeleteConfirm({ shipment, step: 2 });
       return;
     }
-    ShipmentStorage.delete(shipment.id);
-    setShipments(ShipmentStorage.load());
+    await ShipmentStorage.delete(shipment.id);
+    await reloadShipments();
     if (selectedId === shipment.id) setSelectedId(null);
     setDeleteConfirm(null);
     toast.success('Embarque eliminado');
   }
 
   // ── Avanzar estado ──────────────────────────────────────────────────────────
-  function handleAdvance(s: Shipment) {
+  async function handleAdvance(s: Shipment) {
     const flow: ShipmentStatus[] = ['EN_COMPRA', 'FLETE_PAGADO', 'EN_ADUANA', 'EN_ALMACEN'];
     const idx = flow.indexOf(s.status);
     if (idx < 0) return;
@@ -160,7 +180,7 @@ export default function ShipmentsPage() {
     }
 
     const next = flow[idx + 1];
-    persist({ ...s, status: next });
+    await persist({ ...s, status: next });
     toast.success(`Estado actualizado: ${SHIPMENT_STATUS_LABELS[next]}`);
   }
 
@@ -326,7 +346,7 @@ export default function ShipmentsPage() {
           costo_total_unitario: costo_unitario,
         })),
       };
-      persist(closed);
+      await persist(closed);
       setCloseConfirmState(null);
       toast.success(`Embarque ${s.numero} cerrado — ${newIds.length} asientos generados`);
     } catch (e: any) {
@@ -348,7 +368,7 @@ export default function ShipmentsPage() {
           </p>
         </div>
         {!isReadOnly && (
-          <Button onClick={() => { setDraft(newShipment()); setShowNewDialog(true); }}>
+          <Button onClick={() => { setDraft(newShipment(shipments)); setShowNewDialog(true); }}>
             <Plus className="w-4 h-4 mr-2" />
             Nuevo Embarque
           </Button>

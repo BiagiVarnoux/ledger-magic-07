@@ -1,6 +1,5 @@
 // src/services/backupService.ts
 import { supabase } from '@/integrations/supabase/client';
-import { ShipmentStorage } from '@/accounting/shipment-storage';
 
 export interface BackupData {
   version: string;
@@ -48,6 +47,7 @@ export async function createFullBackup(): Promise<BackupData> {
     costSheetsRes,
     costCellsRes,
     reportSettingsRes,
+    shipmentsRes,
   ] = await Promise.all([
     supabase.from('accounts').select('*').eq('user_id', user.id),
     supabase.from('journal_entries').select('*').eq('user_id', user.id),
@@ -66,6 +66,7 @@ export async function createFullBackup(): Promise<BackupData> {
     supabase.from('cost_sheets').select('*').eq('user_id', user.id),
     supabase.from('cost_sheet_cells').select('*').eq('user_id', user.id),
     supabase.from('report_settings').select('*').eq('user_id', user.id),
+    supabase.from('shipments').select('*').eq('user_id', user.id),
   ]);
 
   // Clean lines data (remove join artifact)
@@ -91,7 +92,7 @@ export async function createFullBackup(): Promise<BackupData> {
     cost_sheets: costSheetsRes.data || [],
     cost_sheet_cells: costCellsRes.data || [],
     report_settings: reportSettingsRes.data || [],
-    shipments: ShipmentStorage.load(),
+    shipments: shipmentsRes.data || [],
   };
 }
 
@@ -114,6 +115,7 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
 
   try {
     // Delete existing data in reverse order of dependencies
+    await supabase.from('shipments').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_movement_details').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_ledger').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_ledger_definitions').delete().eq('user_id', user.id);
@@ -121,11 +123,9 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     await supabase.from('kardex_entries').delete().eq('user_id', user.id);
     await supabase.from('kardex_definitions').delete().eq('user_id', user.id);
     await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
-    // Inventory: movements/lots depend on products
     await supabase.from('inventory_movements').delete().eq('user_id', user.id);
     await supabase.from('inventory_lots').delete().eq('user_id', user.id);
     await supabase.from('import_lots').delete().eq('user_id', user.id);
-    // Cost sheets: cells depend on sheets
     await supabase.from('cost_sheet_cells').delete().eq('user_id', user.id);
     await supabase.from('cost_sheets').delete().eq('user_id', user.id);
     await supabase.from('products').delete().eq('user_id', user.id);
@@ -236,11 +236,20 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       if (error) throw error;
     }
 
-    // Shipments (localStorage)
+    // Shipments (now in Supabase)
     if (backup.shipments?.length) {
-      ShipmentStorage.save(backup.shipments);
-    } else {
-      ShipmentStorage.save([]);
+      // Handle both old format (full Shipment objects) and new format (DB rows)
+      const shipmentRows = backup.shipments.map((s: any) => {
+        if (s.user_id && s.data) {
+          // Already in DB row format
+          return { ...s, user_id: user.id };
+        }
+        // Old localStorage format — convert
+        const { id, numero, status, ...rest } = s;
+        return { id, user_id: user.id, numero, status, data: rest };
+      });
+      const { error } = await supabase.from('shipments').insert(shipmentRows);
+      if (error) throw error;
     }
 
     const extras = [];
