@@ -112,11 +112,25 @@ export default function ShipmentsPage() {
     toast.success(`Embarque ${draft.numero} creado`);
   }
 
-  function handleDelete(id: string) {
-    if (!confirm('¿Eliminar este embarque? No se puede deshacer.')) return;
-    ShipmentStorage.delete(id);
+  function handleDeleteRequest(s: Shipment) {
+    if (s.status === 'CERRADO') {
+      setDeleteConfirm({ shipment: s, step: 1 });
+    } else {
+      setDeleteConfirm({ shipment: s, step: 1 });
+    }
+  }
+
+  function confirmDelete() {
+    if (!deleteConfirm) return;
+    const { shipment, step } = deleteConfirm;
+    if (shipment.status === 'CERRADO' && step === 1) {
+      setDeleteConfirm({ shipment, step: 2 });
+      return;
+    }
+    ShipmentStorage.delete(shipment.id);
     setShipments(ShipmentStorage.load());
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === shipment.id) setSelectedId(null);
+    setDeleteConfirm(null);
     toast.success('Embarque eliminado');
   }
 
