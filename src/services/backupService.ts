@@ -1,5 +1,6 @@
 // src/services/backupService.ts
 import { supabase } from '@/integrations/supabase/client';
+import { ShipmentStorage } from '@/accounting/shipment-storage';
 
 export interface BackupData {
   version: string;
@@ -14,13 +15,21 @@ export interface BackupData {
   kardex_entries: any[];
   kardex_movements: any[];
   quarterly_closures: any[];
+  // v2.0 fields (optional for backward compat)
+  products?: any[];
+  inventory_movements?: any[];
+  inventory_lots?: any[];
+  import_lots?: any[];
+  cost_sheets?: any[];
+  cost_sheet_cells?: any[];
+  report_settings?: any[];
+  shipments?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuario no autenticado');
 
-  // Fetch all data in parallel
   const [
     accountsRes,
     entriesRes,
@@ -31,7 +40,14 @@ export async function createFullBackup(): Promise<BackupData> {
     kardexDefsRes,
     kardexEntriesRes,
     kardexMovementsRes,
-    closuresRes
+    closuresRes,
+    productsRes,
+    invMovementsRes,
+    invLotsRes,
+    importLotsRes,
+    costSheetsRes,
+    costCellsRes,
+    reportSettingsRes,
   ] = await Promise.all([
     supabase.from('accounts').select('*').eq('user_id', user.id),
     supabase.from('journal_entries').select('*').eq('user_id', user.id),
@@ -43,13 +59,20 @@ export async function createFullBackup(): Promise<BackupData> {
     supabase.from('kardex_entries').select('*').eq('user_id', user.id),
     supabase.from('kardex_movements').select('*').eq('user_id', user.id),
     supabase.from('quarterly_closures').select('*').eq('user_id', user.id),
+    supabase.from('products').select('*').eq('user_id', user.id),
+    supabase.from('inventory_movements').select('*').eq('user_id', user.id),
+    supabase.from('inventory_lots').select('*').eq('user_id', user.id),
+    supabase.from('import_lots').select('*').eq('user_id', user.id),
+    supabase.from('cost_sheets').select('*').eq('user_id', user.id),
+    supabase.from('cost_sheet_cells').select('*').eq('user_id', user.id),
+    supabase.from('report_settings').select('*').eq('user_id', user.id),
   ]);
 
   // Clean lines data (remove join artifact)
   const cleanLines = (linesRes.data || []).map(({ journal_entries, ...line }) => line);
 
   return {
-    version: '1.0',
+    version: '2.0',
     created_at: new Date().toISOString(),
     accounts: accountsRes.data || [],
     journal_entries: entriesRes.data || [],
@@ -61,6 +84,14 @@ export async function createFullBackup(): Promise<BackupData> {
     kardex_entries: kardexEntriesRes.data || [],
     kardex_movements: kardexMovementsRes.data || [],
     quarterly_closures: closuresRes.data || [],
+    products: productsRes.data || [],
+    inventory_movements: invMovementsRes.data || [],
+    inventory_lots: invLotsRes.data || [],
+    import_lots: importLotsRes.data || [],
+    cost_sheets: costSheetsRes.data || [],
+    cost_sheet_cells: costCellsRes.data || [],
+    report_settings: reportSettingsRes.data || [],
+    shipments: ShipmentStorage.load(),
   };
 }
 
@@ -90,6 +121,15 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     await supabase.from('kardex_entries').delete().eq('user_id', user.id);
     await supabase.from('kardex_definitions').delete().eq('user_id', user.id);
     await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
+    // Inventory: movements/lots depend on products
+    await supabase.from('inventory_movements').delete().eq('user_id', user.id);
+    await supabase.from('inventory_lots').delete().eq('user_id', user.id);
+    await supabase.from('import_lots').delete().eq('user_id', user.id);
+    // Cost sheets: cells depend on sheets
+    await supabase.from('cost_sheet_cells').delete().eq('user_id', user.id);
+    await supabase.from('cost_sheets').delete().eq('user_id', user.id);
+    await supabase.from('products').delete().eq('user_id', user.id);
+    await supabase.from('report_settings').delete().eq('user_id', user.id);
     await supabase.from('journal_entries').delete().eq('user_id', user.id);
     await supabase.from('accounts').delete().eq('user_id', user.id);
 
@@ -111,51 +151,105 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       if (error) throw error;
     }
 
-    if (backup.auxiliary_ledger_definitions.length > 0) {
+    if (backup.auxiliary_ledger_definitions?.length) {
       const defs = backup.auxiliary_ledger_definitions.map(d => ({ ...d, user_id: user.id }));
       const { error } = await supabase.from('auxiliary_ledger_definitions').insert(defs);
       if (error) throw error;
     }
 
-    if (backup.auxiliary_ledger.length > 0) {
+    if (backup.auxiliary_ledger?.length) {
       const ledger = backup.auxiliary_ledger.map(l => ({ ...l, user_id: user.id }));
       const { error } = await supabase.from('auxiliary_ledger').insert(ledger);
       if (error) throw error;
     }
 
-    if (backup.auxiliary_movement_details.length > 0) {
+    if (backup.auxiliary_movement_details?.length) {
       const movements = backup.auxiliary_movement_details.map(m => ({ ...m, user_id: user.id }));
       const { error } = await supabase.from('auxiliary_movement_details').insert(movements);
       if (error) throw error;
     }
 
-    if (backup.kardex_definitions.length > 0) {
+    if (backup.kardex_definitions?.length) {
       const defs = backup.kardex_definitions.map(d => ({ ...d, user_id: user.id }));
       const { error } = await supabase.from('kardex_definitions').insert(defs);
       if (error) throw error;
     }
 
-    if (backup.kardex_entries.length > 0) {
+    if (backup.kardex_entries?.length) {
       const entries = backup.kardex_entries.map(e => ({ ...e, user_id: user.id }));
       const { error } = await supabase.from('kardex_entries').insert(entries);
       if (error) throw error;
     }
 
-    if (backup.kardex_movements.length > 0) {
+    if (backup.kardex_movements?.length) {
       const movements = backup.kardex_movements.map(m => ({ ...m, user_id: user.id }));
       const { error } = await supabase.from('kardex_movements').insert(movements);
       if (error) throw error;
     }
 
-    if (backup.quarterly_closures.length > 0) {
+    if (backup.quarterly_closures?.length) {
       const closures = backup.quarterly_closures.map(c => ({ ...c, user_id: user.id }));
       const { error } = await supabase.from('quarterly_closures').insert(closures);
       if (error) throw error;
     }
 
+    // v2.0 tables
+    if (backup.products?.length) {
+      const products = backup.products.map(p => ({ ...p, user_id: user.id }));
+      const { error } = await supabase.from('products').insert(products);
+      if (error) throw error;
+    }
+
+    if (backup.import_lots?.length) {
+      const lots = backup.import_lots.map(l => ({ ...l, user_id: user.id }));
+      const { error } = await supabase.from('import_lots').insert(lots);
+      if (error) throw error;
+    }
+
+    if (backup.inventory_lots?.length) {
+      const lots = backup.inventory_lots.map(l => ({ ...l, user_id: user.id }));
+      const { error } = await supabase.from('inventory_lots').insert(lots);
+      if (error) throw error;
+    }
+
+    if (backup.inventory_movements?.length) {
+      const movements = backup.inventory_movements.map(m => ({ ...m, user_id: user.id }));
+      const { error } = await supabase.from('inventory_movements').insert(movements);
+      if (error) throw error;
+    }
+
+    if (backup.cost_sheets?.length) {
+      const sheets = backup.cost_sheets.map(s => ({ ...s, user_id: user.id }));
+      const { error } = await supabase.from('cost_sheets').insert(sheets);
+      if (error) throw error;
+    }
+
+    if (backup.cost_sheet_cells?.length) {
+      const cells = backup.cost_sheet_cells.map(c => ({ ...c, user_id: user.id }));
+      const { error } = await supabase.from('cost_sheet_cells').insert(cells);
+      if (error) throw error;
+    }
+
+    if (backup.report_settings?.length) {
+      const settings = backup.report_settings.map(s => ({ ...s, user_id: user.id }));
+      const { error } = await supabase.from('report_settings').insert(settings);
+      if (error) throw error;
+    }
+
+    // Shipments (localStorage)
+    if (backup.shipments?.length) {
+      ShipmentStorage.save(backup.shipments);
+    } else {
+      ShipmentStorage.save([]);
+    }
+
+    const extras = [];
+    if (backup.products?.length) extras.push(`${backup.products.length} productos`);
+    if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
+
     return { 
       success: true, 
-      message: `Restauración completada: ${backup.accounts.length} cuentas, ${backup.journal_entries.length} asientos` 
+      message: `Restauración completada: ${backup.accounts.length} cuentas, ${backup.journal_entries.length} asientos${extras.length ? ', ' + extras.join(', ') : ''}` 
     };
   } catch (error: any) {
     return { 

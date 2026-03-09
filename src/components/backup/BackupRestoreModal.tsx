@@ -113,6 +113,14 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
         <div>Kardex Entries: <strong>{data.kardex_entries?.length || 0}</strong></div>
         <div>Kardex Movs: <strong>{data.kardex_movements?.length || 0}</strong></div>
         <div>Cierres Trim: <strong>{data.quarterly_closures?.length || 0}</strong></div>
+        <div>Productos: <strong>{data.products?.length || 0}</strong></div>
+        <div>Mov. Inventario: <strong>{data.inventory_movements?.length || 0}</strong></div>
+        <div>Lotes Inventario: <strong>{data.inventory_lots?.length || 0}</strong></div>
+        <div>Lotes Importación: <strong>{data.import_lots?.length || 0}</strong></div>
+        <div>Hojas de Costo: <strong>{data.cost_sheets?.length || 0}</strong></div>
+        <div>Celdas H. Costo: <strong>{data.cost_sheet_cells?.length || 0}</strong></div>
+        <div>Config. Reportes: <strong>{data.report_settings?.length || 0}</strong></div>
+        <div>Embarques: <strong>{data.shipments?.length || 0}</strong></div>
       </div>
     );
   }
@@ -135,7 +143,7 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
               Crear Backup
             </h3>
             <p className="text-sm text-muted-foreground">
-              Descarga un archivo JSON con todas tus cuentas, asientos, auxiliares, kardex y cierres trimestrales.
+              Descarga un archivo JSON con todos tus datos: cuentas, asientos, auxiliares, kardex, inventario, embarques y más.
             </p>
             <Button onClick={handleBackup} disabled={loading}>
               {loading ? (
