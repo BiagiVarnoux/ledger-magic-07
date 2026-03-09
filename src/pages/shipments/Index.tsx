@@ -216,16 +216,26 @@ export default function ShipmentsPage() {
       const newProductIds: Record<string, string> = {};
       for (const link of links) {
         if (link.isNew && link.newProductData) {
-          const { data, error } = await supabase.from('products').insert({
-            nombre: link.newProductData.nombre,
-            codigo: link.newProductData.codigo,
-            cuenta_inventario_id: link.newProductData.cuenta_inventario_id,
-            categoria: 'importado',
-            unidad_medida: 'unidad',
-            user_id: user.user.id,
-          }).select('id').single();
-          if (error) throw error;
-          newProductIds[link.shipmentProductId] = data.id;
+          // Check if product with same codigo already exists
+          const { data: existing } = await supabase.from('products')
+            .select('id')
+            .eq('codigo', link.newProductData.codigo)
+            .eq('user_id', user.user.id)
+            .maybeSingle();
+          if (existing) {
+            newProductIds[link.shipmentProductId] = existing.id;
+          } else {
+            const { data, error } = await supabase.from('products').insert({
+              nombre: link.newProductData.nombre,
+              codigo: link.newProductData.codigo,
+              cuenta_inventario_id: link.newProductData.cuenta_inventario_id,
+              categoria: 'importado',
+              unidad_medida: 'unidad',
+              user_id: user.user.id,
+            }).select('id').single();
+            if (error) throw error;
+            newProductIds[link.shipmentProductId] = data.id;
+          }
         }
       }
 
