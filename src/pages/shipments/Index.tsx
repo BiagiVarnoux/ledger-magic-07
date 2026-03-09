@@ -146,31 +146,52 @@ export default function ShipmentsPage() {
   }
 
   // ── Cerrar embarque ──────────────────────────────────────────────────────────
-  async function handleClose(s: Shipment) {
+  function handleClose(s: Shipment) {
     const sinMedidas = s.products.find(p => !p.m1 || !p.m2 || !p.m3);
     if (sinMedidas) { toast.error('Todos los productos necesitan medidas para el prorrateo'); return; }
+    const costos = calcCostoFinalPorProducto(s);
+    setCloseConfirmState({ shipment: s, costos });
+  }
+
+  async function handleConfirmClose(links: ProductLink[], customMemos: string[]) {
+    if (!closeConfirmState) return;
+    const s = closeConfirmState.shipment;
+    const costos = closeConfirmState.costos;
 
     try {
-      const costos = calcCostoFinalPorProducto(s);
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error('No hay sesión activa');
+
+      // 1. Create new products in Supabase
+      const newProductIds: Record<string, string> = {};
+      for (const link of links) {
+        if (link.isNew && link.newProductData) {
+          const { data, error } = await supabase.from('products').insert({
+            nombre: link.newProductData.nombre,
+            codigo: link.newProductData.codigo,
+            cuenta_inventario_id: link.newProductData.cuenta_inventario_id,
+            categoria: 'importado',
+            unidad_medida: 'unidad',
+            user_id: user.user.id,
+          }).select('id').single();
+          if (error) throw error;
+          newProductIds[link.shipmentProductId] = data.id;
+        }
+      }
+
+      // 2. Generate 4 journal entries
       let currentEntries = [...entries];
       const newIds: string[] = [];
 
-      const categoryAccountMap: Record<ProductCategory, string> = {
-        electronica: 'A.4.3',
-        juguetes: 'A.4.4',
-        repuestos: 'A.4.5',
-        otros: 'A.4.2',
-      };
-
-      // Asiento 1 — Flete → Inventario en Tránsito
+      // Asiento 1 — Flete
       if (s.flete_total_bs && s.flete_total_bs > 0) {
         const e = {
           id: generateEntryId(todayISO(), currentEntries),
           date: todayISO(),
-          memo: `${s.numero} — Capitalización flete aéreo a Inventario en Tránsito`,
+          memo: customMemos[0],
           lines: [
             { account_id: 'A.4.1', debit: s.flete_total_bs, credit: 0, line_memo: 'Flete aéreo capitalizado' },
-            { account_id: 'G.2',   debit: 0, credit: s.flete_total_bs },
+            { account_id: 'G.2', debit: 0, credit: s.flete_total_bs },
           ],
         };
         await adapter.saveEntry(e);
@@ -178,16 +199,16 @@ export default function ShipmentsPage() {
         newIds.push(e.id);
       }
 
-      // Asiento 2 — GA → Inventario en Tránsito
+      // Asiento 2 — GA
       const totalGA = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
       if (totalGA > 0) {
         const e = {
           id: generateEntryId(todayISO(), currentEntries),
           date: todayISO(),
-          memo: `${s.numero} — Capitalización Gravamen Arancelario`,
+          memo: customMemos[1],
           lines: [
             { account_id: 'A.4.1', debit: totalGA, credit: 0, line_memo: 'GA capitalizado' },
-            { account_id: 'G.6',   debit: 0, credit: totalGA },
+            { account_id: 'G.6', debit: 0, credit: totalGA },
           ],
         };
         await adapter.saveEntry(e);
@@ -195,16 +216,16 @@ export default function ShipmentsPage() {
         newIds.push(e.id);
       }
 
-      // Asiento 3 — Manipuleo → Inventario en Tránsito
+      // Asiento 3 — Manipuleo
       const totalManipuleo = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
       if (totalManipuleo > 0) {
         const e = {
           id: generateEntryId(todayISO(), currentEntries),
           date: todayISO(),
-          memo: `${s.numero} — Capitalización gastos de aduana (manipuleo)`,
+          memo: customMemos[2],
           lines: [
             { account_id: 'A.4.1', debit: totalManipuleo, credit: 0, line_memo: 'Manipuleo capitalizado' },
-            { account_id: 'G.5',   debit: 0, credit: totalManipuleo },
+            { account_id: 'G.5', debit: 0, credit: totalManipuleo },
           ],
         };
         await adapter.saveEntry(e);
@@ -212,18 +233,28 @@ export default function ShipmentsPage() {
         newIds.push(e.id);
       }
 
-      // Asiento 4 — Inventario en Tránsito → Inventario por categoría
+      // Asiento 4 — Nacionalización (dynamic by cuenta_inventario_id)
       const byAccount: Record<string, number> = {};
       costos.forEach(({ product, costo_unitario }) => {
-        const acct = categoryAccountMap[product.categoria];
-        byAccount[acct] = round2((byAccount[acct] ?? 0) + costo_unitario * product.cantidad);
+        const link = links.find(l => l.shipmentProductId === product.id);
+        let cuentaId = 'A.4.2'; // fallback
+        if (link) {
+          if (link.isNew && link.newProductData) {
+            cuentaId = link.newProductData.cuenta_inventario_id;
+          } else {
+            // fetch from supabase products
+            // (we'll use link.productId — but for safety we'll just use the new/existing logic)
+            cuentaId = link.newProductData?.cuenta_inventario_id ?? 'A.4.2';
+          }
+        }
+        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + costo_unitario * product.cantidad);
       });
       const totalCosto = round2(Object.values(byAccount).reduce((a, b) => a + b, 0));
 
       const nationLines = [
         ...Object.entries(byAccount).map(([acct, monto]) => ({
           account_id: acct, debit: monto, credit: 0,
-          line_memo: Object.entries(categoryAccountMap).find(([, v]) => v === acct)?.[0] ?? '',
+          line_memo: acct,
         })),
         { account_id: 'A.4.1', debit: 0, credit: totalCosto, line_memo: 'Cierre Inventario en Tránsito' },
       ];
@@ -231,15 +262,33 @@ export default function ShipmentsPage() {
       const nationEntry = {
         id: generateEntryId(todayISO(), currentEntries),
         date: todayISO(),
-        memo: `${s.numero} — Nacionalización: Inventario en Tránsito → Inventario`,
+        memo: customMemos[3],
         lines: nationLines,
       };
       await adapter.saveEntry(nationEntry);
       newIds.push(nationEntry.id);
-
       setEntries(await adapter.loadEntries());
 
-      // Guardar embarque cerrado con costos calculados
+      // 3. Insert inventory movements
+      for (const { product, costo_unitario } of costos) {
+        const link = links.find(l => l.shipmentProductId === product.id);
+        const productId = link?.isNew ? newProductIds[product.id] : link?.productId;
+        if (!productId) continue;
+
+        await supabase.from('inventory_movements').insert({
+          product_id: productId,
+          tipo: 'ENTRADA',
+          cantidad: product.cantidad,
+          costo_unitario,
+          costo_total: round2(costo_unitario * product.cantidad),
+          fecha: todayISO(),
+          referencia: `${s.numero} — Importación cerrada`,
+          metodo_valuacion: 'CPP',
+          user_id: user.user.id,
+        });
+      }
+
+      // 4. Save closed shipment
       const closed: Shipment = {
         ...s,
         status: 'CERRADO',
@@ -253,9 +302,11 @@ export default function ShipmentsPage() {
         })),
       };
       persist(closed);
+      setCloseConfirmState(null);
       toast.success(`Embarque ${s.numero} cerrado — ${newIds.length} asientos generados`);
     } catch (e: any) {
       toast.error(e.message || 'Error al cerrar el embarque');
+      throw e;
     }
   }
 
