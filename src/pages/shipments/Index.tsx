@@ -155,7 +155,7 @@ export default function ShipmentsPage() {
   }
 
   // ── Avanzar estado ──────────────────────────────────────────────────────────
-  function handleAdvance(s: Shipment) {
+  async function handleAdvance(s: Shipment) {
     const flow: ShipmentStatus[] = ['EN_COMPRA', 'FLETE_PAGADO', 'EN_ADUANA', 'EN_ALMACEN'];
     const idx = flow.indexOf(s.status);
     if (idx < 0) return;
