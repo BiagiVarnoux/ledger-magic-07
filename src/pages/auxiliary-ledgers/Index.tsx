@@ -574,7 +574,7 @@ export default function AuxiliaryLedgersPage() {
                   <Button 
                     variant="outline"
                     onClick={() => setIsManualMovementModalOpen(true)} 
-                    disabled={!selectedDefinitionId || filteredEntries.length === 0}
+                    disabled={!selectedDefinitionId || activeEntries.length === 0}
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
                     Agregar Movimiento
