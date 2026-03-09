@@ -24,10 +24,10 @@ export const SHIPMENT_STATUS_COLORS: Record<ShipmentStatus, string> = {
   CERRADO:      'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
 };
 
-// Categoría contable del producto → cuenta de inventario destino
-export type ProductCategory = 'electronica' | 'juguetes' | 'repuestos' | 'otros';
+// Categoría contable del producto — ahora es string para soportar categorías dinámicas
+export type ProductCategory = string;
 
-export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
+export const DEFAULT_CATEGORY_LABELS: Record<string, string> = {
   electronica: 'Electrónica / Tecnología',
   juguetes:    'Juguetes',
   repuestos:   'Repuestos',
@@ -105,6 +105,9 @@ export interface Shipment {
 
   // Productos
   products: ShipmentProduct[];
+
+  // Categorías personalizadas del embarque
+  custom_categories?: Record<string, string>;
 
   // Asientos generados al cerrar
   journal_entry_ids?: string[];
