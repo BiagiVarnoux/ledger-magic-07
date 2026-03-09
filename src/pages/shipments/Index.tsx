@@ -368,7 +368,7 @@ export default function ShipmentsPage() {
           </p>
         </div>
         {!isReadOnly && (
-          <Button onClick={() => { setDraft(newShipment()); setShowNewDialog(true); }}>
+          <Button onClick={() => { setDraft(newShipment(shipments)); setShowNewDialog(true); }}>
             <Plus className="w-4 h-4 mr-2" />
             Nuevo Embarque
           </Button>
