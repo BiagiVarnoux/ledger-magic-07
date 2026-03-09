@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings, Package, Clock } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings, Package, Clock, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
@@ -50,6 +50,7 @@ export default function AuxiliaryLedgersPage() {
     amount: '',
     movement_type: 'INCREASE' as 'INCREASE' | 'DECREASE'
   });
+  const [showClosedClients, setShowClosedClients] = useState(false);
 
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
   const selectedDefinition = auxiliaryDefinitions.find(d => d.id === selectedDefinitionId);
@@ -77,51 +78,104 @@ export default function AuxiliaryLedgersPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDefinitionId, auxiliaryEntries]);
 
-  // Filtrado por trimestre: un cliente aparece si tiene saldo != 0 al cierre del trimestre
-  // O si tuvo algún movimiento dentro del trimestre seleccionado
-  const filteredEntries = useMemo(() => {
-    if (!selectedDefinitionId || !selectedDefinition) return [];
+  // Helper to determine quarter for a date
+  const getQuarterForDate = (date: string): Quarter | null => {
+    return availableQuarters.find(q => 
+      date >= q.startDate && date <= q.endDate
+    ) || null;
+  };
+
+  // Filtrado por trimestre con clasificación de clientes cerrados
+  const { activeEntries, closedEntries } = useMemo(() => {
+    if (!selectedDefinitionId || !selectedDefinition) {
+      return { activeEntries: [], closedEntries: [] };
+    }
 
     const baseEntries = auxiliaryEntries.filter(entry =>
-      entry.definition_id === selectedDefinitionId || entry.account_id === selectedDefinition.account_id
+      entry.definition_id === selectedDefinitionId || 
+      entry.account_id === selectedDefinition.account_id
     );
 
-    return baseEntries
-      .map(entry => {
-        const movements = clientMovements[entry.id];
-        if (!movements) {
-          // Movimientos aún no cargados: mostrar con saldo original
-          return { ...entry, _hasMovementsInQuarter: false, _movementsLoaded: false };
+    const active: typeof baseEntries = [];
+    const closed: typeof baseEntries = [];
+
+    baseEntries.forEach(entry => {
+      const movements = clientMovements[entry.id];
+      if (!movements) {
+        // Aún no cargado, mostrar como activo
+        active.push({ ...entry, _movementsLoaded: false } as any);
+        return;
+      }
+
+      const quarterEnd = selectedQuarter.endDate;
+      const quarterStart = selectedQuarter.startDate;
+
+      const quarterBalance = round2(
+        movements
+          .filter(m => m.movement_date <= quarterEnd)
+          .reduce((sum, m) => 
+            sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount), 0
+          )
+      );
+
+      const hasMovementsInQuarter = movements.some(
+        m => m.movement_date >= quarterStart && m.movement_date <= quarterEnd
+      );
+
+      const enrichedEntry = {
+        ...entry,
+        total_balance: quarterBalance,
+        _hasMovementsInQuarter: hasMovementsInQuarter,
+        _movementsLoaded: true,
+      } as any;
+
+      // Clasificación según estado de cierre
+      if (!entry.closed_date) {
+        // Cliente activo: mostrar si tiene saldo o movimientos
+        if (hasMovementsInQuarter || Math.abs(quarterBalance) >= 0.01) {
+          active.push(enrichedEntry);
+        }
+      } else {
+        // Cliente cerrado
+        const closureQuarter = getQuarterForDate(entry.closed_date);
+        
+        if (!closureQuarter) {
+          // Fecha inválida, tratar como activo
+          active.push(enrichedEntry);
+          return;
         }
 
-        const quarterEnd = selectedQuarter.endDate;
-        const quarterStart = selectedQuarter.startDate;
+        const isClosedInCurrentQuarter = 
+          selectedQuarter.label === closureQuarter.label;
+        const isClosedInFutureQuarter = 
+          selectedQuarter.startDate > entry.closed_date;
 
-        // Saldo acumulado hasta el fin del trimestre seleccionado
-        const quarterBalance = round2(
-          movements
-            .filter(m => m.movement_date <= quarterEnd)
-            .reduce((sum, m) => sum + (m.movement_type === 'INCREASE' ? m.amount : -m.amount), 0)
-        );
+        if (isClosedInFutureQuarter) {
+          // Trimestre posterior al cierre: NO mostrar
+          return;
+        }
 
-        // ¿Tuvo algún movimiento dentro del trimestre?
-        const hasMovementsInQuarter = movements.some(
-          m => m.movement_date >= quarterStart && m.movement_date <= quarterEnd
-        );
+        if (isClosedInCurrentQuarter) {
+          // Trimestre del cierre: sección "Cuentas Cerradas"
+          closed.push(enrichedEntry);
+        } else {
+          // Trimestre anterior al cierre: mostrar como activo histórico
+          if (hasMovementsInQuarter || Math.abs(quarterBalance) >= 0.01) {
+            active.push(enrichedEntry);
+          }
+        }
+      }
+    });
 
-        return {
-          ...entry,
-          total_balance: quarterBalance,
-          _hasMovementsInQuarter: hasMovementsInQuarter,
-          _movementsLoaded: true,
-        };
-      })
-      .filter(entry => {
-        if (!entry._movementsLoaded) return true; // Mostrar mientras carga
-        // Mostrar si tiene saldo pendiente o movió en el trimestre
-        return entry._hasMovementsInQuarter || Math.abs(entry.total_balance) >= 0.01;
-      });
-  }, [auxiliaryEntries, selectedDefinitionId, selectedDefinition, selectedQuarter, clientMovements]);
+    return { activeEntries: active, closedEntries: closed };
+  }, [
+    auxiliaryEntries, 
+    selectedDefinitionId, 
+    selectedDefinition, 
+    selectedQuarter, 
+    clientMovements,
+    availableQuarters
+  ]);
 
 
 
@@ -220,6 +274,60 @@ export default function AuxiliaryLedgersPage() {
     }
   };
 
+  // Handler de cierre
+  const handleCloseClient = async (entry: AuxiliaryLedgerEntry) => {
+    if (isReadOnly) {
+      toast.error('No tienes permisos para cerrar clientes');
+      return;
+    }
+    
+    if (Math.abs(entry.total_balance) >= 0.01) {
+      toast.error('Solo puedes cerrar clientes con saldo exactamente 0');
+      return;
+    }
+    
+    if (!confirm(
+      `¿Cerrar el cliente "${entry.client_name}"?\n\n` +
+      `Se archivará a partir de hoy y no aparecerá en registros futuros.\n` +
+      `Puedes reabrirlo manualmente si lo necesitas.`
+    )) {
+      return;
+    }
+    
+    try {
+      await adapter.closeAuxiliaryEntry(entry.id, todayISO());
+      const updatedEntries = await adapter.loadAuxiliaryEntries();
+      setAuxiliaryEntries(updatedEntries);
+      toast.success(`Cliente "${entry.client_name}" cerrado exitosamente`);
+    } catch (error: any) {
+      toast.error(error.message || 'Error al cerrar el cliente');
+    }
+  };
+
+  // Handler de reapertura manual
+  const handleReopenClient = async (entry: AuxiliaryLedgerEntry) => {
+    if (isReadOnly) {
+      toast.error('No tienes permisos para reabrir clientes');
+      return;
+    }
+    
+    if (!confirm(
+      `¿Reabrir el cliente "${entry.client_name}"?\n\n` +
+      `Volverá a estar activo y visible en todos los trimestres.`
+    )) {
+      return;
+    }
+    
+    try {
+      await adapter.reopenAuxiliaryEntry(entry.id);
+      const updatedEntries = await adapter.loadAuxiliaryEntries();
+      setAuxiliaryEntries(updatedEntries);
+      toast.success(`Cliente "${entry.client_name}" reabierto exitosamente`);
+    } catch (error: any) {
+      toast.error(error.message || 'Error al reabrir el cliente');
+    }
+  };
+
   // Handler para agregar movimiento manual
   const handleAddManualMovement = async () => {
     if (isReadOnly) {
@@ -248,6 +356,17 @@ export default function AuxiliaryLedgersPage() {
 
       await adapter.upsertAuxiliaryMovementDetails([movement]);
 
+      // NUEVO: Verificar si el cliente estaba cerrado y reabrirlo
+      const clientEntry = auxiliaryEntries.find(
+        e => e.id === manualMovementData.client_id
+      );
+      if (clientEntry?.closed_date) {
+        await adapter.reopenAuxiliaryEntry(clientEntry.id);
+        toast.info(
+          `Cliente "${clientEntry.client_name}" reabierto automáticamente`
+        );
+      }
+
       // Reload entries and movements
       const updatedEntries = await adapter.loadAuxiliaryEntries();
       setAuxiliaryEntries(updatedEntries);
@@ -270,10 +389,10 @@ export default function AuxiliaryLedgersPage() {
   const selectedAccountName = selectedDefinition ? 
     `${selectedDefinition.name} (${selectedDefinition.account_id})` : '';
 
-  // Calculate total sum of balances
+  // Calculate total sum of balances (solo activos)
   const totalBalance = useMemo(() => {
-    return filteredEntries.reduce((sum, entry) => sum + entry.total_balance, 0);
-  }, [filteredEntries]);
+    return activeEntries.reduce((sum, entry) => sum + entry.total_balance, 0);
+  }, [activeEntries]);
 
   return (
     <div className="space-y-6">
@@ -455,7 +574,7 @@ export default function AuxiliaryLedgersPage() {
                   <Button 
                     variant="outline"
                     onClick={() => setIsManualMovementModalOpen(true)} 
-                    disabled={!selectedDefinitionId || filteredEntries.length === 0}
+                    disabled={!selectedDefinitionId || activeEntries.length === 0}
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
                     Agregar Movimiento
@@ -476,7 +595,7 @@ export default function AuxiliaryLedgersPage() {
                           <SelectValue placeholder="Selecciona un cliente" />
                         </SelectTrigger>
                         <SelectContent>
-                          {filteredEntries.map(entry => (
+                          {activeEntries.map(entry => (
                             <SelectItem key={entry.id} value={entry.id}>
                               {entry.client_name} (Saldo: {fmt(entry.total_balance)})
                             </SelectItem>
@@ -565,7 +684,7 @@ export default function AuxiliaryLedgersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredEntries.length === 0 ? (
+                  {activeEntries.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                         No hay registros con actividad en {selectedQuarter.label}
@@ -573,7 +692,7 @@ export default function AuxiliaryLedgersPage() {
                     </TableRow>
                   ) : (
                     <>
-                      {filteredEntries.map(entry => {
+                      {activeEntries.map(entry => {
                         const hasMovementsInQuarter = (entry as any)._hasMovementsInQuarter as boolean;
                         const movementsLoaded = (entry as any)._movementsLoaded as boolean;
                         // Movimientos del trimestre para la vista expandida
@@ -644,6 +763,16 @@ export default function AuxiliaryLedgersPage() {
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </Button>
+                                    {Math.abs(entry.total_balance) < 0.01 && !entry.closed_date && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleCloseClient(entry)}
+                                        title="Cerrar cliente (saldo 0)"
+                                      >
+                                        <Lock className="w-4 h-4" />
+                                      </Button>
+                                    )}
                                   </TableCell>
                                 )}
                               </TableRow>
@@ -741,6 +870,73 @@ export default function AuxiliaryLedgersPage() {
               </Table>
             </div>
           </CardContent>
+        </Card>
+      )}
+
+      {closedEntries.length > 0 && (
+        <Card className="mt-6 border-muted">
+          <Collapsible open={showClosedClients} onOpenChange={setShowClosedClients}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-start p-4">
+                {showClosedClients ? (
+                  <ChevronDown className="w-4 h-4 mr-2" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 mr-2" />
+                )}
+                <Lock className="w-4 h-4 mr-2 text-muted-foreground" />
+                <span className="font-medium">
+                  Cuentas Cerradas en {selectedQuarter.label}
+                </span>
+                <Badge variant="secondary" className="ml-2">
+                  {closedEntries.length}
+                </Badge>
+              </Button>
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead className="text-right">Saldo Final</TableHead>
+                      <TableHead>Fecha Cierre</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {closedEntries.map(entry => (
+                      <TableRow key={entry.id} className="text-muted-foreground">
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Lock className="w-3 h-3" />
+                            {entry.client_name}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {fmt(entry.total_balance)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {entry.closed_date || 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          {!isReadOnly && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleReopenClient(entry)}
+                            >
+                              Reabrir
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
         </Card>
       )}
 

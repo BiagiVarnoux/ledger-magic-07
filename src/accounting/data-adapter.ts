@@ -27,6 +27,8 @@ export interface IDataAdapter {
   loadKardexDefinitions(): Promise<KardexDefinition[]>;
   loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>>;
   saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void>;
+  closeAuxiliaryEntry(id: string, closureDate: string): Promise<void>;
+  reopenAuxiliaryEntry(id: string): Promise<void>;
 }
 
 const LS_ACCOUNTS = "acc_es_v1";
@@ -142,6 +144,17 @@ export const LocalAdapter: IDataAdapter = {
     }
     
     localStorage.setItem(LS_AUX_MOVEMENTS, JSON.stringify(allMovements));
+    
+    // Automatic reopening: Check if any affected clients are closed and reopen them
+    const affectedClientIds = Array.from(new Set(details.map(d => d.aux_entry_id)));
+    const entries = await this.loadAuxiliaryEntries();
+    
+    for (const auxId of affectedClientIds) {
+      const entry = entries.find(e => e.id === auxId);
+      if (entry?.closed_date) {
+        await this.reopenAuxiliaryEntry(auxId);
+      }
+    }
   },
   async loadKardexDefinitions() {
     return []; // LocalStorage no soporta kárdex definitions
@@ -182,6 +195,22 @@ export const LocalAdapter: IDataAdapter = {
   },
   async saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void> {
     localStorage.setItem(`closures_${quarterEndDate}`, JSON.stringify(balances));
+  },
+  async closeAuxiliaryEntry(id: string, closureDate: string): Promise<void> {
+    const entries = await this.loadAuxiliaryEntries();
+    const entry = entries.find(e => e.id === id);
+    if (entry) {
+      (entry as any).closed_date = closureDate;
+      localStorage.setItem(LS_AUXILIARY, JSON.stringify(entries));
+    }
+  },
+  async reopenAuxiliaryEntry(id: string): Promise<void> {
+    const entries = await this.loadAuxiliaryEntries();
+    const entry = entries.find(e => e.id === id);
+    if (entry) {
+      delete (entry as any).closed_date;
+      localStorage.setItem(LS_AUXILIARY, JSON.stringify(entries));
+    }
   },
 };
 
@@ -269,7 +298,7 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
-    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id").order("client_name");
+    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id,closed_date").order("client_name");
     if (error) throw error;
     
     const entries = data || [];
@@ -385,6 +414,17 @@ export const SupaAdapter: IDataAdapter = {
     
     const { error } = await supa.from("auxiliary_movement_details").insert(payload);
     if (error) throw error;
+    
+    // Automatic reopening: Check if any affected clients are closed and reopen them
+    const affectedClientIds = Array.from(new Set(details.map(d => d.aux_entry_id)));
+    const entries = await this.loadAuxiliaryEntries();
+    
+    for (const auxId of affectedClientIds) {
+      const entry = entries.find(e => e.id === auxId);
+      if (entry?.closed_date) {
+        await this.reopenAuxiliaryEntry(auxId);
+      }
+    }
   },
   async loadKardexDefinitions(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadKardexDefinitions();
@@ -445,6 +485,30 @@ export const SupaAdapter: IDataAdapter = {
       balances
     });
     
+    if (error) throw error;
+  },
+  async closeAuxiliaryEntry(id: string, closureDate: string): Promise<void> {
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.closeAuxiliaryEntry(id, closureDate);
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+    
+    const { error } = await supa
+      .from('auxiliary_ledger')
+      .update({ closed_date: closureDate })
+      .eq('id', id)
+      .eq('user_id', user.id);
+    if (error) throw error;
+  },
+  async reopenAuxiliaryEntry(id: string): Promise<void> {
+    const supa = await getSupabase(); if (!supa) return LocalAdapter.reopenAuxiliaryEntry(id);
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) throw new Error("Usuario no autenticado");
+    
+    const { error } = await supa
+      .from('auxiliary_ledger')
+      .update({ closed_date: null })
+      .eq('id', id)
+      .eq('user_id', user.id);
     if (error) throw error;
   },
 };
