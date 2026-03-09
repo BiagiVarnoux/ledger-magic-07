@@ -39,6 +39,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [kardexProduct, setKardexProduct] = useState<ProductData | null>(null);
+  const [fifoProduct, setFifoProduct] = useState<ProductData | null>(null);
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [editProduct, setEditProduct] = useState<ProductData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProductData | null>(null);
