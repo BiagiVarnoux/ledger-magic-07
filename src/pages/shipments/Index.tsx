@@ -437,6 +437,33 @@ export default function ShipmentsPage() {
               onCancel={() => setCloseConfirmState(null)}
             />
           )}
+
+          {/* Modal doble confirmación eliminar */}
+          <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {deleteConfirm?.step === 2
+                    ? '⚠️ Confirmar eliminación definitiva'
+                    : `¿Eliminar embarque ${deleteConfirm?.shipment.numero}?`}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {deleteConfirm?.step === 2
+                    ? 'Esta acción es irreversible. Los asientos contables generados NO se eliminarán.'
+                    : 'Esta acción no se puede deshacer. Se eliminará toda la información del embarque.'}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={confirmDelete}
+                  className={deleteConfirm?.step === 2 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
+                >
+                  {deleteConfirm?.step === 2 ? 'Eliminar definitivamente' : 'Continuar'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
     </div>
   );
 }
