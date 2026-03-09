@@ -298,7 +298,7 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
-    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id").order("client_name");
+    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id,closed_date").order("client_name");
     if (error) throw error;
     
     const entries = data || [];
