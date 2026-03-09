@@ -1236,14 +1236,15 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 // ─── Tab: Costos Finales ───────────────────────────────────────────────────────
 
 function CostosFinalesTab({ s }: { s: Shipment }) {
+  const allCategories = getAllCategories();
   const costos = calcCostoFinalPorProducto(s);
   const totalEmbarque = round2(costos.reduce((sum, { product, costo_unitario }) => sum + costo_unitario * product.cantidad, 0));
 
   return (
     <div className="space-y-4">
-      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
-        <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-        <div className="text-sm text-green-800 dark:text-green-200">
+      <div className="bg-success/10 border border-success/20 rounded-lg p-3 flex items-center gap-2">
+        <CheckCircle className="w-4 h-4 text-success shrink-0" />
+        <div className="text-sm text-success">
           <span className="font-medium">Embarque cerrado. </span>
           Se generaron {s.journal_entry_ids?.length ?? 0} asientos contables automáticamente.
         </div>
