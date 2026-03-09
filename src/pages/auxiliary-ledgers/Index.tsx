@@ -389,10 +389,10 @@ export default function AuxiliaryLedgersPage() {
   const selectedAccountName = selectedDefinition ? 
     `${selectedDefinition.name} (${selectedDefinition.account_id})` : '';
 
-  // Calculate total sum of balances
+  // Calculate total sum of balances (solo activos)
   const totalBalance = useMemo(() => {
-    return filteredEntries.reduce((sum, entry) => sum + entry.total_balance, 0);
-  }, [filteredEntries]);
+    return activeEntries.reduce((sum, entry) => sum + entry.total_balance, 0);
+  }, [activeEntries]);
 
   return (
     <div className="space-y-6">
