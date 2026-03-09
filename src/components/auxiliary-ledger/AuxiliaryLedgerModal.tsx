@@ -186,6 +186,26 @@ export function AuxiliaryLedgerModal({
       }
       if (movementDetails.length > 0) {
         await adapter.upsertAuxiliaryMovementDetails(movementDetails);
+        
+        // NUEVO: Verificar clientes cerrados y reabrirlos
+        const uniqueClientIds = Array.from(
+          new Set(movementDetails.map(md => md.aux_entry_id))
+        );
+        
+        const closedClients: string[] = [];
+        for (const clientId of uniqueClientIds) {
+          const client = auxiliaryEntries.find(e => e.id === clientId);
+          if (client?.closed_date) {
+            await adapter.reopenAuxiliaryEntry(clientId);
+            closedClients.push(client.client_name);
+          }
+        }
+        
+        if (closedClients.length > 0) {
+          toast.info(
+            `${closedClients.length} cliente(s) reabierto(s): ${closedClients.join(', ')}`
+          );
+        }
       }
       const updatedEntries = await adapter.loadAuxiliaryEntries();
       setAuxiliaryEntries(updatedEntries);

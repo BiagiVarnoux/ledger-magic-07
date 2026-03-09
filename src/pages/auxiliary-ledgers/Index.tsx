@@ -873,6 +873,73 @@ export default function AuxiliaryLedgersPage() {
         </Card>
       )}
 
+      {closedEntries.length > 0 && (
+        <Card className="mt-6 border-muted">
+          <Collapsible open={showClosedClients} onOpenChange={setShowClosedClients}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-start p-4">
+                {showClosedClients ? (
+                  <ChevronDown className="w-4 h-4 mr-2" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 mr-2" />
+                )}
+                <Lock className="w-4 h-4 mr-2 text-muted-foreground" />
+                <span className="font-medium">
+                  Cuentas Cerradas en {selectedQuarter.label}
+                </span>
+                <Badge variant="secondary" className="ml-2">
+                  {closedEntries.length}
+                </Badge>
+              </Button>
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead className="text-right">Saldo Final</TableHead>
+                      <TableHead>Fecha Cierre</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {closedEntries.map(entry => (
+                      <TableRow key={entry.id} className="text-muted-foreground">
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Lock className="w-3 h-3" />
+                            {entry.client_name}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {fmt(entry.total_balance)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {entry.closed_date || 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          {!isReadOnly && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleReopenClient(entry)}
+                            >
+                              Reabrir
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+      )}
+
         </TabsContent>
 
         <TabsContent value="kardex" className="mt-6">
