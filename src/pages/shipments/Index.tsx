@@ -521,12 +521,20 @@ export default function ShipmentsPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={confirmDelete}
-                  className={deleteConfirm?.step === 2 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
-                >
-                  {deleteConfirm?.step === 2 ? 'Eliminar definitivamente' : 'Continuar'}
-                </AlertDialogAction>
+                {deleteConfirm?.shipment.status === 'CERRADO' && deleteConfirm?.step === 1 ? (
+                  <Button
+                    onClick={confirmDelete}
+                  >
+                    Continuar
+                  </Button>
+                ) : (
+                  <AlertDialogAction
+                    onClick={confirmDelete}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleteConfirm?.step === 2 ? 'Eliminar definitivamente' : 'Eliminar'}
+                  </AlertDialogAction>
+                )}
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
