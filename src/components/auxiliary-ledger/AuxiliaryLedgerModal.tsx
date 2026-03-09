@@ -52,9 +52,11 @@ export function AuxiliaryLedgerModal({
   const currentLine = linesToProcess[currentLineIndex];
   const currentMovements = lineMovements[currentLineIndex] || [];
 
-  // Todos los clientes de esta cuenta
+  // Todos los clientes de esta cuenta (excluyendo cerrados)
   const allClientsForAccount = auxiliaryEntries.filter(
-    entry => entry.account_id === currentLine?.accountId
+    entry => 
+      entry.account_id === currentLine?.accountId && 
+      !entry.closed_date
   );
 
   // Solo clientes con saldo distinto de cero
