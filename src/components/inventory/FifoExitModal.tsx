@@ -15,14 +15,24 @@ interface FifoExitModalProps {
   onClose: () => void;
   product: { id: string; nombre: string; unidad_medida: string };
   lots: InventoryLot[];
-  onSaved: () => void;
+  onSaved: (totalCosto: number) => void;
+  journalEntryId?: string;
+  journalDate?: string;
 }
 
-export function FifoExitModal({ isOpen, onClose, product, lots, onSaved }: FifoExitModalProps) {
-  const [fecha, setFecha] = useState(todayISO());
+export function FifoExitModal({ isOpen, onClose, product, lots, onSaved, journalEntryId, journalDate }: FifoExitModalProps) {
+  const [fecha, setFecha] = useState(journalDate || todayISO());
   const [cantidad, setCantidad] = useState('');
-  const [referencia, setReferencia] = useState('');
+  const [referencia, setReferencia] = useState(journalEntryId || '');
   const [saving, setSaving] = useState(false);
+
+  // Reset when props change
+  React.useEffect(() => {
+    if (isOpen) {
+      setFecha(journalDate || todayISO());
+      setReferencia(journalEntryId || '');
+    }
+  }, [isOpen, journalDate, journalEntryId]);
 
   const qty = parseFloat(cantidad) || 0;
 
@@ -63,13 +73,14 @@ export function FifoExitModal({ isOpen, onClose, product, lots, onSaved }: FifoE
           costo_total: linea.costo_total,
           metodo_valuacion: 'FIFO',
           referencia: referencia.trim() || null,
+          journal_entry_id: journalEntryId || null,
           user_id: user.id,
         });
         if (movErr) throw movErr;
       }
 
       toast.success(`Salida FIFO registrada — ${qty} ${product.unidad_medida}, costo total Bs ${fmt(totalCosto)}`);
-      onSaved();
+      onSaved(totalCosto);
       onClose();
     } catch (e: any) {
       toast.error(e.message || 'Error al registrar salida');
