@@ -116,6 +116,7 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
 
   try {
     // Delete existing data in reverse order of dependencies
+    await supabase.from('shipments').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_movement_details').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_ledger').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_ledger_definitions').delete().eq('user_id', user.id);
@@ -123,11 +124,9 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     await supabase.from('kardex_entries').delete().eq('user_id', user.id);
     await supabase.from('kardex_definitions').delete().eq('user_id', user.id);
     await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
-    // Inventory: movements/lots depend on products
     await supabase.from('inventory_movements').delete().eq('user_id', user.id);
     await supabase.from('inventory_lots').delete().eq('user_id', user.id);
     await supabase.from('import_lots').delete().eq('user_id', user.id);
-    // Cost sheets: cells depend on sheets
     await supabase.from('cost_sheet_cells').delete().eq('user_id', user.id);
     await supabase.from('cost_sheets').delete().eq('user_id', user.id);
     await supabase.from('products').delete().eq('user_id', user.id);
