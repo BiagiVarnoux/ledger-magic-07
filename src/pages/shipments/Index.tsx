@@ -155,14 +155,20 @@ export default function ShipmentsPage() {
     if (!deleteConfirm) return;
     const { shipment, step } = deleteConfirm;
     if (shipment.status === 'CERRADO' && step === 1) {
+      // Don't close — advance to step 2
       setDeleteConfirm({ shipment, step: 2 });
       return;
     }
-    await ShipmentStorage.delete(shipment.id);
-    await reloadShipments();
-    if (selectedId === shipment.id) setSelectedId(null);
-    setDeleteConfirm(null);
-    toast.success('Embarque eliminado');
+    try {
+      await ShipmentStorage.delete(shipment.id);
+      await reloadShipments();
+      if (selectedId === shipment.id) setSelectedId(null);
+      toast.success('Embarque eliminado');
+    } catch (e: any) {
+      toast.error('Error al eliminar: ' + e.message);
+    } finally {
+      setDeleteConfirm(null);
+    }
   }
 
   // ── Avanzar estado ──────────────────────────────────────────────────────────
@@ -515,12 +521,20 @@ export default function ShipmentsPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={confirmDelete}
-                  className={deleteConfirm?.step === 2 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
-                >
-                  {deleteConfirm?.step === 2 ? 'Eliminar definitivamente' : 'Continuar'}
-                </AlertDialogAction>
+                {deleteConfirm?.shipment.status === 'CERRADO' && deleteConfirm?.step === 1 ? (
+                  <Button
+                    onClick={confirmDelete}
+                  >
+                    Continuar
+                  </Button>
+                ) : (
+                  <AlertDialogAction
+                    onClick={confirmDelete}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleteConfirm?.step === 2 ? 'Eliminar definitivamente' : 'Eliminar'}
+                  </AlertDialogAction>
+                )}
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
