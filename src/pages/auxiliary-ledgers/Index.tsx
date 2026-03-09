@@ -684,7 +684,7 @@ export default function AuxiliaryLedgersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredEntries.length === 0 ? (
+                  {activeEntries.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                         No hay registros con actividad en {selectedQuarter.label}
@@ -692,7 +692,7 @@ export default function AuxiliaryLedgersPage() {
                     </TableRow>
                   ) : (
                     <>
-                      {filteredEntries.map(entry => {
+                      {activeEntries.map(entry => {
                         const hasMovementsInQuarter = (entry as any)._hasMovementsInQuarter as boolean;
                         const movementsLoaded = (entry as any)._movementsLoaded as boolean;
                         // Movimientos del trimestre para la vista expandida
