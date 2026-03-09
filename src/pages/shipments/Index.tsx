@@ -8,6 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -84,6 +88,7 @@ export default function ShipmentsPage() {
     shipment: Shipment;
     costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: any }>;
   } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
 
   const selected = useMemo(
     () => shipments.find(s => s.id === selectedId) ?? null,
@@ -107,11 +112,25 @@ export default function ShipmentsPage() {
     toast.success(`Embarque ${draft.numero} creado`);
   }
 
-  function handleDelete(id: string) {
-    if (!confirm('¿Eliminar este embarque? No se puede deshacer.')) return;
-    ShipmentStorage.delete(id);
+  function handleDeleteRequest(s: Shipment) {
+    if (s.status === 'CERRADO') {
+      setDeleteConfirm({ shipment: s, step: 1 });
+    } else {
+      setDeleteConfirm({ shipment: s, step: 1 });
+    }
+  }
+
+  function confirmDelete() {
+    if (!deleteConfirm) return;
+    const { shipment, step } = deleteConfirm;
+    if (shipment.status === 'CERRADO' && step === 1) {
+      setDeleteConfirm({ shipment, step: 2 });
+      return;
+    }
+    ShipmentStorage.delete(shipment.id);
     setShipments(ShipmentStorage.load());
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === shipment.id) setSelectedId(null);
+    setDeleteConfirm(null);
     toast.success('Embarque eliminado');
   }
 
@@ -385,7 +404,7 @@ export default function ShipmentsPage() {
               shipment={selected}
               isReadOnly={isReadOnly}
               onSave={persist}
-              onDelete={() => handleDelete(selected.id)}
+              onDelete={() => handleDeleteRequest(selected)}
               onAdvance={() => handleAdvance(selected)}
               onClose={() => handleClose(selected)}
             />
@@ -418,6 +437,33 @@ export default function ShipmentsPage() {
               onCancel={() => setCloseConfirmState(null)}
             />
           )}
+
+          {/* Modal doble confirmación eliminar */}
+          <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {deleteConfirm?.step === 2
+                    ? '⚠️ Confirmar eliminación definitiva'
+                    : `¿Eliminar embarque ${deleteConfirm?.shipment.numero}?`}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {deleteConfirm?.step === 2
+                    ? 'Esta acción es irreversible. Los asientos contables generados NO se eliminarán.'
+                    : 'Esta acción no se puede deshacer. Se eliminará toda la información del embarque.'}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={confirmDelete}
+                  className={deleteConfirm?.step === 2 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
+                >
+                  {deleteConfirm?.step === 2 ? 'Eliminar definitivamente' : 'Continuar'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
     </div>
   );
 }
@@ -711,21 +757,23 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
             </div>
           </div>
 
-          {!isReadOnly && !isClosed && (
+          {!isReadOnly && (
             <div className="flex gap-2 items-center">
               <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive">
                 <Trash2 className="w-4 h-4" />
               </Button>
-              {s.status === 'EN_ALMACEN' ? (
-                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={onClose}>
-                  <CheckCircle className="w-4 h-4 mr-1.5" />
-                  Cerrar Embarque
-                </Button>
-              ) : nextLabel && (
-                <Button size="sm" onClick={onAdvance}>
-                  <ArrowRight className="w-4 h-4 mr-1.5" />
-                  {nextLabel}
-                </Button>
+              {!isClosed && (
+                s.status === 'EN_ALMACEN' ? (
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={onClose}>
+                    <CheckCircle className="w-4 h-4 mr-1.5" />
+                    Cerrar Embarque
+                  </Button>
+                ) : nextLabel && (
+                  <Button size="sm" onClick={onAdvance}>
+                    <ArrowRight className="w-4 h-4 mr-1.5" />
+                    {nextLabel}
+                  </Button>
+                )
               )}
             </div>
           )}
