@@ -1,74 +1,97 @@
 
 
-# Fase 3: Flujo de Efectivo — Método Indirecto (NIC 7)
+# Plan: Mejoras al Módulo de Embarques
 
-## Resumen
+## Cambio 1: Mover campo costo_bateria a MedidasTab
 
-Agregar el método indirecto al reporte de Flujo de Efectivo, que parte de la **Utilidad Neta** del Estado de Resultados y la ajusta por partidas no monetarias y variaciones en capital de trabajo. El usuario podrá elegir entre método directo (actual) o indirecto. Se reutiliza `computeIncomeStatement` del EE.RR. para obtener la Utilidad Neta.
+- Eliminar input de `costo_bateria` en `NewShipmentForm` (líneas ~452-459) y `ProductosTab` (~740-755)
+- Mantener checkbox `tiene_bateria` sin cambios
+- En `MedidasTab`: agregar columna "Batería (Bs)" al final, editable solo si `tiene_bateria=true`, mostrar badge 🔋 junto al nombre
 
-## Estructura del Método Indirecto (NIC 7.18-20)
+## Cambio 2: Categorías dinámicas
 
-```text
-UTILIDAD NETA (del EE.RR.)
+**Tipos (`shipment-types.ts`):**
+- Cambiar `ProductCategory` de union a `string`
+- Renombrar `PRODUCT_CATEGORY_LABELS` → `DEFAULT_CATEGORY_LABELS`
+- Agregar campo `custom_categories?: Record<string, string>` a `Shipment`
 
-+ Ajustes por partidas no monetarias:
-  + Depreciación y Amortización (es_partida_no_monetaria = true)
-  + Provisiones (subclasificacion heurística)
-  + Pérdidas/ganancias por disposición de activos
+**Utilidades (`shipment-utils.ts`):**
+```typescript
+const CUSTOM_CATEGORIES_KEY = 'shipment_custom_categories_v1';
 
-= Flujo Operativo antes de cambios en Capital de Trabajo
-
-+/- Variaciones en Capital de Trabajo:
-  - (Aumento) / Disminución en Cuentas por Cobrar
-  - (Aumento) / Disminución en Inventarios
-  + Aumento / (Disminución) en Cuentas por Pagar
-  (usa es_capital_trabajo = true o heurísticas)
-
-= FLUJO NETO DE OPERACIÓN
-
-+/- Actividades de Inversión (igual que método directo)
-+/- Actividades de Financiación (igual que método directo)
-
-= VARIACIÓN NETA DE EFECTIVO
-+ Saldo Inicial
-= SALDO FINAL
+export function loadCustomCategories(): Record<string, string>
+export function saveCustomCategory(slug: string, label: string): void
+export function getAllCategories(): Record<string, string>
 ```
 
-## Cambios
+**UI (`Index.tsx`):**
+- En `NewShipmentForm` y `ProductosTab`: reemplazar Select estático por dinámico con `getAllCategories()`
+- Agregar opción `"__nueva__"` → "➕ Nueva categoría..."
+- Dialog inline para crear categoría: campo nombre, generar slug automático, guardar y seleccionar
+- Reemplazar todas las referencias `PRODUCT_CATEGORY_LABELS` → `getAllCategories()`
+- Eliminar castings `as ProductCategory`
 
-### 1. `src/components/reports/CashFlowReport.tsx` (refactor mayor)
+## Cambio 3: Asiento 4 dinámico
 
-- Agregar toggle "Método Directo / Método Indirecto" en el header
-- **Método Indirecto — Actividades de Operación:**
-  - Importar y usar `computeIncomeStatement` (extraer como función reutilizable si es necesario) para obtener `utilidadNeta`
-  - Calcular ajustes no monetarios: filtrar cuentas con `es_partida_no_monetaria === true` y sumar sus movimientos en el periodo (D&A, provisiones)
-  - Calcular variaciones en capital de trabajo: para cada cuenta con `es_capital_trabajo === true` (o tipo ACTIVO corriente / PASIVO corriente), comparar saldo al inicio vs fin del periodo. Para activos: aumento = negativo. Para pasivos: aumento = positivo
-  - Usar `clasificacion_flujo` como fuente primaria para clasificar cuentas en operación/inversión/financiación, con fallback a `classifyMovementNIC7` existente
-- **Inversión y Financiación**: reutilizar la lógica actual del método directo (movimientos de efectivo clasificados por contraparte)
-- Mantener el método directo intacto como opción
+Se implementa dentro del Cambio 4 — el asiento de nacionalización usará `cuenta_inventario_id` de productos vinculados en Supabase en lugar del mapa hardcodeado.
 
-### 2. `src/services/pdfService.ts`
+## Cambio 4: Modal de cierre con vinculación a inventario
 
-- Extender `CashFlowNIIFData` con campos del método indirecto: `metodo`, `utilidadNeta`, `ajustesNoMonetarios`, `variacionesCapitalTrabajo`, `flujoOperativoIndirecto`
-- Actualizar `exportCashFlowNIIFToPDF` para renderizar la estructura indirecta cuando `metodo === 'indirecto'`
+**Nuevo componente:** `src/components/inventory/ShipmentCloseModal.tsx`
 
-## Campos de Account utilizados
+**Interfaces:**
+```typescript
+interface ProductLink {
+  shipmentProductId: string;
+  productId: string;
+  isNew: boolean;
+  newProductData?: { nombre: string; codigo: string; cuenta_inventario_id: string };
+}
 
-| Campo | Uso |
-|-------|-----|
-| `is_cash_equivalent` | Identificar cuentas de efectivo |
-| `es_partida_no_monetaria` | Ajustes por D&A, provisiones |
-| `es_capital_trabajo` | Variaciones en capital de trabajo |
-| `clasificacion_flujo` | Clasificar en operación/inversión/financiación |
-| `is_current` | Distinguir corriente vs no corriente para capital de trabajo |
-| `type` | Determinar signo de variación (activo vs pasivo) |
+interface JournalPreview {
+  memo: string;
+  lines: Array<{ account_id: string; debit: number; credit: number }>;
+}
+```
 
-## Archivos a modificar
+**Props:**
+```typescript
+{
+  isOpen: boolean;
+  shipment: Shipment;
+  costos: Array<{ product: ShipmentProduct; costo_unitario: number }>;
+  onConfirm: (links: ProductLink[], customMemos: string[]) => Promise<void>;
+  onCancel: () => void;
+}
+```
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/reports/CashFlowReport.tsx` | Toggle de método, lógica completa del método indirecto |
-| `src/services/pdfService.ts` | Soporte PDF para método indirecto |
+**Estructura:**
+- Dialog `max-w-4xl` con 2 tabs
+- **Tab 1 "Vinculación"**: tabla de productos, Select para vincular/crear, campos inline para nuevos productos (nombre, código, cuenta ACTIVO)
+- **Tab 2 "Previsualización"**: mostrar 4 asientos dinámicos, memos editables
+- Botones: Cancelar, ← Volver, Siguiente →, ✓ Aprobar y Cerrar
 
-No se necesitan cambios en base de datos.
+**Lógica Tab 1:**
+- Cargar productos activos de Supabase al abrir
+- Auto-match por nombre (`toLowerCase().includes()`)
+- Validar código y cuenta antes de permitir avance
+
+**Lógica Tab 2:**
+- Calcular asientos 1-3 (igual que ahora)
+- **Asiento 4 dinámico**: agrupar por `cuenta_inventario_id` del producto vinculado
+- Inputs para editar memos
+
+**Modificar `Index.tsx`:**
+1. Estado `closeConfirmState` para modal
+2. `handleClose`: validar, calcular costos, abrir modal (eliminar generación de asientos)
+3. `handleConfirmClose`: crear productos en Supabase, generar 4 asientos, insertar `inventory_movements`, cerrar embarque
+4. Renderizar `<ShipmentCloseModal>` en JSX
+
+**Flujo completo:**
+```
+Click "Cerrar" → Validaciones → Calcular costos → Abrir modal
+  Tab 1: Vincular productos (auto-match o crear)
+  Tab 2: Previsualizar 4 asientos, editar memos
+Click "Aprobar" → Crear productos nuevos → Generar asientos → Insertar movimientos → Guardar CERRADO
+```
 
