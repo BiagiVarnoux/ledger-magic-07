@@ -119,9 +119,20 @@ export default function ShipmentsPage() {
     [shipments, selectedId]
   );
 
-  async function persist(s: Shipment) {
-    await ShipmentStorage.upsert(s);
-    await reloadShipments();
+  const persistTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function persist(s: Shipment) {
+    // Update local state immediately for responsive UI
+    setShipments(prev => prev.map(existing => existing.id === s.id ? s : existing));
+    // Debounce the actual Supabase save
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(async () => {
+      try {
+        await ShipmentStorage.upsert(s);
+      } catch (e: any) {
+        toast.error('Error al guardar: ' + e.message);
+      }
+    }, 800);
   }
 
   async function handleCreate() {
