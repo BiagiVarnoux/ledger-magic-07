@@ -357,7 +357,7 @@ export default function ShipmentsPage() {
           costo_total: round2(costo_unitario * product.cantidad),
           fecha: todayISO(),
           referencia: `${s.numero} — Importación cerrada`,
-          metodo_valuacion: 'FIFO',
+          metodo_valuacion: 'PEPS',
           user_id: user.user.id,
         });
         if (movError) throw movError;
