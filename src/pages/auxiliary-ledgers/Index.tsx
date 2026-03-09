@@ -595,7 +595,7 @@ export default function AuxiliaryLedgersPage() {
                           <SelectValue placeholder="Selecciona un cliente" />
                         </SelectTrigger>
                         <SelectContent>
-                          {filteredEntries.map(entry => (
+                          {activeEntries.map(entry => (
                             <SelectItem key={entry.id} value={entry.id}>
                               {entry.client_name} (Saldo: {fmt(entry.total_balance)})
                             </SelectItem>
