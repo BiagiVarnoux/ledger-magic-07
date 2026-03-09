@@ -36,7 +36,7 @@ export function FifoExitModal({ isOpen, onClose, product, lots, onSaved }: FifoE
     }
   }, [lots, qty]);
 
-  const totalCosto = round2(preview.lines.reduce((s: number, l) => s + l.costo_total, 0 as number));
+  const totalCosto = round2(preview.lines.map(l => l.costo_total).reduce((a, b) => a + b, 0));
 
   async function handleSave() {
     if (qty <= 0 || preview.error) return;
