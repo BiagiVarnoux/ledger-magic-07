@@ -143,7 +143,7 @@ export function BackupRestoreModal({ isOpen, onClose, onRestoreComplete }: Backu
               Crear Backup
             </h3>
             <p className="text-sm text-muted-foreground">
-              Descarga un archivo JSON con todas tus cuentas, asientos, auxiliares, kardex y cierres trimestrales.
+              Descarga un archivo JSON con todos tus datos: cuentas, asientos, auxiliares, kardex, inventario, embarques y más.
             </p>
             <Button onClick={handleBackup} disabled={loading}>
               {loading ? (
