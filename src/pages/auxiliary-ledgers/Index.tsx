@@ -763,6 +763,16 @@ export default function AuxiliaryLedgersPage() {
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </Button>
+                                    {Math.abs(entry.total_balance) < 0.01 && !entry.closed_date && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleCloseClient(entry)}
+                                        title="Cerrar cliente (saldo 0)"
+                                      >
+                                        <Lock className="w-4 h-4" />
+                                      </Button>
+                                    )}
                                   </TableCell>
                                 )}
                               </TableRow>
