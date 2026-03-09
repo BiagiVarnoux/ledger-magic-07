@@ -58,11 +58,11 @@ function emptyProduct(shipment_id: string): ShipmentProduct {
   };
 }
 
-function newShipment(): Shipment {
+function newShipment(existingShipments: Shipment[] = []): Shipment {
   const id = crypto.randomUUID();
   return {
     id,
-    numero: generateShipmentNumber(ShipmentStorage.load()),
+    numero: generateShipmentNumber(existingShipments),
     descripcion: '',
     status: 'EN_COMPRA',
     created_at: todayISO(),
