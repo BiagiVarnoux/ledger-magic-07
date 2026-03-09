@@ -208,6 +208,7 @@ export default function InventoryPage() {
                               <Layers className="w-4 h-4 mr-1" /> FIFO
                             </Button>
                           </div>
+                          {!isReadOnly && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
