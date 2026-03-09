@@ -3,17 +3,18 @@
 
 import { Shipment } from './shipment-types';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 
 // Helper: convert DB row to Shipment
 function rowToShipment(row: any): Shipment {
-  const data = row.data || {};
+  const data = (row.data || {}) as Record<string, any>;
   return {
     ...data,
     id: row.id,
     numero: row.numero,
     status: row.status,
     created_at: data.created_at || row.created_at,
-  };
+  } as Shipment;
 }
 
 // Helper: convert Shipment to DB row fields
@@ -24,7 +25,7 @@ function shipmentToRow(s: Shipment, userId: string) {
     user_id: userId,
     numero,
     status,
-    data: rest,
+    data: JSON.parse(JSON.stringify(rest)) as Json,
   };
 }
 
@@ -48,7 +49,6 @@ export const ShipmentStorage = {
 
   async save(shipments: Shipment[]): Promise<void> {
     const userId = await getUserId();
-    // Delete all and re-insert (used by backup restore)
     await supabase.from('shipments').delete().eq('user_id', userId);
     if (shipments.length > 0) {
       const rows = shipments.map(s => shipmentToRow(s, userId));
@@ -98,7 +98,6 @@ export const ShipmentStorage = {
       const { error } = await supabase.from('shipments').upsert(rows, { onConflict: 'id' });
       if (error) throw error;
 
-      // Clear localStorage after successful migration
       localStorage.removeItem(LS_KEY);
       return old.length;
     } catch {
