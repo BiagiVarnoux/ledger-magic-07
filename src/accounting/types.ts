@@ -77,6 +77,7 @@ export interface AuxiliaryLedgerEntry {
   account_id: string;
   definition_id?: string;
   total_balance: number;
+  closed_date?: string; // YYYY-MM-DD - fecha real de cierre
 }
 
 export interface AuxiliaryMovementDetail {
