@@ -346,7 +346,7 @@ export default function ShipmentsPage() {
           costo_total_unitario: costo_unitario,
         })),
       };
-      persist(closed);
+      await persist(closed);
       setCloseConfirmState(null);
       toast.success(`Embarque ${s.numero} cerrado — ${newIds.length} asientos generados`);
     } catch (e: any) {
