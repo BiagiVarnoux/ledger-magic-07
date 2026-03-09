@@ -48,6 +48,7 @@ export async function createFullBackup(): Promise<BackupData> {
     costSheetsRes,
     costCellsRes,
     reportSettingsRes,
+    shipmentsRes,
   ] = await Promise.all([
     supabase.from('accounts').select('*').eq('user_id', user.id),
     supabase.from('journal_entries').select('*').eq('user_id', user.id),
@@ -66,6 +67,7 @@ export async function createFullBackup(): Promise<BackupData> {
     supabase.from('cost_sheets').select('*').eq('user_id', user.id),
     supabase.from('cost_sheet_cells').select('*').eq('user_id', user.id),
     supabase.from('report_settings').select('*').eq('user_id', user.id),
+    supabase.from('shipments').select('*').eq('user_id', user.id),
   ]);
 
   // Clean lines data (remove join artifact)
@@ -91,7 +93,7 @@ export async function createFullBackup(): Promise<BackupData> {
     cost_sheets: costSheetsRes.data || [],
     cost_sheet_cells: costCellsRes.data || [],
     report_settings: reportSettingsRes.data || [],
-    shipments: ShipmentStorage.load(),
+    shipments: shipmentsRes.data || [],
   };
 }
 
