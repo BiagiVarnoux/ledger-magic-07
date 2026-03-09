@@ -361,13 +361,13 @@ export default function ShipmentsPage() {
         const { error: movError } = await supabase.from('inventory_movements').insert({
           product_id: productId,
           inventory_lot_id: newLot.id,
-          tipo: 'entrada',
+          tipo: 'ENTRADA',
           cantidad: product.cantidad,
           costo_unitario,
           costo_total: round2(costo_unitario * product.cantidad),
           fecha: todayISO(),
           referencia: `${s.numero} — Importación cerrada`,
-          metodo_valuacion: 'PEPS',
+          metodo_valuacion: 'FIFO',
           user_id: user.user.id,
         });
         if (movError) throw movError;
