@@ -1270,7 +1270,7 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
               <TableCell>
                 <div>
                   <p className="font-medium text-sm">{p.nombre}</p>
-                  <p className="text-xs text-muted-foreground">{PRODUCT_CATEGORY_LABELS[p.categoria]}</p>
+                  <p className="text-xs text-muted-foreground">{allCategories[p.categoria] ?? p.categoria}</p>
                 </div>
               </TableCell>
               <TableCell className="text-right">{p.cantidad}</TableCell>
