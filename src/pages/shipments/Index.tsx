@@ -88,6 +88,7 @@ export default function ShipmentsPage() {
     shipment: Shipment;
     costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: any }>;
   } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
 
   const selected = useMemo(
     () => shipments.find(s => s.id === selectedId) ?? null,
