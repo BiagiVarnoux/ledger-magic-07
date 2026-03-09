@@ -27,6 +27,8 @@ export interface IDataAdapter {
   loadKardexDefinitions(): Promise<KardexDefinition[]>;
   loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>>;
   saveClosingBalances(quarterEndDate: string, balances: Record<string, number>): Promise<void>;
+  closeAuxiliaryEntry(id: string, closureDate: string): Promise<void>;
+  reopenAuxiliaryEntry(id: string): Promise<void>;
 }
 
 const LS_ACCOUNTS = "acc_es_v1";
