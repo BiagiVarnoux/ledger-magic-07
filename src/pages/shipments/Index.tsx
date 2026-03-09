@@ -388,19 +388,30 @@ export default function ShipmentsPage() {
       </div>
 
       {/* Modal nuevo embarque */}
-      <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Nuevo Embarque — {draft.numero}</DialogTitle>
-          </DialogHeader>
-          <NewShipmentForm
-            draft={draft}
-            onChange={setDraft}
-            onCreate={handleCreate}
-            onCancel={() => setShowNewDialog(false)}
-          />
-        </DialogContent>
-      </Dialog>
+          <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Nuevo Embarque — {draft.numero}</DialogTitle>
+              </DialogHeader>
+              <NewShipmentForm
+                draft={draft}
+                onChange={setDraft}
+                onCreate={handleCreate}
+                onCancel={() => setShowNewDialog(false)}
+              />
+            </DialogContent>
+          </Dialog>
+
+          {/* Modal de cierre */}
+          {closeConfirmState && (
+            <ShipmentCloseModal
+              isOpen={!!closeConfirmState}
+              shipment={closeConfirmState.shipment}
+              costos={closeConfirmState.costos}
+              onConfirm={handleConfirmClose}
+              onCancel={() => setCloseConfirmState(null)}
+            />
+          )}
     </div>
   );
 }
