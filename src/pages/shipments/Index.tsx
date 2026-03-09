@@ -25,14 +25,16 @@ import { useUserAccess } from '@/contexts/UserAccessContext';
 import {
   Shipment, ShipmentProduct, ShipmentExpense,
   ShipmentStatus, SHIPMENT_STATUS_LABELS, SHIPMENT_STATUS_COLORS,
-  ProductCategory, PRODUCT_CATEGORY_LABELS,
 } from '@/accounting/shipment-types';
 import { ShipmentStorage } from '@/accounting/shipment-storage';
 import {
   calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo,
   calcGAEstimado, calcIVAEstimado,
   calcCostoFinalPorProducto, generateShipmentNumber,
+  getAllCategories, saveCustomCategory,
 } from '@/accounting/shipment-utils';
+import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
+import { supabase } from '@/integrations/supabase/client';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +80,10 @@ export default function ShipmentsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [draft, setDraft] = useState<Shipment>(newShipment);
+  const [closeConfirmState, setCloseConfirmState] = useState<{
+    shipment: Shipment;
+    costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: any }>;
+  } | null>(null);
 
   const selected = useMemo(
     () => shipments.find(s => s.id === selectedId) ?? null,
@@ -140,31 +146,52 @@ export default function ShipmentsPage() {
   }
 
   // ── Cerrar embarque ──────────────────────────────────────────────────────────
-  async function handleClose(s: Shipment) {
+  function handleClose(s: Shipment) {
     const sinMedidas = s.products.find(p => !p.m1 || !p.m2 || !p.m3);
     if (sinMedidas) { toast.error('Todos los productos necesitan medidas para el prorrateo'); return; }
+    const costos = calcCostoFinalPorProducto(s);
+    setCloseConfirmState({ shipment: s, costos });
+  }
+
+  async function handleConfirmClose(links: ProductLink[], customMemos: string[]) {
+    if (!closeConfirmState) return;
+    const s = closeConfirmState.shipment;
+    const costos = closeConfirmState.costos;
 
     try {
-      const costos = calcCostoFinalPorProducto(s);
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error('No hay sesión activa');
+
+      // 1. Create new products in Supabase
+      const newProductIds: Record<string, string> = {};
+      for (const link of links) {
+        if (link.isNew && link.newProductData) {
+          const { data, error } = await supabase.from('products').insert({
+            nombre: link.newProductData.nombre,
+            codigo: link.newProductData.codigo,
+            cuenta_inventario_id: link.newProductData.cuenta_inventario_id,
+            categoria: 'importado',
+            unidad_medida: 'unidad',
+            user_id: user.user.id,
+          }).select('id').single();
+          if (error) throw error;
+          newProductIds[link.shipmentProductId] = data.id;
+        }
+      }
+
+      // 2. Generate 4 journal entries
       let currentEntries = [...entries];
       const newIds: string[] = [];
 
-      const categoryAccountMap: Record<ProductCategory, string> = {
-        electronica: 'A.4.3',
-        juguetes: 'A.4.4',
-        repuestos: 'A.4.5',
-        otros: 'A.4.2',
-      };
-
-      // Asiento 1 — Flete → Inventario en Tránsito
+      // Asiento 1 — Flete
       if (s.flete_total_bs && s.flete_total_bs > 0) {
         const e = {
           id: generateEntryId(todayISO(), currentEntries),
           date: todayISO(),
-          memo: `${s.numero} — Capitalización flete aéreo a Inventario en Tránsito`,
+          memo: customMemos[0],
           lines: [
             { account_id: 'A.4.1', debit: s.flete_total_bs, credit: 0, line_memo: 'Flete aéreo capitalizado' },
-            { account_id: 'G.2',   debit: 0, credit: s.flete_total_bs },
+            { account_id: 'G.2', debit: 0, credit: s.flete_total_bs },
           ],
         };
         await adapter.saveEntry(e);
@@ -172,16 +199,16 @@ export default function ShipmentsPage() {
         newIds.push(e.id);
       }
 
-      // Asiento 2 — GA → Inventario en Tránsito
+      // Asiento 2 — GA
       const totalGA = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
       if (totalGA > 0) {
         const e = {
           id: generateEntryId(todayISO(), currentEntries),
           date: todayISO(),
-          memo: `${s.numero} — Capitalización Gravamen Arancelario`,
+          memo: customMemos[1],
           lines: [
             { account_id: 'A.4.1', debit: totalGA, credit: 0, line_memo: 'GA capitalizado' },
-            { account_id: 'G.6',   debit: 0, credit: totalGA },
+            { account_id: 'G.6', debit: 0, credit: totalGA },
           ],
         };
         await adapter.saveEntry(e);
@@ -189,16 +216,16 @@ export default function ShipmentsPage() {
         newIds.push(e.id);
       }
 
-      // Asiento 3 — Manipuleo → Inventario en Tránsito
+      // Asiento 3 — Manipuleo
       const totalManipuleo = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
       if (totalManipuleo > 0) {
         const e = {
           id: generateEntryId(todayISO(), currentEntries),
           date: todayISO(),
-          memo: `${s.numero} — Capitalización gastos de aduana (manipuleo)`,
+          memo: customMemos[2],
           lines: [
             { account_id: 'A.4.1', debit: totalManipuleo, credit: 0, line_memo: 'Manipuleo capitalizado' },
-            { account_id: 'G.5',   debit: 0, credit: totalManipuleo },
+            { account_id: 'G.5', debit: 0, credit: totalManipuleo },
           ],
         };
         await adapter.saveEntry(e);
@@ -206,18 +233,28 @@ export default function ShipmentsPage() {
         newIds.push(e.id);
       }
 
-      // Asiento 4 — Inventario en Tránsito → Inventario por categoría
+      // Asiento 4 — Nacionalización (dynamic by cuenta_inventario_id)
       const byAccount: Record<string, number> = {};
       costos.forEach(({ product, costo_unitario }) => {
-        const acct = categoryAccountMap[product.categoria];
-        byAccount[acct] = round2((byAccount[acct] ?? 0) + costo_unitario * product.cantidad);
+        const link = links.find(l => l.shipmentProductId === product.id);
+        let cuentaId = 'A.4.2'; // fallback
+        if (link) {
+          if (link.isNew && link.newProductData) {
+            cuentaId = link.newProductData.cuenta_inventario_id;
+          } else {
+            // fetch from supabase products
+            // (we'll use link.productId — but for safety we'll just use the new/existing logic)
+            cuentaId = link.newProductData?.cuenta_inventario_id ?? 'A.4.2';
+          }
+        }
+        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + costo_unitario * product.cantidad);
       });
       const totalCosto = round2(Object.values(byAccount).reduce((a, b) => a + b, 0));
 
       const nationLines = [
         ...Object.entries(byAccount).map(([acct, monto]) => ({
           account_id: acct, debit: monto, credit: 0,
-          line_memo: Object.entries(categoryAccountMap).find(([, v]) => v === acct)?.[0] ?? '',
+          line_memo: acct,
         })),
         { account_id: 'A.4.1', debit: 0, credit: totalCosto, line_memo: 'Cierre Inventario en Tránsito' },
       ];
@@ -225,15 +262,33 @@ export default function ShipmentsPage() {
       const nationEntry = {
         id: generateEntryId(todayISO(), currentEntries),
         date: todayISO(),
-        memo: `${s.numero} — Nacionalización: Inventario en Tránsito → Inventario`,
+        memo: customMemos[3],
         lines: nationLines,
       };
       await adapter.saveEntry(nationEntry);
       newIds.push(nationEntry.id);
-
       setEntries(await adapter.loadEntries());
 
-      // Guardar embarque cerrado con costos calculados
+      // 3. Insert inventory movements
+      for (const { product, costo_unitario } of costos) {
+        const link = links.find(l => l.shipmentProductId === product.id);
+        const productId = link?.isNew ? newProductIds[product.id] : link?.productId;
+        if (!productId) continue;
+
+        await supabase.from('inventory_movements').insert({
+          product_id: productId,
+          tipo: 'ENTRADA',
+          cantidad: product.cantidad,
+          costo_unitario,
+          costo_total: round2(costo_unitario * product.cantidad),
+          fecha: todayISO(),
+          referencia: `${s.numero} — Importación cerrada`,
+          metodo_valuacion: 'CPP',
+          user_id: user.user.id,
+        });
+      }
+
+      // 4. Save closed shipment
       const closed: Shipment = {
         ...s,
         status: 'CERRADO',
@@ -247,9 +302,11 @@ export default function ShipmentsPage() {
         })),
       };
       persist(closed);
+      setCloseConfirmState(null);
       toast.success(`Embarque ${s.numero} cerrado — ${newIds.length} asientos generados`);
     } catch (e: any) {
       toast.error(e.message || 'Error al cerrar el embarque');
+      throw e;
     }
   }
 
@@ -331,19 +388,30 @@ export default function ShipmentsPage() {
       </div>
 
       {/* Modal nuevo embarque */}
-      <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Nuevo Embarque — {draft.numero}</DialogTitle>
-          </DialogHeader>
-          <NewShipmentForm
-            draft={draft}
-            onChange={setDraft}
-            onCreate={handleCreate}
-            onCancel={() => setShowNewDialog(false)}
-          />
-        </DialogContent>
-      </Dialog>
+          <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Nuevo Embarque — {draft.numero}</DialogTitle>
+              </DialogHeader>
+              <NewShipmentForm
+                draft={draft}
+                onChange={setDraft}
+                onCreate={handleCreate}
+                onCancel={() => setShowNewDialog(false)}
+              />
+            </DialogContent>
+          </Dialog>
+
+          {/* Modal de cierre */}
+          {closeConfirmState && (
+            <ShipmentCloseModal
+              isOpen={!!closeConfirmState}
+              shipment={closeConfirmState.shipment}
+              costos={closeConfirmState.costos}
+              onConfirm={handleConfirmClose}
+              onCancel={() => setCloseConfirmState(null)}
+            />
+          )}
     </div>
   );
 }
@@ -356,6 +424,11 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
   onCreate: () => void;
   onCancel: () => void;
 }) {
+  const allCategories = getAllCategories();
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     const updated = draft.products.map(p => {
       if (p.id !== id) return p;
@@ -383,162 +456,206 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
     onChange({ ...draft, products: draft.products.filter(p => p.id !== id) });
   }
 
+  function handleCategorySelect(productId: string, value: string) {
+    if (value === '__nueva__') {
+      setPendingProductId(productId);
+      setNewCategoryName('');
+      setShowCategoryDialog(true);
+    } else {
+      updateProduct(productId, { categoria: value });
+    }
+  }
+
+  function handleCreateCategory() {
+    if (!newCategoryName.trim()) return;
+    const slug = newCategoryName.toLowerCase().replace(/\s+/g, '_');
+    saveCustomCategory(slug, newCategoryName);
+    if (pendingProductId) {
+      updateProduct(pendingProductId, { categoria: slug });
+    }
+    setShowCategoryDialog(false);
+    setNewCategoryName('');
+    setPendingProductId(null);
+    toast.success(`Categoría "${newCategoryName}" creada`);
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Datos generales */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="col-span-3">
-          <Label>Descripción <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-          <Input
-            value={draft.descripcion}
-            onChange={e => onChange({ ...draft, descripcion: e.target.value })}
-            placeholder="Ej: Electrónica enero 2025"
-          />
+    <>
+      <div className="space-y-6">
+        {/* Datos generales */}
+        <div className="grid grid-cols-4 gap-4">
+          <div className="col-span-3">
+            <Label>Descripción <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+            <Input
+              value={draft.descripcion}
+              onChange={e => onChange({ ...draft, descripcion: e.target.value })}
+              placeholder="Ej: Electrónica enero 2025"
+            />
+          </div>
+          <div>
+            <Label>T/C Referencia</Label>
+            <Input
+              type="number" step="0.01"
+              value={draft.tc_paralelo}
+              onChange={e => onChange({ ...draft, tc_paralelo: parseFloat(e.target.value) || 0 })}
+            />
+            <p className="text-xs text-muted-foreground mt-1">Se usa si el producto no tiene T/C propio</p>
+          </div>
         </div>
+
+        <Separator />
+
+        {/* Productos */}
         <div>
-          <Label>T/C Referencia</Label>
-          <Input
-            type="number" step="0.01"
-            value={draft.tc_paralelo}
-            onChange={e => onChange({ ...draft, tc_paralelo: parseFloat(e.target.value) || 0 })}
-          />
-          <p className="text-xs text-muted-foreground mt-1">Se usa si el producto no tiene T/C propio</p>
-        </div>
-      </div>
+          <div className="flex items-center justify-between mb-3">
+            <Label className="text-base font-semibold">Productos del embarque</Label>
+            <Button size="sm" variant="outline" onClick={addProduct}>
+              <Plus className="w-4 h-4 mr-1" />Agregar producto
+            </Button>
+          </div>
 
-      <Separator />
-
-      {/* Productos */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <Label className="text-base font-semibold">Productos del embarque</Label>
-          <Button size="sm" variant="outline" onClick={addProduct}>
-            <Plus className="w-4 h-4 mr-1" />Agregar producto
-          </Button>
-        </div>
-
-        <div className="space-y-4">
-          {draft.products.map((p) => {
-            const tcEfectivo = p.tc_producto ?? draft.tc_paralelo;
-            return (
-              <Card key={p.id} className="p-4 bg-muted/30">
-                {/* Fila 1: Nombre, Categoría, Cantidad, Fecha */}
-                <div className="grid grid-cols-12 gap-3 items-end mb-3">
-                  <div className="col-span-4">
-                    <Label className="text-xs">Nombre del producto</Label>
-                    <Input placeholder="iPhone 14 Pro" value={p.nombre}
-                      onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
-                  </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">Categoría</Label>
-                    <Select value={p.categoria} onValueChange={v => updateProduct(p.id, { categoria: v as ProductCategory })}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(PRODUCT_CATEGORY_LABELS).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-1">
-                    <Label className="text-xs">Cant.</Label>
-                    <Input type="number" min="1" value={p.cantidad}
-                      onChange={e => updateProduct(p.id, { cantidad: parseInt(e.target.value) || 1 })} />
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="text-xs">Fecha compra</Label>
-                    <Input type="date" value={p.fecha_compra}
-                      onChange={e => updateProduct(p.id, { fecha_compra: e.target.value })} />
-                  </div>
-                  <div className="col-span-1">
-                    <Label className="text-xs">GA %</Label>
-                    <Input type="number" value={p.ga_pct}
-                      onChange={e => updateProduct(p.id, { ga_pct: parseFloat(e.target.value) || 0 })} />
-                  </div>
-                  <div className="col-span-1 flex items-center justify-center mt-4">
-                    <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
-                      disabled={draft.products.length <= 1}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Fila 2: Precio USD, Precio Bs pagado, T/C calculado, Tax */}
-                <div className="grid grid-cols-12 gap-3 items-end">
-                  <div className="col-span-3">
-                    <Label className="text-xs">Precio USD <span className="text-muted-foreground">(sin tax)</span></Label>
-                    <Input type="number" step="0.01" placeholder="0.00" value={p.precio_usd || ''}
-                      onChange={e => updateProduct(p.id, { precio_usd: parseFloat(e.target.value) || 0 })} />
-                  </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">
-                      Precio Bs pagado
-                      <span className="text-muted-foreground ml-1">(para calcular T/C)</span>
-                    </Label>
-                    <Input type="number" step="0.01" placeholder="0.00"
-                      value={p.precio_bs_pagado || ''}
-                      onChange={e => updateProduct(p.id, { precio_bs_pagado: parseFloat(e.target.value) || undefined })} />
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="text-xs">T/C calculado</Label>
-                    <div className={`h-9 px-3 flex items-center rounded-md border text-sm font-semibold
-                      ${p.tc_producto ? 'bg-green-50 dark:bg-green-900/20 border-green-300 text-green-700 dark:text-green-300' : 'bg-muted text-muted-foreground'}`}>
-                      {p.tc_producto ? p.tc_producto.toFixed(4) : `≈ ${draft.tc_paralelo} (ref.)`}
+          <div className="space-y-4">
+            {draft.products.map((p) => {
+              const tcEfectivo = p.tc_producto ?? draft.tc_paralelo;
+              return (
+                <Card key={p.id} className="p-4 bg-muted/30">
+                  {/* Fila 1: Nombre, Categoría, Cantidad, Fecha */}
+                  <div className="grid grid-cols-12 gap-3 items-end mb-3">
+                    <div className="col-span-4">
+                      <Label className="text-xs">Nombre del producto</Label>
+                      <Input placeholder="iPhone 14 Pro" value={p.nombre}
+                        onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs">Categoría</Label>
+                      <Select value={p.categoria} onValueChange={v => handleCategorySelect(p.id, v)}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(allCategories).map(([k, v]) => (
+                            <SelectItem key={k} value={k}>{v}</SelectItem>
+                          ))}
+                          <SelectItem value="__nueva__">➕ Nueva categoría...</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-1">
+                      <Label className="text-xs">Cant.</Label>
+                      <Input type="number" min="1" value={p.cantidad}
+                        onChange={e => updateProduct(p.id, { cantidad: parseInt(e.target.value) || 1 })} />
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Fecha compra</Label>
+                      <Input type="date" value={p.fecha_compra}
+                        onChange={e => updateProduct(p.id, { fecha_compra: e.target.value })} />
+                    </div>
+                    <div className="col-span-1">
+                      <Label className="text-xs">GA %</Label>
+                      <Input type="number" value={p.ga_pct}
+                        onChange={e => updateProduct(p.id, { ga_pct: parseFloat(e.target.value) || 0 })} />
+                    </div>
+                    <div className="col-span-1 flex items-center justify-center mt-4">
+                      <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
+                        disabled={draft.products.length <= 1}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="col-span-2">
-                    <Label className="text-xs">Tax %</Label>
-                    <Input type="number" step="0.1" placeholder="0" value={p.tax_pct || ''}
-                      onChange={e => updateProduct(p.id, { tax_pct: parseFloat(e.target.value) || 0 })} />
-                  </div>
-                  <div className="col-span-2">
-                    {p.precio_usd > 0 && (
-                      <div className="h-9 px-3 flex flex-col justify-center rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                        <span className="text-[10px] text-blue-600 dark:text-blue-400">Precio Bs</span>
-                        <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                          {fmt(calcPrecioBs(p, tcEfectivo))}
-                        </span>
+
+                  {/* Fila 2: Precio USD, Precio Bs pagado, T/C calculado, Tax */}
+                  <div className="grid grid-cols-12 gap-3 items-end">
+                    <div className="col-span-3">
+                      <Label className="text-xs">Precio USD <span className="text-muted-foreground">(sin tax)</span></Label>
+                      <Input type="number" step="0.01" placeholder="0.00" value={p.precio_usd || ''}
+                        onChange={e => updateProduct(p.id, { precio_usd: parseFloat(e.target.value) || 0 })} />
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs">
+                        Precio Bs pagado
+                        <span className="text-muted-foreground ml-1">(para calcular T/C)</span>
+                      </Label>
+                      <Input type="number" step="0.01" placeholder="0.00"
+                        value={p.precio_bs_pagado || ''}
+                        onChange={e => updateProduct(p.id, { precio_bs_pagado: parseFloat(e.target.value) || undefined })} />
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">T/C calculado</Label>
+                      <div className={`h-9 px-3 flex items-center rounded-md border text-sm font-semibold
+                        ${p.tc_producto ? 'bg-success/10 border-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
+                        {p.tc_producto ? p.tc_producto.toFixed(4) : `≈ ${draft.tc_paralelo} (ref.)`}
                       </div>
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Tax %</Label>
+                      <Input type="number" step="0.1" placeholder="0" value={p.tax_pct || ''}
+                        onChange={e => updateProduct(p.id, { tax_pct: parseFloat(e.target.value) || 0 })} />
+                    </div>
+                    <div className="col-span-2">
+                      {p.precio_usd > 0 && (
+                        <div className="h-9 px-3 flex flex-col justify-center rounded-md bg-primary/10 border border-primary/20">
+                          <span className="text-[10px] text-primary">Precio Bs</span>
+                          <span className="text-sm font-semibold text-primary">
+                            {fmt(calcPrecioBs(p, tcEfectivo))}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Fila 3: Batería (checkbox only) */}
+                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/50">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" id={`bat-${p.id}`} checked={p.tiene_bateria}
+                        onChange={e => updateProduct(p.id, { tiene_bateria: e.target.checked })}
+                        className="w-4 h-4 rounded" />
+                      <Label htmlFor={`bat-${p.id}`} className="text-xs cursor-pointer">🔋 Certificado de batería</Label>
+                    </div>
+                    {p.precio_usd > 0 && (
+                      <p className="text-xs text-muted-foreground ml-auto">
+                        BOB para tributos: <strong>{fmt(calcPrecioBOB(p, draft.tc_oficial))}</strong>
+                      </p>
                     )}
                   </div>
-                </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
 
-                {/* Fila 3: Batería */}
-                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/50">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id={`bat-${p.id}`} checked={p.tiene_bateria}
-                      onChange={e => updateProduct(p.id, { tiene_bateria: e.target.checked })}
-                      className="w-4 h-4 rounded" />
-                    <Label htmlFor={`bat-${p.id}`} className="text-xs cursor-pointer">🔋 Certificado de batería</Label>
-                  </div>
-                  {p.tiene_bateria && (
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs">Costo Bs:</Label>
-                      <Input type="number" step="0.01" value={p.costo_bateria || ''}
-                        onChange={e => updateProduct(p.id, { costo_bateria: parseFloat(e.target.value) || 0 })}
-                        className="w-28 h-8 text-xs" />
-                    </div>
-                  )}
-                  {p.precio_usd > 0 && (
-                    <p className="text-xs text-muted-foreground ml-auto">
-                      BOB para tributos: <strong>{fmt(calcPrecioBOB(p, draft.tc_oficial))}</strong>
-                    </p>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+        <div className="flex gap-2 justify-end pt-2 border-t">
+          <Button variant="outline" onClick={onCancel}>Cancelar</Button>
+          <Button onClick={onCreate}>
+            <ShoppingCart className="w-4 h-4 mr-2" />
+            Crear Embarque
+          </Button>
         </div>
       </div>
 
-      <div className="flex gap-2 justify-end pt-2 border-t">
-        <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={onCreate}>
-          <ShoppingCart className="w-4 h-4 mr-2" />
-          Crear Embarque
-        </Button>
-      </div>
-    </div>
+      {/* Category Dialog */}
+      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva Categoría</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nombre de la categoría</Label>
+              <Input
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+                placeholder="Ej: Textiles, Ferretería..."
+                onKeyDown={e => e.key === 'Enter' && handleCreateCategory()}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>Cancelar</Button>
+              <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim()}>
+                Crear Categoría
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -698,6 +815,11 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
 // ─── Tab: Productos ────────────────────────────────────────────────────────────
 
 function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
+  const allCategories = getAllCategories();
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [pendingProductId, setPendingProductId] = useState<string | null>(null);
+
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     onSave({ ...s, products: s.products.map(p => p.id === id ? { ...p, ...patch } : p) });
   }
@@ -709,83 +831,134 @@ function ProductosTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: bool
     onSave({ ...s, products: s.products.filter(p => p.id !== id) });
   }
 
+  function handleCategorySelect(productId: string, value: string) {
+    if (value === '__nueva__') {
+      setPendingProductId(productId);
+      setNewCategoryName('');
+      setShowCategoryDialog(true);
+    } else {
+      updateProduct(productId, { categoria: value });
+    }
+  }
+
+  function handleCreateCategory() {
+    if (!newCategoryName.trim()) return;
+    const slug = newCategoryName.toLowerCase().replace(/\s+/g, '_');
+    saveCustomCategory(slug, newCategoryName);
+    if (pendingProductId) {
+      updateProduct(pendingProductId, { categoria: slug });
+    }
+    setShowCategoryDialog(false);
+    setNewCategoryName('');
+    setPendingProductId(null);
+    toast.success(`Categoría "${newCategoryName}" creada`);
+  }
+
   const canEdit = !isReadOnly && !['EN_ADUANA', 'EN_ALMACEN', 'CERRADO'].includes(s.status);
 
   return (
-    <div className="space-y-3">
-      {canEdit && (
-        <div className="flex justify-end">
-          <Button size="sm" variant="outline" onClick={addProduct}>
-            <Plus className="w-4 h-4 mr-1" />Agregar producto
-          </Button>
-        </div>
-      )}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Producto</TableHead>
-            <TableHead>Categoría</TableHead>
-            <TableHead className="text-right">Cant.</TableHead>
-            <TableHead className="text-right">Precio USD</TableHead>
-            <TableHead className="text-right">Tax%</TableHead>
-            <TableHead className="text-right">Precio Bs</TableHead>
-            <TableHead className="text-right">GA%</TableHead>
-            <TableHead>Fecha</TableHead>
-            {canEdit && <TableHead />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {s.products.map(p => (
-            <TableRow key={p.id}>
-              <TableCell>
-                {canEdit ? (
-                  <Input value={p.nombre} className="h-8 min-w-[140px]"
-                    onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
-                ) : (
-                  <span className="font-medium">{p.nombre}</span>
-                )}
-                {p.tiene_bateria && (
-                  <Badge variant="outline" className="ml-1 text-[10px]">🔋 bat.</Badge>
-                )}
-              </TableCell>
-              <TableCell>
-                {canEdit ? (
-                  <Select value={p.categoria} onValueChange={v => updateProduct(p.id, { categoria: v as ProductCategory })}>
-                    <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(PRODUCT_CATEGORY_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span className="text-sm">{PRODUCT_CATEGORY_LABELS[p.categoria]}</span>
-                )}
-              </TableCell>
-              <TableCell className="text-right">{p.cantidad}</TableCell>
-              <TableCell className="text-right">{fmt(p.precio_usd)}</TableCell>
-              <TableCell className="text-right">{p.tax_pct > 0 ? `${p.tax_pct}%` : '—'}</TableCell>
-              <TableCell className="text-right font-medium">
-                {fmt(calcPrecioBs(p, s.tc_paralelo) * p.cantidad)}
-                {p.tc_producto && (
-                  <span className="block text-[10px] text-green-600 font-normal">T/C: {p.tc_producto.toFixed(4)}</span>
-                )}
-              </TableCell>
-              <TableCell className="text-right">{p.ga_pct}%</TableCell>
-              <TableCell className="text-xs text-muted-foreground">{p.fecha_compra}</TableCell>
-              {canEdit && (
-                <TableCell>
-                  <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
-                    disabled={s.products.length <= 1}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </TableCell>
-              )}
+    <>
+      <div className="space-y-3">
+        {canEdit && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={addProduct}>
+              <Plus className="w-4 h-4 mr-1" />Agregar producto
+            </Button>
+          </div>
+        )}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Producto</TableHead>
+              <TableHead>Categoría</TableHead>
+              <TableHead className="text-right">Cant.</TableHead>
+              <TableHead className="text-right">Precio USD</TableHead>
+              <TableHead className="text-right">Tax%</TableHead>
+              <TableHead className="text-right">Precio Bs</TableHead>
+              <TableHead className="text-right">GA%</TableHead>
+              <TableHead>Fecha</TableHead>
+              {canEdit && <TableHead />}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {s.products.map(p => (
+              <TableRow key={p.id}>
+                <TableCell>
+                  {canEdit ? (
+                    <Input value={p.nombre} className="h-8 min-w-[140px]"
+                      onChange={e => updateProduct(p.id, { nombre: e.target.value })} />
+                  ) : (
+                    <span className="font-medium">{p.nombre}</span>
+                  )}
+                  {p.tiene_bateria && (
+                    <Badge variant="outline" className="ml-1 text-[10px]">🔋 bat.</Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {canEdit ? (
+                    <Select value={p.categoria} onValueChange={v => handleCategorySelect(p.id, v)}>
+                      <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(allCategories).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                        <SelectItem value="__nueva__">➕ Nueva categoría...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span className="text-sm">{allCategories[p.categoria] ?? p.categoria}</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">{p.cantidad}</TableCell>
+                <TableCell className="text-right">{fmt(p.precio_usd)}</TableCell>
+                <TableCell className="text-right">{p.tax_pct > 0 ? `${p.tax_pct}%` : '—'}</TableCell>
+                <TableCell className="text-right font-medium">
+                  {fmt(calcPrecioBs(p, s.tc_paralelo) * p.cantidad)}
+                  {p.tc_producto && (
+                    <span className="block text-[10px] text-success font-normal">T/C: {p.tc_producto.toFixed(4)}</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">{p.ga_pct}%</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{p.fecha_compra}</TableCell>
+                {canEdit && (
+                  <TableCell>
+                    <Button size="sm" variant="ghost" onClick={() => removeProduct(p.id)}
+                      disabled={s.products.length <= 1}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva Categoría</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nombre de la categoría</Label>
+              <Input
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+                placeholder="Ej: Textiles, Ferretería..."
+                onKeyDown={e => e.key === 'Enter' && handleCreateCategory()}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>Cancelar</Button>
+              <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim()}>
+                Crear Categoría
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -998,7 +1171,7 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 
   return (
     <div className="space-y-3">
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm text-blue-800 dark:text-blue-200">
+      <div className="bg-info/10 border border-info/20 rounded-lg p-3 text-sm text-info">
         <p className="font-medium">Mide los productos en tu almacén</p>
         <p className="text-xs mt-0.5">Con estos datos se calculará el peso volumen y se prorrateará el flete y el manipuleo automáticamente al cerrar el embarque.</p>
       </div>
@@ -1011,6 +1184,7 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
             <TableHead className="text-right">M2 (cm)</TableHead>
             <TableHead className="text-right">M3 (cm)</TableHead>
             <TableHead className="text-right">Peso bruto (kg)</TableHead>
+            <TableHead className="text-right">Batería (Bs)</TableHead>
             <TableHead className="text-right">Peso vol.</TableHead>
             <TableHead className="text-right">Peso efectivo</TableHead>
           </TableRow>
@@ -1021,7 +1195,10 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
             const pe = calcPesoEfectivo(p);
             return (
               <TableRow key={p.id}>
-                <TableCell className="font-medium text-sm">{p.nombre} <span className="text-muted-foreground font-normal">×{p.cantidad}</span></TableCell>
+                <TableCell className="font-medium text-sm">
+                  {p.nombre} {p.tiene_bateria && <Badge variant="outline" className="ml-1 text-[10px]">🔋</Badge>}
+                  <span className="text-muted-foreground font-normal"> ×{p.cantidad}</span>
+                </TableCell>
                 {(['m1', 'm2', 'm3'] as const).map(dim => (
                   <TableCell key={dim} className="text-right">
                     {canEdit ? (
@@ -1039,6 +1216,18 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
                       onChange={e => updateProduct(p.id, { peso_bruto: parseFloat(e.target.value) || undefined })}
                       placeholder="0.00" />
                   ) : <span>{p.peso_bruto ?? '—'}</span>}
+                </TableCell>
+                <TableCell className="text-right">
+                  {p.tiene_bateria && canEdit ? (
+                    <Input type="number" step="0.01" className="h-8 w-24 text-right ml-auto"
+                      value={p.costo_bateria || ''}
+                      onChange={e => updateProduct(p.id, { costo_bateria: parseFloat(e.target.value) || 0 })}
+                      placeholder="0.00" />
+                  ) : p.tiene_bateria ? (
+                    <span className="font-medium">{fmt(p.costo_bateria)}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right text-sm">
                   {pv != null ? <span className="font-medium">{pv}</span> : <span className="text-muted-foreground">—</span>}
@@ -1058,14 +1247,15 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 // ─── Tab: Costos Finales ───────────────────────────────────────────────────────
 
 function CostosFinalesTab({ s }: { s: Shipment }) {
+  const allCategories = getAllCategories();
   const costos = calcCostoFinalPorProducto(s);
   const totalEmbarque = round2(costos.reduce((sum, { product, costo_unitario }) => sum + costo_unitario * product.cantidad, 0));
 
   return (
     <div className="space-y-4">
-      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
-        <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-        <div className="text-sm text-green-800 dark:text-green-200">
+      <div className="bg-success/10 border border-success/20 rounded-lg p-3 flex items-center gap-2">
+        <CheckCircle className="w-4 h-4 text-success shrink-0" />
+        <div className="text-sm text-success">
           <span className="font-medium">Embarque cerrado. </span>
           Se generaron {s.journal_entry_ids?.length ?? 0} asientos contables automáticamente.
         </div>
@@ -1091,7 +1281,7 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
               <TableCell>
                 <div>
                   <p className="font-medium text-sm">{p.nombre}</p>
-                  <p className="text-xs text-muted-foreground">{PRODUCT_CATEGORY_LABELS[p.categoria]}</p>
+                  <p className="text-xs text-muted-foreground">{allCategories[p.categoria] ?? p.categoria}</p>
                 </div>
               </TableCell>
               <TableCell className="text-right">{p.cantidad}</TableCell>

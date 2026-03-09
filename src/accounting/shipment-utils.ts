@@ -2,7 +2,30 @@
 // Fórmulas exactas del Excel de importaciones
 
 import { round2 } from './utils';
-import { ShipmentProduct, Shipment, ShipmentExpense } from './shipment-types';
+import { ShipmentProduct, Shipment, ShipmentExpense, DEFAULT_CATEGORY_LABELS } from './shipment-types';
+
+// ─── Categorías dinámicas ─────────────────────────────────────────────────────
+
+const CUSTOM_CATEGORIES_KEY = 'shipment_custom_categories_v1';
+
+export function loadCustomCategories(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CUSTOM_CATEGORIES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCustomCategory(slug: string, label: string): void {
+  const current = loadCustomCategories();
+  current[slug] = label;
+  localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(current));
+}
+
+export function getAllCategories(): Record<string, string> {
+  return { ...DEFAULT_CATEGORY_LABELS, ...loadCustomCategories() };
+}
 
 // ─── Fórmulas por producto ────────────────────────────────────────────────────
 
@@ -35,8 +58,6 @@ export function calcPesoEfectivo(p: ShipmentProduct): number | undefined {
 
 /**
  * Envío por unidad: peso_efectivo × tarifa_flete_por_kg × tc_paralelo
- * La tarifa_flete_por_kg es el valor en USD/kg (aprox 11 USD/kg según Excel: M2*11*T/C)
- * Nota: en el Excel es (PESO * 11) * T/C — donde 11 es USD/kg y T/C es el paralelo
  */
 export function calcEnvioUnitario(
   p: ShipmentProduct,
@@ -50,7 +71,6 @@ export function calcEnvioUnitario(
 
 /**
  * GA estimado: (precio_BOB + envio + precio_BOB*0.02) × (ga_pct/100)
- * Base = precio BOB + flete + 2% del precio BOB
  */
 export function calcGAEstimado(
   p: ShipmentProduct,
@@ -95,9 +115,6 @@ export function calcTotalIndividualEstimado(
 
 // ─── Prorrateo al cerrar el embarque ──────────────────────────────────────────
 
-/**
- * Calcula el peso efectivo total del embarque (suma de todos los productos × cantidad)
- */
 export function calcPesoTotalEmbarque(products: ShipmentProduct[]): number {
   return round2(
     products.reduce((sum, p) => {
@@ -107,33 +124,22 @@ export function calcPesoTotalEmbarque(products: ShipmentProduct[]): number {
   );
 }
 
-/**
- * Prorratea el flete total entre los productos según peso efectivo.
- * Retorna el costo de envío por UNIDAD de cada producto.
- */
 export function calcFleteProrrateado(
   products: ShipmentProduct[],
   flete_total_bs: number
 ): Record<string, number> {
   const pesoTotal = calcPesoTotalEmbarque(products);
   const result: Record<string, number> = {};
-
   if (pesoTotal === 0) return result;
-
   products.forEach(p => {
     const peso = calcPesoEfectivo(p) ?? 0;
     const participacion = peso / pesoTotal;
     const fleteTotal = round2(flete_total_bs * participacion);
-    result[p.id] = round2(fleteTotal / p.cantidad); // por unidad
+    result[p.id] = round2(fleteTotal / p.cantidad);
   });
-
   return result;
 }
 
-/**
- * Prorratea los gastos de aduana (manipuleo) entre los productos según peso efectivo.
- * Retorna el costo de manipuleo por UNIDAD de cada producto.
- */
 export function calcManipuleoProrrateado(
   products: ShipmentProduct[],
   gastos_aduana: ShipmentExpense[]
@@ -141,50 +147,35 @@ export function calcManipuleoProrrateado(
   const totalManipuleo = gastos_aduana.reduce((s, g) => s + g.monto, 0);
   const pesoTotal = calcPesoTotalEmbarque(products);
   const result: Record<string, number> = {};
-
   if (pesoTotal === 0 || totalManipuleo === 0) return result;
-
   products.forEach(p => {
     const peso = calcPesoEfectivo(p) ?? 0;
     const participacion = peso / pesoTotal;
     const manipuleoTotal = round2(totalManipuleo * participacion);
-    result[p.id] = round2(manipuleoTotal / p.cantidad); // por unidad
+    result[p.id] = round2(manipuleoTotal / p.cantidad);
   });
-
   return result;
 }
 
-/**
- * Calcula el costo total real por unidad de cada producto al cerrar el embarque.
- * Usa los montos del DIM si están disponibles (ga_monto, iva_monto),
- * de lo contrario usa los estimados.
- */
 export function calcCostoFinalPorProducto(
   shipment: Shipment
 ): Array<{ product: ShipmentProduct; costo_unitario: number; detalle: CostoDetalle }> {
   const { products, tc_paralelo, tc_oficial, flete_total_bs = 0, gastos_aduana } = shipment;
-
   const fleteMap = calcFleteProrrateado(products, flete_total_bs);
   const manipuleoMap = calcManipuleoProrrateado(products, gastos_aduana);
 
   return products.map(p => {
     const precioBs = calcPrecioBs(p, tc_paralelo);
     const envioUnitario = fleteMap[p.id] ?? 0;
-
-    // GA: usar monto del DIM si existe, sino estimado
     const ga = p.ga_monto != null
       ? round2(p.ga_monto / p.cantidad)
       : calcGAEstimado(p, tc_oficial, envioUnitario);
-
-    // IVA: usar monto del DIM si existe, sino estimado
     const iva = p.iva_monto != null
       ? round2(p.iva_monto / p.cantidad)
       : calcIVAEstimado(p, tc_oficial, ga);
-
     const manipuleo = manipuleoMap[p.id] ?? 0;
     const bateria = p.tiene_bateria ? p.costo_bateria : 0;
     const impuestos = round2(ga + iva);
-
     const costo_unitario = round2(precioBs + envioUnitario + impuestos + manipuleo + bateria);
 
     return {
