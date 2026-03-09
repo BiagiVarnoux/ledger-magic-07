@@ -200,10 +200,14 @@ export default function InventoryPage() {
                       <TableCell className="text-right text-xs text-muted-foreground">{s.ultimaFecha || '—'}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => setKardexProduct(p)}>
-                            <Eye className="w-4 h-4 mr-1" /> Kárdex
-                          </Button>
-                          {!isReadOnly && (
+                          <div className="flex items-center gap-0.5 mr-1">
+                            <Button variant="ghost" size="sm" onClick={() => setKardexProduct(p)} title="Kárdex CPP">
+                              <Eye className="w-4 h-4 mr-1" /> CPP
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setFifoProduct(p)} title="Kárdex FIFO">
+                              <Layers className="w-4 h-4 mr-1" /> FIFO
+                            </Button>
+                          </div>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
