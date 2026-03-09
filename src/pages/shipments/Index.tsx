@@ -80,6 +80,10 @@ export default function ShipmentsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [draft, setDraft] = useState<Shipment>(newShipment);
+  const [closeConfirmState, setCloseConfirmState] = useState<{
+    shipment: Shipment;
+    costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: any }>;
+  } | null>(null);
 
   const selected = useMemo(
     () => shipments.find(s => s.id === selectedId) ?? null,
