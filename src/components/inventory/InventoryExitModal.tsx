@@ -94,7 +94,7 @@ export function InventoryExitModal({ isOpen, onClose, journalEntryId, journalDat
         const { error } = await supabase.from('inventory_movements').insert({
           product_id: line.productId,
           fecha: journalDate,
-          tipo: 'SALIDA',
+          tipo: 'salida',
           cantidad: qty,
           costo_unitario: cu,
           costo_total: qty * cu,

@@ -57,7 +57,7 @@ export function FifoExitModal({ isOpen, onClose, product, lots, onSaved }: FifoE
           product_id: product.id,
           inventory_lot_id: linea.lot.id,
           fecha,
-          tipo: 'SALIDA',
+          tipo: 'salida',
           cantidad: linea.cantidad,
           costo_unitario: linea.lot.costo_unitario,
           costo_total: linea.costo_total,

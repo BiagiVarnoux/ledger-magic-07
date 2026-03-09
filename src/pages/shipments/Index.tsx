@@ -361,7 +361,7 @@ export default function ShipmentsPage() {
         const { error: movError } = await supabase.from('inventory_movements').insert({
           product_id: productId,
           inventory_lot_id: newLot.id,
-          tipo: 'ENTRADA',
+          tipo: 'entrada',
           cantidad: product.cantidad,
           costo_unitario,
           costo_total: round2(costo_unitario * product.cantidad),
