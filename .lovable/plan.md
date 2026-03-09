@@ -1,74 +1,72 @@
 
+# Análisis: Problemas en Sistema de Inventarios
 
-# Fase 3: Flujo de Efectivo — Método Indirecto (NIC 7)
+Después de revisar el código, he identificado las causas raíz de los 3 problemas reportados y el plan de solución:
 
-## Resumen
+## Problema 1: CPP con costo 0,00 en salidas
 
-Agregar el método indirecto al reporte de Flujo de Efectivo, que parte de la **Utilidad Neta** del Estado de Resultados y la ajusta por partidas no monetarias y variaciones en capital de trabajo. El usuario podrá elegir entre método directo (actual) o indirecto. Se reutiliza `computeIncomeStatement` del EE.RR. para obtener la Utilidad Neta.
+**Causa**: En `InventoryExitModal.tsx`, el método `calcularEstadoProducto()` no recibe el parámetro `untilDate` correctamente y cuando calcula el `costoUnitario` para la salida, devuelve 0 porque no encuentra el estado actual del producto.
 
-## Estructura del Método Indirecto (NIC 7.18-20)
-
-```text
-UTILIDAD NETA (del EE.RR.)
-
-+ Ajustes por partidas no monetarias:
-  + Depreciación y Amortización (es_partida_no_monetaria = true)
-  + Provisiones (subclasificacion heurística)
-  + Pérdidas/ganancias por disposición de activos
-
-= Flujo Operativo antes de cambios en Capital de Trabajo
-
-+/- Variaciones en Capital de Trabajo:
-  - (Aumento) / Disminución en Cuentas por Cobrar
-  - (Aumento) / Disminución en Inventarios
-  + Aumento / (Disminución) en Cuentas por Pagar
-  (usa es_capital_trabajo = true o heurísticas)
-
-= FLUJO NETO DE OPERACIÓN
-
-+/- Actividades de Inversión (igual que método directo)
-+/- Actividades de Financiación (igual que método directo)
-
-= VARIACIÓN NETA DE EFECTIVO
-+ Saldo Inicial
-= SALDO FINAL
+**Ubicación**: `src/components/inventory/InventoryExitModal.tsx` línea ~97
+```typescript
+costoUnitario: calcularEstadoProducto(allMovements).costoUnitario || 0,
 ```
 
-## Cambios
+**Solución**: Pasar los movimientos filtrados hasta la fecha del asiento y asegurar que el cálculo CPP sea correcto.
 
-### 1. `src/components/reports/CashFlowReport.tsx` (refactor mayor)
+## Problema 2: FIFO no actualiza lotes
 
-- Agregar toggle "Método Directo / Método Indirecto" en el header
-- **Método Indirecto — Actividades de Operación:**
-  - Importar y usar `computeIncomeStatement` (extraer como función reutilizable si es necesario) para obtener `utilidadNeta`
-  - Calcular ajustes no monetarios: filtrar cuentas con `es_partida_no_monetaria === true` y sumar sus movimientos en el periodo (D&A, provisiones)
-  - Calcular variaciones en capital de trabajo: para cada cuenta con `es_capital_trabajo === true` (o tipo ACTIVO corriente / PASIVO corriente), comparar saldo al inicio vs fin del periodo. Para activos: aumento = negativo. Para pasivos: aumento = positivo
-  - Usar `clasificacion_flujo` como fuente primaria para clasificar cuentas en operación/inversión/financiación, con fallback a `classifyMovementNIC7` existente
-- **Inversión y Financiación**: reutilizar la lógica actual del método directo (movimientos de efectivo clasificados por contraparte)
-- Mantener el método directo intacto como opción
+**Causa**: El `InventoryExitModal` siempre usa método `CPP` y no tiene lógica para detectar cuando debe usar FIFO. Necesita detectar si el producto tiene configuración FIFO y usar `FifoExitModal` en su lugar.
 
-### 2. `src/services/pdfService.ts`
+**Ubicación**: `src/pages/journal/Index.tsx` línea ~168 donde detecta costo de ventas
+```typescript
+// Actualmente siempre usa InventoryExitModal
+setInventoryExitModal({ 
+  isOpen: true, 
+  journalEntryId: savedEntry.id,
+  journalDate: savedEntry.date,
+  costLines,
+});
+```
 
-- Extender `CashFlowNIIFData` con campos del método indirecto: `metodo`, `utilidadNeta`, `ajustesNoMonetarios`, `variacionesCapitalTrabajo`, `flujoOperativoIndirecto`
-- Actualizar `exportCashFlowNIIFToPDF` para renderizar la estructura indirecta cuando `metodo === 'indirecto'`
+**Solución**: Añadir lógica de detección del método de valuación del producto (CPP vs FIFO) y abrir el modal correspondiente.
 
-## Campos de Account utilizados
+## Problema 3: Modal no llena monto automáticamente
 
-| Campo | Uso |
-|-------|-----|
-| `is_cash_equivalent` | Identificar cuentas de efectivo |
-| `es_partida_no_monetaria` | Ajustes por D&A, provisiones |
-| `es_capital_trabajo` | Variaciones en capital de trabajo |
-| `clasificacion_flujo` | Clasificar en operación/inversión/financiación |
-| `is_current` | Distinguir corriente vs no corriente para capital de trabajo |
-| `type` | Determinar signo de variación (activo vs pasivo) |
+**Causa**: Después de registrar las salidas de inventario, el sistema no actualiza el monto del asiento contable con el costo total calculado.
 
-## Archivos a modificar
+**Ubicación**: El flujo `InventoryExitModal.onSave()` en `src/pages/journal/Index.tsx` no tiene callback para actualizar los montos del formulario.
 
-| Archivo | Cambio |
-|---------|--------|
-| `src/components/reports/CashFlowReport.tsx` | Toggle de método, lógica completa del método indirecto |
-| `src/services/pdfService.ts` | Soporte PDF para método indirecto |
+**Solución**: Modificar el modal para retornar el costo total calculado y actualizar automáticamente el monto en la línea de Costo de Ventas.
 
-No se necesitan cambios en base de datos.
+## Plan de Implementación
 
+### 1. Arreglar cálculo CPP en InventoryExitModal
+- Corregir el cálculo del `costoUnitario` filtrando movimientos hasta la fecha del asiento
+- Asegurar que `calcularEstadoProducto()` recibe los datos correctos
+
+### 2. Implementar detección de método de valuación
+- Modificar detección de costo de ventas en `src/pages/journal/Index.tsx`
+- Consultar la configuración del producto para decidir CPP vs FIFO
+- Abrir `FifoExitModal` cuando corresponde FIFO
+
+### 3. Auto-completar montos en asiento contable
+- Modificar callback `onSave` de ambos modales de salida
+- Retornar costo total calculado al componente padre
+- Actualizar automáticamente el monto en la línea contable correspondiente
+
+### 4. Arreglar lógica FIFO en FifoExitModal
+- Verificar que actualice correctamente `inventory_lots.cantidad_disponible`
+- Asegurar que cree `inventory_movements` con `inventory_lot_id` y `metodo_valuacion: 'FIFO'`
+
+## Archivos a Modificar:
+1. `src/components/inventory/InventoryExitModal.tsx` - Corregir cálculo CPP
+2. `src/components/inventory/FifoExitModal.tsx` - Verificar lógica FIFO
+3. `src/pages/journal/Index.tsx` - Detección de método + auto-completar montos
+4. `src/components/inventory/inventory-utils.ts` - Posibles mejoras en utilidades
+
+## Consideraciones Técnicas:
+- Mantener retrocompatibilidad con asientos existentes
+- Validar que los cálculos CPP y FIFO sean consistentes
+- Asegurar que el UX sea fluido (modal → cálculo → actualización automática)
+- Evitar duplicación de lógica entre CPP y FIFO
