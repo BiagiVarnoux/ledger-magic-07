@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, Eye, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Package, Eye, Plus, Pencil, Trash2, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
@@ -12,6 +12,7 @@ import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt } from '@/accounting/utils';
 import { calcularEstadoProducto, InventoryMovement } from '@/components/inventory/inventory-utils';
 import { ProductKardexModal } from '@/components/inventory/ProductKardexModal';
+import { FifoKardexModal } from '@/components/inventory/FifoKardexModal';
 import { NewProductModal, ProductData } from '@/components/inventory/NewProductModal';
 import {
   AlertDialog,
@@ -38,6 +39,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [kardexProduct, setKardexProduct] = useState<ProductData | null>(null);
+  const [fifoProduct, setFifoProduct] = useState<ProductData | null>(null);
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [editProduct, setEditProduct] = useState<ProductData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProductData | null>(null);
@@ -198,9 +200,14 @@ export default function InventoryPage() {
                       <TableCell className="text-right text-xs text-muted-foreground">{s.ultimaFecha || '—'}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => setKardexProduct(p)}>
-                            <Eye className="w-4 h-4 mr-1" /> Kárdex
-                          </Button>
+                          <div className="flex items-center gap-0.5 mr-1">
+                            <Button variant="ghost" size="sm" onClick={() => setKardexProduct(p)} title="Kárdex CPP">
+                              <Eye className="w-4 h-4 mr-1" /> CPP
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setFifoProduct(p)} title="Kárdex FIFO">
+                              <Layers className="w-4 h-4 mr-1" /> FIFO
+                            </Button>
+                          </div>
                           {!isReadOnly && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -240,6 +247,16 @@ export default function InventoryPage() {
           product={kardexProduct}
           movements={movements.filter(m => m.product_id === kardexProduct.id)}
           onMovementSaved={loadData}
+          isReadOnly={isReadOnly}
+        />
+      )}
+
+      {fifoProduct && (
+        <FifoKardexModal
+          isOpen={!!fifoProduct}
+          onClose={() => setFifoProduct(null)}
+          product={fifoProduct}
+          onSaved={loadData}
           isReadOnly={isReadOnly}
         />
       )}
