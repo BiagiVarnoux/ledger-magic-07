@@ -195,7 +195,7 @@ export function EquityChangesReport({
   availableQuarters,
   currentQuarter,
 }: EquityChangesReportProps) {
-  const [periodType, setPeriodType] = useState<PeriodType>('yearly');
+  const [periodType, setPeriodType] = useState<PeriodType>('annual');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const { settings } = useReportSettings();
 
