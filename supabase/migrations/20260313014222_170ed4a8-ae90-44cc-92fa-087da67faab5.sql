@@ -1,0 +1,1 @@
+DELETE FROM auxiliary_movement_details WHERE id = '48dafdb0-db69-48df-aa00-65ccf2278982';
