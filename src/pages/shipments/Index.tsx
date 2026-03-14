@@ -837,8 +837,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
             </div>
           </div>
 
-          {!isReadOnly && (
-            <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center">
               <Button size="sm" variant="ghost" onClick={() => {
                 const costos = calcCostoFinalPorProducto(s);
                 const pdfData: ShipmentPDFData = {
@@ -871,24 +870,27 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
               }} title="Descargar PDF">
                 <Download className="w-4 h-4" />
               </Button>
-              <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive">
-                <Trash2 className="w-4 h-4" />
-              </Button>
-              {!isClosed && (
-                s.status === 'EN_ALMACEN' ? (
-                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={onClose}>
-                    <CheckCircle className="w-4 h-4 mr-1.5" />
-                    Cerrar Embarque
+              {!isReadOnly && (
+                <>
+                  <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive">
+                    <Trash2 className="w-4 h-4" />
                   </Button>
-                ) : nextLabel && (
-                  <Button size="sm" onClick={onAdvance}>
-                    <ArrowRight className="w-4 h-4 mr-1.5" />
-                    {nextLabel}
-                  </Button>
-                )
+                  {!isClosed && (
+                    s.status === 'EN_ALMACEN' ? (
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={onClose}>
+                        <CheckCircle className="w-4 h-4 mr-1.5" />
+                        Cerrar Embarque
+                      </Button>
+                    ) : nextLabel && (
+                      <Button size="sm" onClick={onAdvance}>
+                        <ArrowRight className="w-4 h-4 mr-1.5" />
+                        {nextLabel}
+                      </Button>
+                    )
+                  )}
+                </>
               )}
             </div>
-          )}
         </div>
       </CardHeader>
 
