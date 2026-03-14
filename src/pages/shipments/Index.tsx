@@ -191,7 +191,7 @@ export default function ShipmentsPage() {
     }
     if (s.status === 'EN_ADUANA') {
       const sinTributos = s.products.find(p => p.ga_monto == null || p.iva_monto == null);
-      if (sinTributos) { toast.error('Ingresa GA e IVA del DIM para todos los productos'); return; }
+      if (sinTributos) { toast.error('Ingresa GA e IVA del DIM para todos los productos (usa 0 si no aplica)'); return; }
       if (s.gastos_aduana.length === 0) { toast.error('Registra al menos un gasto de aduana'); return; }
     }
     if (s.status === 'EN_ALMACEN') {
@@ -1422,12 +1422,21 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
         <p className="text-xs text-muted-foreground mb-3">
           Ingresa los montos exactos del DIM. El GA capitaliza a Inventario en Tránsito; el IVA va a Crédito Fiscal IVA.
         </p>
+        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
+          ⚠️ Ingresa el <strong>monto total del DIM</strong> para todas las unidades del producto (no dividas por cantidad — el sistema lo hace automáticamente).
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Producto</TableHead>
-              <TableHead className="text-right">GA Bs (DIM)</TableHead>
-              <TableHead className="text-right">IVA Bs (DIM)</TableHead>
+              <TableHead className="text-right">
+                Total GA Bs
+                <span className="block text-[10px] font-normal text-muted-foreground">(todas las unidades)</span>
+              </TableHead>
+              <TableHead className="text-right">
+                Total IVA Bs
+                <span className="block text-[10px] font-normal text-muted-foreground">(todas las unidades)</span>
+              </TableHead>
               <TableHead className="text-right">Total Tributos</TableHead>
               <TableHead className="text-right text-muted-foreground text-xs">GA estimado</TableHead>
             </TableRow>
@@ -1436,24 +1445,59 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
             {s.products.map(p => {
               const gaEst = calcGAEstimado(p, s.tc_oficial,
                 p.precio_usd > 0 ? round2(calcPesoEfectivo(p) ?? 0 * 11 * s.tc_paralelo) : 0);
+              const gaUnitario = p.ga_monto != null ? round2(p.ga_monto / p.cantidad) : null;
+              const ivaUnitario = p.iva_monto != null ? round2(p.iva_monto / p.cantidad) : null;
               return (
                 <TableRow key={p.id}>
-                  <TableCell className="font-medium text-sm">{p.nombre}</TableCell>
-                  <TableCell className="text-right">
-                    {canEdit ? (
-                      <Input type="number" step="0.01" className="h-8 w-28 text-right ml-auto"
-                        value={p.ga_monto ?? ''}
-                        onChange={e => updateProduct(p.id, { ga_monto: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00" />
-                    ) : <span>{p.ga_monto != null ? fmt(p.ga_monto) : '—'}</span>}
+                  <TableCell className="font-medium text-sm">
+                    {p.nombre}
+                    {p.cantidad > 1 && (
+                      <span className="text-muted-foreground font-normal"> ×{p.cantidad}</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {canEdit ? (
-                      <Input type="number" step="0.01" className="h-8 w-28 text-right ml-auto"
-                        value={p.iva_monto ?? ''}
-                        onChange={e => updateProduct(p.id, { iva_monto: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00" />
-                    ) : <span>{p.iva_monto != null ? fmt(p.iva_monto) : '—'}</span>}
+                      <div className="flex flex-col items-end gap-0.5">
+                        <Input type="number" step="0.01" className="h-8 w-28 text-right"
+                          value={p.ga_monto ?? ''}
+                          onChange={e => updateProduct(p.id, {
+                            ga_monto: e.target.value === '' ? undefined : parseFloat(e.target.value)
+                          })}
+                          placeholder="0.00" />
+                        {gaUnitario != null && p.cantidad > 1 && (
+                          <span className="text-[10px] text-muted-foreground">= {fmt(gaUnitario)}/u</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <span>{p.ga_monto != null ? fmt(p.ga_monto) : '—'}</span>
+                        {gaUnitario != null && p.cantidad > 1 && (
+                          <span className="block text-[10px] text-muted-foreground">{fmt(gaUnitario)}/u</span>
+                        )}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {canEdit ? (
+                      <div className="flex flex-col items-end gap-0.5">
+                        <Input type="number" step="0.01" className="h-8 w-28 text-right"
+                          value={p.iva_monto ?? ''}
+                          onChange={e => updateProduct(p.id, {
+                            iva_monto: e.target.value === '' ? undefined : parseFloat(e.target.value)
+                          })}
+                          placeholder="0.00" />
+                        {ivaUnitario != null && p.cantidad > 1 && (
+                          <span className="text-[10px] text-muted-foreground">= {fmt(ivaUnitario)}/u</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <span>{p.iva_monto != null ? fmt(p.iva_monto) : '—'}</span>
+                        {ivaUnitario != null && p.cantidad > 1 && (
+                          <span className="block text-[10px] text-muted-foreground">{fmt(ivaUnitario)}/u</span>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {(p.ga_monto != null && p.iva_monto != null)
