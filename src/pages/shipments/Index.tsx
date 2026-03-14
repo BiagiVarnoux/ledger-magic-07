@@ -39,6 +39,7 @@ import {
 } from '@/accounting/shipment-utils';
 import { ShipmentCloseModal, ProductLink } from '@/components/inventory/ShipmentCloseModal';
 import { supabase } from '@/integrations/supabase/client';
+import { exportShipmentToPDF, ShipmentPDFData } from '@/services/pdfService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
