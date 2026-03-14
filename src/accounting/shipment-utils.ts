@@ -65,7 +65,7 @@ export function calcPesoVolumen(p: ShipmentProduct): number | undefined {
   return round2((p.m1 * p.m2 * p.m3) / 5000);
 }
 
-/** Peso efectivo: el mayor entre peso volumen y peso bruto (criterio courier) */
+/** Peso efectivo automático: el mayor entre peso volumen y peso bruto (criterio courier) */
 export function calcPesoEfectivo(p: ShipmentProduct): number | undefined {
   const pv = calcPesoVolumen(p);
   if (!pv && !p.peso_bruto) return undefined;
@@ -74,15 +74,26 @@ export function calcPesoEfectivo(p: ShipmentProduct): number | undefined {
   return Math.max(pv, p.peso_bruto);
 }
 
+/** Peso efectivo según el método seleccionado en el embarque */
+export function getPesoEfectivoPorMetodo(
+  p: ShipmentProduct,
+  metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
+): number | undefined {
+  if (metodo === 'peso_volumen') return calcPesoVolumen(p);
+  if (metodo === 'peso_bruto')   return p.peso_bruto;
+  return calcPesoEfectivo(p); // automatico = Math.max
+}
+
 /**
  * Envío por unidad: peso_efectivo × tarifa_flete_por_kg × tc_paralelo
  */
 export function calcEnvioUnitario(
   p: ShipmentProduct,
   tc_paralelo: number,
-  tarifa_usd_por_kg: number = 11
+  tarifa_usd_por_kg: number = 11,
+  metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
 ): number | undefined {
-  const peso = calcPesoEfectivo(p);
+  const peso = getPesoEfectivoPorMetodo(p, metodo);
   if (!peso) return undefined;
   return round2(peso * tarifa_usd_por_kg * tc_paralelo);
 }
@@ -133,10 +144,13 @@ export function calcTotalIndividualEstimado(
 
 // ─── Prorrateo al cerrar el embarque ──────────────────────────────────────────
 
-export function calcPesoTotalEmbarque(products: ShipmentProduct[]): number {
+export function calcPesoTotalEmbarque(
+  products: ShipmentProduct[],
+  metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
+): number {
   return round2(
     products.reduce((sum, p) => {
-      const peso = calcPesoEfectivo(p) ?? 0;
+      const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
       return sum + peso * p.cantidad;
     }, 0)
   );
@@ -144,13 +158,14 @@ export function calcPesoTotalEmbarque(products: ShipmentProduct[]): number {
 
 export function calcFleteProrrateado(
   products: ShipmentProduct[],
-  flete_total_bs: number
+  flete_total_bs: number,
+  metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
 ): Record<string, number> {
-  const pesoTotal = calcPesoTotalEmbarque(products);
+  const pesoTotal = calcPesoTotalEmbarque(products, metodo);
   const result: Record<string, number> = {};
   if (pesoTotal === 0) return result;
   products.forEach(p => {
-    const peso = calcPesoEfectivo(p) ?? 0;
+    const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
     const participacion = peso / pesoTotal;
     const fleteTotal = round2(flete_total_bs * participacion);
     result[p.id] = round2(fleteTotal / p.cantidad);
@@ -160,14 +175,15 @@ export function calcFleteProrrateado(
 
 export function calcManipuleoProrrateado(
   products: ShipmentProduct[],
-  gastos_aduana: ShipmentExpense[]
+  gastos_aduana: ShipmentExpense[],
+  metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
 ): Record<string, number> {
   const totalManipuleo = gastos_aduana.reduce((s, g) => s + g.monto, 0);
-  const pesoTotal = calcPesoTotalEmbarque(products);
+  const pesoTotal = calcPesoTotalEmbarque(products, metodo);
   const result: Record<string, number> = {};
   if (pesoTotal === 0 || totalManipuleo === 0) return result;
   products.forEach(p => {
-    const peso = calcPesoEfectivo(p) ?? 0;
+    const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
     const participacion = peso / pesoTotal;
     const manipuleoTotal = round2(totalManipuleo * participacion);
     result[p.id] = round2(manipuleoTotal / p.cantidad);
@@ -179,8 +195,9 @@ export function calcCostoFinalPorProducto(
   shipment: Shipment
 ): Array<{ product: ShipmentProduct; costo_unitario: number; detalle: CostoDetalle }> {
   const { products, tc_paralelo, tc_oficial, flete_total_bs = 0, gastos_aduana } = shipment;
-  const fleteMap = calcFleteProrrateado(products, flete_total_bs);
-  const manipuleoMap = calcManipuleoProrrateado(products, gastos_aduana);
+  const metodo = shipment.metodo_peso ?? 'automatico';
+  const fleteMap = calcFleteProrrateado(products, flete_total_bs, metodo);
+  const manipuleoMap = calcManipuleoProrrateado(products, gastos_aduana, metodo);
 
   return products.map(p => {
     const precioBs = calcPrecioBs(p, tc_paralelo);
@@ -189,7 +206,7 @@ export function calcCostoFinalPorProducto(
     // GA unitario: si hay monto exacto del DIM (total), dividir sin redondear intermedio
     // para evitar que round2(total/n)*n ≠ total (ej: round2(7/3)=2.33 → 2.33*3=6.99)
     const ga = p.ga_monto != null
-      ? p.ga_monto / p.cantidad          // sin round2 aquí — se redondea en costo_unitario final
+      ? p.ga_monto / p.cantidad
       : calcGAEstimado(p, tc_oficial, envioUnitario);
     const iva = p.iva_monto != null
       ? p.iva_monto / p.cantidad
@@ -197,7 +214,7 @@ export function calcCostoFinalPorProducto(
     const manipuleo = manipuleoMap[p.id] ?? 0;
     const bateria = p.tiene_bateria ? p.costo_bateria : 0;
     // IVA NO suma al costo — es Crédito Fiscal (A.6), solo aparece como info en el embarque
-    const impuestos = ga; // solo GA capitaliza al inventario
+    const impuestos = ga;
     const costo_unitario = round2(precioBs + envioUnitario + impuestos + manipuleo + bateria);
 
     return {

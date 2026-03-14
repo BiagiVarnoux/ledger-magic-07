@@ -99,6 +99,12 @@ export interface Shipment {
   flete_fecha?: string;
   flete_journal_entry_id?: string;  // Referencia al asiento del Libro Diario
 
+  // Método de peso para prorrateo de flete y manipuleo
+  metodo_peso?: 'automatico' | 'peso_volumen' | 'peso_bruto';
+  // 'automatico' (default) = el mayor entre volumen y bruto (criterio courier)
+  // 'peso_volumen'          = usa solo el peso volumen calculado
+  // 'peso_bruto'            = usa solo el peso bruto ingresado
+
   // Tarifa de manipuleo por kg (varía por importación)
   tarifa_manipuleo_por_kg: number;  // Ej: 25
 
