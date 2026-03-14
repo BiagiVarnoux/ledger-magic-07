@@ -185,11 +185,14 @@ export function calcCostoFinalPorProducto(
   return products.map(p => {
     const precioBs = calcPrecioBs(p, tc_paralelo);
     const envioUnitario = fleteMap[p.id] ?? 0;
+
+    // GA unitario: si hay monto exacto del DIM (total), dividir sin redondear intermedio
+    // para evitar que round2(total/n)*n ≠ total (ej: round2(7/3)=2.33 → 2.33*3=6.99)
     const ga = p.ga_monto != null
-      ? round2(p.ga_monto / p.cantidad)
+      ? p.ga_monto / p.cantidad          // sin round2 aquí — se redondea en costo_unitario final
       : calcGAEstimado(p, tc_oficial, envioUnitario);
     const iva = p.iva_monto != null
-      ? round2(p.iva_monto / p.cantidad)
+      ? p.iva_monto / p.cantidad
       : calcIVAEstimado(p, tc_oficial, ga);
     const manipuleo = manipuleoMap[p.id] ?? 0;
     const bateria = p.tiene_bateria ? p.costo_bateria : 0;
