@@ -197,8 +197,23 @@ export default function ShipmentsPage() {
       if (s.gastos_aduana.length === 0) { toast.error('Registra al menos un gasto de aduana'); return; }
     }
     if (s.status === 'EN_ALMACEN') {
-      const sinMedidas = s.products.find(p => !p.m1 || !p.m2 || !p.m3);
-      if (sinMedidas) { toast.error('Ingresa las medidas M1, M2, M3 de todos los productos'); return; }
+      const metodo = s.metodo_peso ?? 'automatico';
+      const sinPeso = s.products.find(p => {
+        if (metodo === 'peso_volumen') return !p.m1 || !p.m2 || !p.m3;
+        if (metodo === 'peso_bruto')   return !p.peso_bruto;
+        // automatico: necesita al menos uno de los dos
+        const tienePV = !!(p.m1 && p.m2 && p.m3);
+        const tienePB = !!p.peso_bruto;
+        return !tienePV && !tienePB;
+      });
+      if (sinPeso) {
+        const msg = metodo === 'peso_volumen'
+          ? 'Ingresa M1, M2 y M3 de todos los productos (método: peso volumen)'
+          : metodo === 'peso_bruto'
+          ? 'Ingresa el peso bruto de todos los productos (método: peso bruto)'
+          : 'Cada producto necesita medidas o peso bruto para el prorrateo';
+        toast.error(msg); return;
+      }
     }
 
     const next = flow[idx + 1];
@@ -208,8 +223,20 @@ export default function ShipmentsPage() {
 
   // ── Cerrar embarque ──────────────────────────────────────────────────────────
   function handleClose(s: Shipment) {
-    const sinMedidas = s.products.find(p => !p.m1 || !p.m2 || !p.m3);
-    if (sinMedidas) { toast.error('Todos los productos necesitan medidas para el prorrateo'); return; }
+    const metodo = s.metodo_peso ?? 'automatico';
+    const sinPeso = s.products.find(p => {
+      if (metodo === 'peso_volumen') return !p.m1 || !p.m2 || !p.m3;
+      if (metodo === 'peso_bruto')   return !p.peso_bruto;
+      return !(p.m1 && p.m2 && p.m3) && !p.peso_bruto;
+    });
+    if (sinPeso) {
+      const msg = metodo === 'peso_volumen'
+        ? 'Todos los productos necesitan M1, M2 y M3 para el prorrateo'
+        : metodo === 'peso_bruto'
+        ? 'Todos los productos necesitan peso bruto para el prorrateo'
+        : 'Cada producto necesita medidas o peso bruto para el prorrateo';
+      toast.error(msg); return;
+    }
     const costos = calcCostoFinalPorProducto(s);
     setCloseConfirmState({ shipment: s, costos });
   }
@@ -1664,7 +1691,10 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 
       <div className="bg-info/10 border border-info/20 rounded-lg p-3 text-sm text-info">
         <p className="font-medium">Mide los productos en tu almacén</p>
-        <p className="text-xs mt-0.5">Con estos datos se calculará el peso volumen y se prorrateará el flete y el manipuleo automáticamente al cerrar el embarque.</p>
+        <p className="text-xs mt-0.5">
+          Ingresa las dimensiones y peso del <strong>paquete completo</strong> de cada producto
+          (no por unidad). El flete y manipuleo se prorratean según esos pesos totales.
+        </p>
       </div>
 
       <Table>
