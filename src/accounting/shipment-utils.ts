@@ -150,8 +150,12 @@ export function calcPesoTotalEmbarque(
 ): number {
   return round2(
     products.reduce((sum, p) => {
+      // El peso ingresado (bruto o volumen) es el del PAQUETE COMPLETO para todas las
+      // unidades de ese producto — NO se multiplica por cantidad.
+      // La división por cantidad se hace en calcFleteProrrateado/calcManipuleoProrrateado
+      // al asignar el costo unitario.
       const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
-      return sum + peso * p.cantidad;
+      return sum + peso;
     }, 0)
   );
 }
