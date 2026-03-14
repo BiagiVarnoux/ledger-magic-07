@@ -269,10 +269,6 @@ export interface CostoDetalle {
   bateria: number;
 }
 
-export function calcCostoFinalPorProducto(
-  shipment: Shipment
-): Array<{ product: ShipmentProduct; costo_unitario: number; precioBsTotal: number; detalle: CostoDetalle }> {
-
 // ─── Generación de número de embarque ────────────────────────────────────────
 
 export function generateShipmentNumber(existing: Shipment[]): string {
