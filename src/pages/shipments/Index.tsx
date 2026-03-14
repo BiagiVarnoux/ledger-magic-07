@@ -33,7 +33,7 @@ import {
 import { ShipmentStorage } from '@/accounting/shipment-storage';
 import {
   calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo, getPesoEfectivoPorMetodo,
-  calcGAEstimado, calcIVAEstimado,
+  calcGAEstimado, calcIVAEstimado, calcTotalBsProducto,
   calcCostoFinalPorProducto, generateShipmentNumber,
   getAllCategories, saveCustomCategory,
 } from '@/accounting/shipment-utils';
@@ -349,9 +349,10 @@ export default function ShipmentsPage() {
       }
 
       const byAccount: Record<string, number> = {};
-      costos.forEach(({ product, costo_unitario }) => {
+      costos.forEach(({ product, costo_unitario, precioBsTotal }) => {
         const cuentaId = resolvedCuentas[product.id] ?? 'A.4.2';
-        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + costo_unitario * product.cantidad);
+        // Usar round6(costo_unitario) × cantidad para el asiento — máxima precisión disponible
+        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + round2(costo_unitario * product.cantidad));
       });
       const totalCosto = round2(Object.values(byAccount).reduce((a, b) => a + b, 0));
 
@@ -402,8 +403,8 @@ export default function ShipmentsPage() {
           inventory_lot_id: newLot.id,
           tipo: 'ENTRADA',
           cantidad: product.cantidad,
-          costo_unitario,
-          costo_total: round2(costo_unitario * product.cantidad),
+          costo_unitario,                                    // 6 decimales — precisión completa
+          costo_total: round2(costo_unitario * product.cantidad), // 2 dec — para reportes
           fecha: todayISO(),
           referencia: `${s.numero} — Importación cerrada`,
           metodo_valuacion: 'FIFO',
@@ -833,7 +834,7 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
   const totalManipuleo = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
   const totalGA = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
   const totalIVA = round2(s.products.reduce((sum, p) => sum + (p.iva_monto ?? 0), 0));
-  const totalProductos = round2(s.products.reduce((sum, p) => sum + calcPrecioBs(p, s.tc_paralelo) * p.cantidad, 0));
+  const totalProductos = round2(s.products.reduce((sum, p) => sum + calcTotalBsProducto(p, s.tc_paralelo), 0));
 
   const nextLabel = {
     EN_COMPRA:    'Registrar Flete',
@@ -1773,7 +1774,24 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 function CostosFinalesTab({ s }: { s: Shipment }) {
   const allCategories = getAllCategories();
   const costos = calcCostoFinalPorProducto(s);
-  const totalEmbarque = round2(costos.reduce((sum, { product, costo_unitario }) => sum + costo_unitario * product.cantidad, 0));
+
+  // Total por filas (suma de costos unitarios × cantidad) — valor del Kárdex
+  const totalFilas = round2(costos.reduce((sum, { product, costo_unitario }) => sum + costo_unitario * product.cantidad, 0));
+
+  // Total exacto desde los componentes originales — evita acumulación de redondeos
+  const totalProductosExacto = round2(s.products.reduce((sum, p) => sum + calcTotalBsProducto(p, s.tc_paralelo), 0));
+  const totalGAExacto        = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
+  const totalManipuleoExacto = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
+  const totalBateriasExacto  = round2(s.products.reduce((sum, p) => sum + (p.tiene_bateria ? p.costo_bateria : 0), 0));
+  const totalExacto = round2(
+    totalProductosExacto +
+    (s.flete_total_bs ?? 0) +
+    totalGAExacto +
+    totalManipuleoExacto +
+    totalBateriasExacto
+  );
+
+  const hayDiferencia = Math.abs(totalExacto - totalFilas) >= 0.01;
 
   return (
     <div className="space-y-4">
@@ -1820,7 +1838,17 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
           ))}
           <TableRow className="font-bold bg-muted/30">
             <TableCell colSpan={8} className="text-right">TOTAL EMBARQUE</TableCell>
-            <TableCell className="text-right">{fmt(totalEmbarque)} Bs</TableCell>
+            <TableCell className="text-right">
+              {fmt(totalExacto)} Bs
+              {hayDiferencia && (
+                <span
+                  className="block text-[10px] font-normal text-muted-foreground"
+                  title={`Suma de filas: ${fmt(totalFilas)} Bs. Diferencia de ${fmt(Math.abs(totalExacto - totalFilas))} Bs por redondeo en costos unitarios.`}
+                >
+                  ∑ filas: {fmt(totalFilas)} Bs ⓘ
+                </span>
+              )}
+            </TableCell>
           </TableRow>
         </TableBody>
       </Table>
