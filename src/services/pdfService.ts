@@ -777,3 +777,232 @@ export function exportEquityChangesToPDF(data: EquityChangesPDFData, period: str
   addFooter(doc);
   doc.save(`estado-cambios-patrimonio-${period.replace(/\s/g, '-').toLowerCase()}.pdf`);
 }
+
+// ─── Exportar Embarque a PDF ──────────────────────────────────────────────────
+
+export interface ShipmentPDFData {
+  numero: string;
+  descripcion?: string;
+  status: string;
+  created_at: string;
+  tc_paralelo: number;
+  tc_oficial: number;
+  flete_total_bs?: number;
+  flete_fecha?: string;
+  metodo_peso?: string;
+  tarifa_manipuleo_por_kg: number;
+  products: Array<{
+    nombre: string;
+    categoria: string;
+    cantidad: number;
+    precio_usd: number;
+    precio_usd_total?: number;
+    tax_pct: number;
+    fecha_compra: string;
+    tiene_bateria: boolean;
+    costo_bateria: number;
+    ga_pct: number;
+    ga_monto?: number;
+    iva_monto?: number;
+    m1?: number;
+    m2?: number;
+    m3?: number;
+    peso_bruto?: number;
+    precio_bs_pagado?: number;
+    precio_bs_pagado_total?: number;
+    tc_producto?: number;
+  }>;
+  gastos_aduana: Array<{ concepto: string; monto: number; fecha: string }>;
+  costos?: Array<{
+    nombre: string;
+    cantidad: number;
+    precioBs: number;
+    envio: number;
+    ga: number;
+    iva: number;
+    manipuleo: number;
+    bateria: number;
+    costo_unitario: number;
+  }>;
+}
+
+export function exportShipmentToPDF(data: ShipmentPDFData): void {
+  const doc = new jsPDF('p', 'mm', 'letter');
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const y = addReportHeader(doc, {
+    title: `Embarque ${data.numero}`,
+    subtitle: data.descripcion || undefined,
+    date: `Estado: ${data.status} — Creado: ${data.created_at}`,
+  });
+
+  let currentY = y;
+
+  // ─── Datos generales ───
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Datos Generales', 20, currentY);
+  currentY += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  const info = [
+    `T/C Paralelo: ${data.tc_paralelo}`,
+    `T/C Oficial: ${data.tc_oficial}`,
+    `Tarifa Manipuleo: ${data.tarifa_manipuleo_por_kg} Bs/kg`,
+    `Método Peso: ${data.metodo_peso ?? 'automático'}`,
+  ];
+  if (data.flete_total_bs != null) info.push(`Flete Total: ${fmt(data.flete_total_bs)} Bs`);
+  if (data.flete_fecha) info.push(`Fecha Flete: ${data.flete_fecha}`);
+  doc.text(info.join('   |   '), 20, currentY);
+  currentY += 8;
+
+  // ─── Productos ───
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Productos (${data.products.length})`, 20, currentY);
+  currentY += 2;
+
+  const productHead = ['Producto', 'Cat.', 'Cant.', 'USD Unit.', 'Tax%', 'GA%', 'Bs Pagado', 'T/C', 'Fecha'];
+  const productBody = data.products.map(p => [
+    p.nombre || '—',
+    p.categoria,
+    String(p.cantidad),
+    p.precio_usd_total ? `${fmt(p.precio_usd_total)} (tot)` : fmt(p.precio_usd),
+    `${p.tax_pct}%`,
+    `${p.ga_pct}%`,
+    p.precio_bs_pagado_total ? fmt(p.precio_bs_pagado_total) : (p.precio_bs_pagado ? fmt(p.precio_bs_pagado) : '—'),
+    p.tc_producto ? String(p.tc_producto) : '—',
+    p.fecha_compra,
+  ]);
+
+  autoTable(doc, {
+    startY: currentY,
+    head: [productHead],
+    body: productBody,
+    headStyles: { fillColor: [41, 98, 255], fontSize: 8 },
+    styles: { fontSize: 8, cellPadding: 2 },
+    margin: { left: 20, right: 20 },
+  });
+  currentY = (doc as any).lastAutoTable.finalY + 6;
+
+  // ─── Medidas (si hay) ───
+  const hasMedias = data.products.some(p => p.m1 || p.m2 || p.m3 || p.peso_bruto);
+  if (hasMedias) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Medidas y Pesos', 20, currentY);
+    currentY += 2;
+
+    const medidasHead = ['Producto', 'M1 (cm)', 'M2 (cm)', 'M3 (cm)', 'Peso Bruto (kg)', 'Peso Vol. (kg)'];
+    const medidasBody = data.products.map(p => {
+      const pv = (p.m1 && p.m2 && p.m3) ? ((p.m1 * p.m2 * p.m3) / 5000).toFixed(2) : '—';
+      return [
+        p.nombre || '—',
+        p.m1 ? String(p.m1) : '—',
+        p.m2 ? String(p.m2) : '—',
+        p.m3 ? String(p.m3) : '—',
+        p.peso_bruto ? String(p.peso_bruto) : '—',
+        pv,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [medidasHead],
+      body: medidasBody,
+      headStyles: { fillColor: [120, 80, 200], fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: 2 },
+      margin: { left: 20, right: 20 },
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 6;
+  }
+
+  // ─── Tributos aduaneros ───
+  const hasTributos = data.products.some(p => p.ga_monto || p.iva_monto);
+  if (hasTributos) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Tributos Aduaneros (DIM)', 20, currentY);
+    currentY += 2;
+
+    const tribHead = ['Producto', 'GA Monto (Bs)', 'IVA Monto (Bs)', 'Total Tributos'];
+    const tribBody = data.products.filter(p => p.ga_monto || p.iva_monto).map(p => [
+      p.nombre || '—',
+      fmt(p.ga_monto ?? 0),
+      fmt(p.iva_monto ?? 0),
+      fmt((p.ga_monto ?? 0) + (p.iva_monto ?? 0)),
+    ]);
+    const totalGA = data.products.reduce((s, p) => s + (p.ga_monto ?? 0), 0);
+    const totalIVA = data.products.reduce((s, p) => s + (p.iva_monto ?? 0), 0);
+    tribBody.push(['TOTAL', fmt(totalGA), fmt(totalIVA), fmt(totalGA + totalIVA)]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [tribHead],
+      body: tribBody,
+      headStyles: { fillColor: [200, 120, 40], fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: 2 },
+      margin: { left: 20, right: 20 },
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 6;
+  }
+
+  // ─── Gastos de aduana (manipuleo) ───
+  if (data.gastos_aduana.length > 0) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Gastos de Aduana / Manipuleo', 20, currentY);
+    currentY += 2;
+
+    const gastosHead = ['Concepto', 'Monto (Bs)', 'Fecha'];
+    const gastosBody = data.gastos_aduana.map(g => [g.concepto, fmt(g.monto), g.fecha]);
+    const totalGastos = data.gastos_aduana.reduce((s, g) => s + g.monto, 0);
+    gastosBody.push(['TOTAL', fmt(totalGastos), '']);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [gastosHead],
+      body: gastosBody,
+      headStyles: { fillColor: [180, 60, 60], fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: 2 },
+      margin: { left: 20, right: 20 },
+    });
+    currentY = (doc as any).lastAutoTable.finalY + 6;
+  }
+
+  // ─── Costos finales (si embarque cerrado o calculados) ───
+  if (data.costos && data.costos.length > 0) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Costos Finales por Producto', 20, currentY);
+    currentY += 2;
+
+    const costHead = ['Producto', 'Cant.', 'Precio Bs', 'Envío', 'GA', 'IVA', 'Manipuleo', 'Batería', 'Costo Unit.', 'Costo Total'];
+    const costBody = data.costos.map(c => [
+      c.nombre || '—',
+      String(c.cantidad),
+      fmt(c.precioBs),
+      fmt(c.envio),
+      fmt(c.ga),
+      fmt(c.iva),
+      fmt(c.manipuleo),
+      fmt(c.bateria),
+      fmt(c.costo_unitario),
+      fmt(c.costo_unitario * c.cantidad),
+    ]);
+    const grandTotal = data.costos.reduce((s, c) => s + c.costo_unitario * c.cantidad, 0);
+    costBody.push(['TOTAL', '', '', '', '', '', '', '', '', fmt(grandTotal)]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [costHead],
+      body: costBody,
+      headStyles: { fillColor: [40, 160, 80], fontSize: 7 },
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      margin: { left: 15, right: 15 },
+    });
+  }
+
+  addFooter(doc);
+  doc.save(`embarque-${data.numero.toLowerCase()}.pdf`);
+}

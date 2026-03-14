@@ -17,7 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Plus, Trash2, Package, ChevronRight, ArrowRight,
   CheckCircle, Plane, ShoppingCart, Warehouse,
-  FileText, Calculator, AlertCircle, Eye, Pencil, GripVertical
+  FileText, Calculator, AlertCircle, Eye, Pencil, GripVertical, Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
