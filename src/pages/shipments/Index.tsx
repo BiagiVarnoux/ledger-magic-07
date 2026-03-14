@@ -32,7 +32,7 @@ import {
 } from '@/accounting/shipment-types';
 import { ShipmentStorage } from '@/accounting/shipment-storage';
 import {
-  calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo,
+  calcPrecioBs, calcPrecioBOB, calcPesoVolumen, calcPesoEfectivo, getPesoEfectivoPorMetodo,
   calcGAEstimado, calcIVAEstimado,
   calcCostoFinalPorProducto, generateShipmentNumber,
   getAllCategories, saveCustomCategory,
@@ -69,6 +69,7 @@ function newShipment(existingShipments: Shipment[] = []): Shipment {
     tc_paralelo: 9.30,
     tc_oficial: 6.97,
     tarifa_manipuleo_por_kg: 25,
+    metodo_peso: 'automatico' as const,
     gastos_aduana: [],
     products: [emptyProduct(id)],
   };
@@ -1391,7 +1392,8 @@ function FleteTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean;
 // ─── Tab: Aduana ───────────────────────────────────────────────────────────────
 
 function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
-  const canEdit = !isReadOnly && s.status === 'EN_ADUANA';
+  const canEditTributos = !isReadOnly && s.status === 'EN_ADUANA';
+  const canEditGastos   = !isReadOnly && ['EN_ADUANA', 'EN_ALMACEN'].includes(s.status);
 
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     onSave({ ...s, products: s.products.map(p => p.id === id ? { ...p, ...patch } : p) });
@@ -1456,7 +1458,7 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {canEdit ? (
+                    {canEditTributos ? (
                       <div className="flex flex-col items-end gap-0.5">
                         <Input type="number" step="0.01" className="h-8 w-28 text-right"
                           value={p.ga_monto ?? ''}
@@ -1478,7 +1480,7 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {canEdit ? (
+                    {canEditTributos ? (
                       <div className="flex flex-col items-end gap-0.5">
                         <Input type="number" step="0.01" className="h-8 w-28 text-right"
                           value={p.iva_monto ?? ''}
@@ -1530,14 +1532,14 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
             <Warehouse className="w-4 h-4" />
             Gastos de Aduana / Manipuleo
           </h3>
-          {canEdit && (
+          {canEditGastos && (
             <Button size="sm" variant="outline" onClick={addGasto}>
               <Plus className="w-4 h-4 mr-1" />Agregar gasto
             </Button>
           )}
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          Almacenaje, Examen Previo, SUMA, Agencia despachante. Se prorratean por peso volumen.
+          Almacenaje, Examen Previo, SUMA, Agencia despachante. Se prorratean por peso. Puedes agregar gastos también en estado En Almacén.
         </p>
 
         {s.gastos_aduana.length === 0 ? (
@@ -1548,7 +1550,7 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
           <div className="space-y-2">
             {s.gastos_aduana.map(g => (
               <div key={g.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
-                {canEdit ? (
+                {canEditGastos ? (
                   <>
                     <Input value={g.concepto} placeholder="Concepto (ej: Almacenaje)"
                       onChange={e => updateGasto(g.id, { concepto: e.target.value })}
@@ -1586,13 +1588,45 @@ function AduanaTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean
 
 function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolean; onSave: (s: Shipment) => void }) {
   const canEdit = !isReadOnly && s.status === 'EN_ALMACEN';
+  const metodo = s.metodo_peso ?? 'automatico';
 
   function updateProduct(id: string, patch: Partial<ShipmentProduct>) {
     onSave({ ...s, products: s.products.map(p => p.id === id ? { ...p, ...patch } : p) });
   }
 
+  const METODO_LABELS = {
+    automatico:    'Automático (el mayor)',
+    peso_volumen:  'Solo peso volumen',
+    peso_bruto:    'Solo peso bruto',
+  };
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Selector de método de peso */}
+      <div className="bg-muted/40 border rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1">
+          <p className="text-sm font-semibold mb-0.5">Método de peso para prorrateo</p>
+          <p className="text-xs text-muted-foreground">
+            Define qué peso se usa para distribuir el flete y el manipuleo entre productos.
+            Si eliges "Solo peso volumen" o "Solo peso bruto", el otro valor se ignora aunque esté ingresado.
+          </p>
+        </div>
+        <Select
+          value={metodo}
+          onValueChange={v => canEdit && onSave({ ...s, metodo_peso: v as Shipment['metodo_peso'] })}
+          disabled={!canEdit}
+        >
+          <SelectTrigger className="w-52 shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="automatico">⚖️ Automático (el mayor)</SelectItem>
+            <SelectItem value="peso_volumen">📦 Solo peso volumen</SelectItem>
+            <SelectItem value="peso_bruto">🏋️ Solo peso bruto</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="bg-info/10 border border-info/20 rounded-lg p-3 text-sm text-info">
         <p className="font-medium">Mide los productos en tu almacén</p>
         <p className="text-xs mt-0.5">Con estos datos se calculará el peso volumen y se prorrateará el flete y el manipuleo automáticamente al cerrar el embarque.</p>
@@ -1608,13 +1642,16 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
             <TableHead className="text-right">Peso bruto (kg)</TableHead>
             <TableHead className="text-right">Batería (Bs)</TableHead>
             <TableHead className="text-right">Peso vol.</TableHead>
-            <TableHead className="text-right">Peso efectivo</TableHead>
+            <TableHead className="text-right">
+              Peso usado
+              <span className="block text-[10px] font-normal text-muted-foreground">{METODO_LABELS[metodo]}</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {s.products.map(p => {
             const pv = calcPesoVolumen(p);
-            const pe = calcPesoEfectivo(p);
+            const pe = getPesoEfectivoPorMetodo(p, metodo);
             return (
               <TableRow key={p.id}>
                 <TableCell className="font-medium text-sm">
