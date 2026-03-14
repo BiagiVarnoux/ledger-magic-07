@@ -7,6 +7,11 @@ export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Round to 6 decimal places - use for inventory unit costs (avoids loss when dividing totals by large quantities) */
+export function round6(n: number): number {
+  return Math.round(n * 1_000_000) / 1_000_000;
+}
+
 export function fmt(n: number) { 
   return n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); 
 }

@@ -1,7 +1,7 @@
 // src/accounting/shipment-utils.ts
 // Fórmulas exactas del Excel de importaciones
 
-import { round2 } from './utils';
+import { round2, round6 } from './utils';
 import { ShipmentProduct, Shipment, ShipmentExpense, DEFAULT_CATEGORY_LABELS } from './shipment-types';
 
 // ─── Categorías dinámicas ─────────────────────────────────────────────────────
@@ -52,6 +52,23 @@ export function calcPrecioBs(p: ShipmentProduct, tc_paralelo: number): number {
   const tc = p.tc_producto ?? tc_paralelo;
   const usd = precioUsdEfectivo(p);
   return round2(usd * (1 + p.tax_pct / 100) * tc);
+}
+
+/**
+ * Total exacto en Bs del costo de adquisición para TODAS las unidades del producto.
+ * Usa los campos "total" cuando existen, evitando el error de round2(total/n)×n ≠ total.
+ * Solo para mostrar totales en UI — los costos unitarios del Kárdex siguen usando calcPrecioBs.
+ */
+export function calcTotalBsProducto(p: ShipmentProduct, tc_paralelo: number): number {
+  if (p.precio_bs_pagado_total != null && p.precio_bs_pagado_total > 0) {
+    return p.precio_bs_pagado_total; // exacto — sin round2
+  }
+  if (p.precio_bs_pagado != null && p.precio_bs_pagado > 0) {
+    return round2(p.precio_bs_pagado * p.cantidad);
+  }
+  const tc = p.tc_producto ?? tc_paralelo;
+  const usdTotal = p.precio_usd_total ?? (p.precio_usd * p.cantidad);
+  return round2(usdTotal * (1 + p.tax_pct / 100) * tc);
 }
 
 /** Precio BOB unitario (para tributos): usa total USD cuando existe para mayor precisión */
@@ -171,8 +188,8 @@ export function calcFleteProrrateado(
   products.forEach(p => {
     const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
     const participacion = peso / pesoTotal;
-    const fleteTotal = round2(flete_total_bs * participacion);
-    result[p.id] = round2(fleteTotal / p.cantidad);
+    const fleteDelPaquete = flete_total_bs * participacion; // sin round2 — mantener precisión
+    result[p.id] = round6(fleteDelPaquete / p.cantidad);   // 6 decimales para el unitario
   });
   return result;
 }
@@ -189,26 +206,27 @@ export function calcManipuleoProrrateado(
   products.forEach(p => {
     const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
     const participacion = peso / pesoTotal;
-    const manipuleoTotal = round2(totalManipuleo * participacion);
-    result[p.id] = round2(manipuleoTotal / p.cantidad);
+    const manipuleoDelPaquete = totalManipuleo * participacion; // sin round2
+    result[p.id] = round6(manipuleoDelPaquete / p.cantidad);   // 6 decimales para el unitario
   });
   return result;
 }
 
 export function calcCostoFinalPorProducto(
   shipment: Shipment
-): Array<{ product: ShipmentProduct; costo_unitario: number; detalle: CostoDetalle }> {
+): Array<{ product: ShipmentProduct; costo_unitario: number; precioBsTotal: number; detalle: CostoDetalle }> {
   const { products, tc_paralelo, tc_oficial, flete_total_bs = 0, gastos_aduana } = shipment;
   const metodo = shipment.metodo_peso ?? 'automatico';
   const fleteMap = calcFleteProrrateado(products, flete_total_bs, metodo);
   const manipuleoMap = calcManipuleoProrrateado(products, gastos_aduana, metodo);
 
   return products.map(p => {
-    const precioBs = calcPrecioBs(p, tc_paralelo);
-    const envioUnitario = fleteMap[p.id] ?? 0;
+    // precioBs unitario — con 6 decimales si viene de dividir un total
+    const precioBsTotal = calcTotalBsProducto(p, tc_paralelo); // total exacto del paquete
+    const precioBs = round6(precioBsTotal / p.cantidad);       // unitario con 6 decimales
+    const envioUnitario = fleteMap[p.id] ?? 0;                 // ya tiene 6 decimales
 
-    // GA unitario: si hay monto exacto del DIM (total), dividir sin redondear intermedio
-    // para evitar que round2(total/n)*n ≠ total (ej: round2(7/3)=2.33 → 2.33*3=6.99)
+    // GA y manipuleo unitarios — sin round2 para no perder precisión
     const ga = p.ga_monto != null
       ? p.ga_monto / p.cantidad
       : calcGAEstimado(p, tc_oficial, envioUnitario);
@@ -217,20 +235,32 @@ export function calcCostoFinalPorProducto(
       : calcIVAEstimado(p, tc_oficial, ga);
     const manipuleo = manipuleoMap[p.id] ?? 0;
     const bateria = p.tiene_bateria ? p.costo_bateria : 0;
-    // IVA NO suma al costo — es Crédito Fiscal (A.6), solo aparece como info en el embarque
-    const impuestos = ga;
-    const costo_unitario = round2(precioBs + envioUnitario + impuestos + manipuleo + bateria);
 
+    // IVA NO suma al costo — es Crédito Fiscal, solo aparece como info
+    const impuestos = ga;
+    // costo_unitario con 6 decimales — se guarda así en inventory_lots
+    const costo_unitario = round6(precioBs + envioUnitario + impuestos + manipuleo + bateria);
+
+    // Para el detalle de pantalla, usamos round2 solo al mostrar
     return {
       product: p,
-      costo_unitario,
-      detalle: { precioBs, envioUnitario, ga, iva, impuestos, manipuleo, bateria },
+      costo_unitario,                           // 6 decimales — va a DB
+      precioBsTotal,                            // total exacto — para el asiento
+      detalle: {
+        precioBs: round2(precioBs),             // 2 dec — solo para mostrar
+        envioUnitario: round2(envioUnitario),
+        ga: round2(ga),
+        iva: round2(iva),
+        impuestos: round2(impuestos),
+        manipuleo: round2(manipuleo),
+        bateria,
+      },
     };
   });
 }
 
 export interface CostoDetalle {
-  precioBs: number;
+  precioBs: number;      // unitario redondeado a 2 dec — solo para mostrar
   envioUnitario: number;
   ga: number;
   iva: number;
@@ -238,6 +268,10 @@ export interface CostoDetalle {
   manipuleo: number;
   bateria: number;
 }
+
+export function calcCostoFinalPorProducto(
+  shipment: Shipment
+): Array<{ product: ShipmentProduct; costo_unitario: number; precioBsTotal: number; detalle: CostoDetalle }> {
 
 // ─── Generación de número de embarque ────────────────────────────────────────
 
