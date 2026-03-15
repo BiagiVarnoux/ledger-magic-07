@@ -89,7 +89,7 @@ export default function ShipmentsPage() {
   const [draft, setDraft] = useState<Shipment>(() => newShipment());
   const [closeConfirmState, setCloseConfirmState] = useState<{
     shipment: Shipment;
-    costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: any }>;
+    costos: Array<{ product: ShipmentProduct; costo_unitario: number; precioBsTotal: number; detalle: any }>;
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
 
@@ -413,7 +413,7 @@ export default function ShipmentsPage() {
       // 3. Create inventory_lots and inventory_movements (FIFO)
       const metodoEmb = s.metodo_peso ?? 'automatico';
       const pesoTotalEmb = s.products.reduce((sum, p) => sum + (getPesoEfectivoPorMetodo(p, metodoEmb) ?? 0), 0);
-      const fleтeExacto = s.flete_total_bs ?? 0;
+      const fleteExacto = s.flete_total_bs ?? 0;
       const manipExacto = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
 
       // Total exacto que debe sumar el Kárdex — igual al crédito del asiento 4
@@ -428,7 +428,7 @@ export default function ShipmentsPage() {
       const costoTotalPorProducto: Record<string, number> = {};
       costos.forEach(({ product, precioBsTotal }) => {
         const pesoProd       = getPesoEfectivoPorMetodo(product, metodoEmb) ?? 0;
-        const fleteProducto  = pesoTotalEmb > 0 ? fleтeExacto * pesoProd / pesoTotalEmb : 0;
+        const fleteProducto  = pesoTotalEmb > 0 ? fleteExacto * pesoProd / pesoTotalEmb : 0;
         const gaProducto     = product.ga_monto ?? 0;
         const manipProducto  = pesoTotalEmb > 0 ? manipExacto * pesoProd / pesoTotalEmb : 0;
         const bateriaProducto = product.tiene_bateria ? product.costo_bateria : 0;
