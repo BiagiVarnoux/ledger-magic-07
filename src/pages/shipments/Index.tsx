@@ -411,47 +411,6 @@ export default function ShipmentsPage() {
       setEntries(await adapter.loadEntries());
 
       // 3. Create inventory_lots and inventory_movements (FIFO)
-      const metodoEmb = s.metodo_peso ?? 'automatico';
-      const pesoTotalEmb = s.products.reduce((sum, p) => sum + (getPesoEfectivoPorMetodo(p, metodoEmb) ?? 0), 0);
-      const fleтeExacto = s.flete_total_bs ?? 0;
-      const manipExacto = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
-
-      // Total exacto que debe sumar el Kárdex — igual al crédito del asiento 4
-      const totalKardexEsperado = round2(
-        (s.flete_total_bs ?? 0) +
-        round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0)) +
-        manipExacto +
-        s.products.reduce((sum, p) => sum + calcTotalBsProducto(p, s.tc_paralelo), 0)
-      );
-
-      // Calcular costo_total exacto por producto (sin round2 intermedio)
-      const costoTotalPorProducto: Record<string, number> = {};
-      costos.forEach(({ product, precioBsTotal }) => {
-        const pesoProd       = getPesoEfectivoPorMetodo(product, metodoEmb) ?? 0;
-        const fleteProducto  = pesoTotalEmb > 0 ? fleтeExacto * pesoProd / pesoTotalEmb : 0;
-        const gaProducto     = product.ga_monto ?? 0;
-        const manipProducto  = pesoTotalEmb > 0 ? manipExacto * pesoProd / pesoTotalEmb : 0;
-        const bateriaProducto = product.tiene_bateria ? product.costo_bateria : 0;
-        // Sin round2 aquí — acumular precisión completa
-        costoTotalPorProducto[product.id] = precioBsTotal + fleteProducto + gaProducto + manipProducto + bateriaProducto;
-      });
-
-      // Aplicar round2 y calcular ajuste para que la suma cuadre exactamente
-      const costosRedondeados: Record<string, number> = {};
-      let sumaRedondeada = 0;
-      costos.forEach(({ product }) => {
-        costosRedondeados[product.id] = round2(costoTotalPorProducto[product.id]);
-        sumaRedondeada = round2(sumaRedondeada + costosRedondeados[product.id]);
-      });
-      const ajuste = round2(totalKardexEsperado - sumaRedondeada);
-      if (Math.abs(ajuste) >= 0.01) {
-        // Asignar ajuste al producto con mayor costo total
-        const prodMayor = costos.reduce((a, b) =>
-          costoTotalPorProducto[b.product.id] > costoTotalPorProducto[a.product.id] ? b : a
-        );
-        costosRedondeados[prodMayor.product.id] = round2(costosRedondeados[prodMayor.product.id] + ajuste);
-      }
-
       for (const { product, costo_unitario } of costos) {
         const link = links.find(l => l.shipmentProductId === product.id);
         const productId = link?.isNew ? newProductIds[product.id] : link?.productId;
@@ -466,7 +425,7 @@ export default function ShipmentsPage() {
             fecha_ingreso: todayISO(),
             cantidad_inicial: product.cantidad,
             cantidad_disponible: product.cantidad,
-            costo_unitario: costo_unitario,  // 6 decimales — para calcular salidas individuales
+            costo_unitario: costo_unitario,
             user_id: user.user.id,
           })
           .select('id')
@@ -479,8 +438,8 @@ export default function ShipmentsPage() {
           inventory_lot_id: newLot.id,
           tipo: 'ENTRADA',
           cantidad: product.cantidad,
-          costo_unitario,                                    // 6 decimales — para ventas individuales
-          costo_total: costosRedondeados[product.id],        // exacto — suma = crédito A.4.1
+          costo_unitario,                                    // 6 decimales — precisión completa
+          costo_total: round2(costo_unitario * product.cantidad), // 2 dec — para reportes
           fecha: todayISO(),
           referencia: `${s.numero} — Importación cerrada`,
           metodo_valuacion: 'FIFO',
