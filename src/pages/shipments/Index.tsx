@@ -332,13 +332,14 @@ export default function ShipmentsPage() {
       }
 
       // Asiento 4 — Nacionalización (dynamic by cuenta_inventario_id)
-      // Primero resolver la cuenta de cada producto vinculado
+      // REGLA CONTABLE: el crédito a A.4.1 debe ser EXACTAMENTE igual a la suma
+      // de todos sus débitos previos (asientos 1+2+3 + pagos de productos).
+      // NO se recalcula desde costos unitarios — eso acumula errores de redondeo.
       const resolvedCuentas: Record<string, string> = {};
       for (const link of links) {
         if (link.isNew && link.newProductData) {
           resolvedCuentas[link.shipmentProductId] = link.newProductData.cuenta_inventario_id;
         } else if (link.productId) {
-          // Buscar la cuenta del producto existente en Supabase
           const { data: prod } = await supabase
             .from('products')
             .select('cuenta_inventario_id')
@@ -348,13 +349,47 @@ export default function ShipmentsPage() {
         }
       }
 
+      // Débitos exactos que ya entraron a A.4.1:
+      // - Asiento 1: flete_total_bs (exacto)
+      // - Asiento 2: totalGA (exacto del DIM)
+      // - Asiento 3: totalManipuleo (exacto de gastos_aduana)
+      // - Pagos de productos: calcTotalBsProducto por producto (exacto)
+      // El total del crédito a A.4.1 = suma de esos componentes exactos.
+      const totalA41Credit = round2(
+        (s.flete_total_bs ?? 0) +
+        totalGA +
+        totalManipuleo +
+        s.products.reduce((sum, p) => sum + calcTotalBsProducto(p, s.tc_paralelo), 0)
+      );
+
+      // Distribuir el débito a las cuentas de inventario proporcionalmente
+      // usando los mismos totales exactos por producto
       const byAccount: Record<string, number> = {};
-      costos.forEach(({ product, costo_unitario, precioBsTotal }) => {
+      costos.forEach(({ product, precioBsTotal }) => {
         const cuentaId = resolvedCuentas[product.id] ?? 'A.4.2';
-        // Usar round6(costo_unitario) × cantidad para el asiento — máxima precisión disponible
-        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + round2(costo_unitario * product.cantidad));
+        const metodo = s.metodo_peso ?? 'automatico';
+        const pesoProducto = getPesoEfectivoPorMetodo(product, metodo) ?? 0;
+        const pesoTotalEmb = s.products.reduce((sum, p) => sum + (getPesoEfectivoPorMetodo(p, metodo) ?? 0), 0);
+
+        const fleteProducto  = pesoTotalEmb > 0 ? (s.flete_total_bs ?? 0) * pesoProducto / pesoTotalEmb : 0;
+        const manipProducto  = pesoTotalEmb > 0 ? totalManipuleo * pesoProducto / pesoTotalEmb : 0;
+        const gaProducto     = product.ga_monto ?? 0;
+        const bateriaProducto = product.tiene_bateria ? product.costo_bateria : 0;
+
+        const totalProducto = round2(precioBsTotal + fleteProducto + gaProducto + manipProducto + bateriaProducto);
+        byAccount[cuentaId] = round2((byAccount[cuentaId] ?? 0) + totalProducto);
       });
-      const totalCosto = round2(Object.values(byAccount).reduce((a, b) => a + b, 0));
+
+      // Ajuste de redondeo: si la suma de byAccount difiere de totalA41Credit,
+      // asignar la diferencia a la cuenta con mayor monto (impacto mínimo)
+      const sumaByAccount = round2(Object.values(byAccount).reduce((a, b) => a + b, 0));
+      const ajuste = round2(totalA41Credit - sumaByAccount);
+      if (Math.abs(ajuste) > 0 && Object.keys(byAccount).length > 0) {
+        const cuentaMayor = Object.entries(byAccount).reduce((a, b) => b[1] > a[1] ? b : a)[0];
+        byAccount[cuentaMayor] = round2(byAccount[cuentaMayor] + ajuste);
+      }
+
+      const totalCosto = totalA41Credit; // garantizado que cuadra
 
       const nationLines = [
         ...Object.entries(byAccount).map(([acct, monto]) => ({
