@@ -32,7 +32,7 @@ export interface JournalPreview {
 interface Props {
   isOpen: boolean;
   shipment: Shipment;
-  costos: Array<{ product: ShipmentProduct; costo_unitario: number; detalle: CostoDetalle }>;
+  costos: Array<{ product: ShipmentProduct; costo_unitario: number; precioBsTotal: number; detalle: CostoDetalle }>;
   onConfirm: (links: ProductLink[], customMemos: string[]) => Promise<void>;
   onCancel: () => void;
 }
