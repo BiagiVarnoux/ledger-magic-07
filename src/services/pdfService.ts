@@ -1087,7 +1087,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     currentY = shipmentSectionTitle(doc, 'TRIBUTOS ADUANEROS (DIM)', currentY, CLR.orange);
     currentY += 2;
 
-    const tribBody = data.products
+    const tribBody: any[][] = data.products
       .filter(p => p.ga_monto || p.iva_monto)
       .map((p, i) => [
         { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
