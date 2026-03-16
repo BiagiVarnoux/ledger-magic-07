@@ -1031,7 +1031,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   autoTable(doc, {
     startY: currentY,
     head: [['#', 'Producto', 'Categoría', 'Cant.', 'USD Unit.', 'USD Total', 'Bs Pagado', 'T/C', 'GA%', 'F. Compra']],
-    body: productBody,
+    body: productBody as any,
     headStyles: { fillColor: CLR.blue, fontSize: 8, textColor: [255,255,255] },
     styles: { fontSize: 8, cellPadding: 2.2 },
     columnStyles: {
