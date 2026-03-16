@@ -1110,7 +1110,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     autoTable(doc, {
       startY: currentY,
       head: [['#', 'Producto', 'GA %', 'GA (Bs)', 'IVA (Bs)', 'Total Tributos (Bs)']],
-      body: tribBody,
+      body: tribBody as any,
       headStyles: { fillColor: CLR.orange, fontSize: 8, textColor: [255,255,255] },
       styles: { fontSize: 8, cellPadding: 2.2 },
       columnStyles: {
