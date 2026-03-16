@@ -827,17 +827,17 @@ export interface ShipmentPDFData {
 }
 
 // Colores por sección del embarque
-const CLR = {
-  navy:     [15, 52, 96]   as [number, number, number],
-  blue:     [30, 100, 220] as [number, number, number],
-  purple:   [100, 60, 180] as [number, number, number],
-  orange:   [190, 100, 20] as [number, number, number],
-  red:      [160, 40, 40]  as [number, number, number],
-  green:    [30, 140, 70]  as [number, number, number],
-  gray:     [80, 80, 80]   as [number, number, number],
-  lightblue:[220, 232, 255] as [number, number, number],
-  lightgray:[240, 240, 242] as [number, number, number],
-  totalrow: [210, 225, 210] as [number, number, number],
+const CLR: Record<string, any> = {
+  navy:     [15, 52, 96],
+  blue:     [30, 100, 220],
+  purple:   [100, 60, 180],
+  orange:   [190, 100, 20],
+  red:      [160, 40, 40],
+  green:    [30, 140, 70],
+  gray:     [80, 80, 80],
+  lightblue:[220, 232, 255],
+  lightgray:[240, 240, 242],
+  totalrow: [210, 225, 210],
 };
 
 function shipmentSectionTitle(doc: jsPDF, title: string, y: number, color: [number,number,number]): number {
