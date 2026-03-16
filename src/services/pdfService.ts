@@ -993,7 +993,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   currentY = shipmentSectionTitle(doc, `PRODUCTOS (${data.products.length} ítems · ${totalUnidades} unidades)`, currentY, CLR.blue);
   currentY += 2;
 
-  const productBody = data.products.map((p, i) => {
+  const productBody: any[][] = data.products.map((p, i) => {
     const usdTotal = p.precio_usd_total != null ? p.precio_usd_total : p.precio_usd * p.cantidad;
     const bsTotal  = p.precio_bs_pagado_total != null ? p.precio_bs_pagado_total
                    : p.precio_bs_pagado != null ? p.precio_bs_pagado * p.cantidad : null;
@@ -1028,7 +1028,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   autoTable(doc, {
     startY: currentY,
     head: [['#', 'Producto', 'Categoría', 'Cant.', 'USD Unit.', 'USD Total', 'Bs Pagado', 'T/C', 'GA%', 'F. Compra']],
-    body: productBody,
+    body: productBody as any,
     headStyles: { fillColor: CLR.blue, fontSize: 8, textColor: [255,255,255] },
     styles: { fontSize: 8, cellPadding: 2.2 },
     columnStyles: {
@@ -1084,7 +1084,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     currentY = shipmentSectionTitle(doc, 'TRIBUTOS ADUANEROS (DIM)', currentY, CLR.orange);
     currentY += 2;
 
-    const tribBody = data.products
+    const tribBody: any[][] = data.products
       .filter(p => p.ga_monto || p.iva_monto)
       .map((p, i) => [
         { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
@@ -1107,7 +1107,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     autoTable(doc, {
       startY: currentY,
       head: [['#', 'Producto', 'GA %', 'GA (Bs)', 'IVA (Bs)', 'Total Tributos (Bs)']],
-      body: tribBody,
+      body: tribBody as any,
       headStyles: { fillColor: CLR.orange, fontSize: 8, textColor: [255,255,255] },
       styles: { fontSize: 8, cellPadding: 2.2 },
       columnStyles: {
@@ -1127,7 +1127,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     currentY = shipmentSectionTitle(doc, 'GASTOS DE ADUANA / MANIPULEO', currentY, CLR.red);
     currentY += 2;
 
-    const gastosBody = data.gastos_aduana.map(g => [
+    const gastosBody: any[][] = data.gastos_aduana.map(g => [
       g.concepto,
       { content: fmt(g.monto), styles: { halign: 'right' as const } },
       g.fecha,
@@ -1141,7 +1141,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     autoTable(doc, {
       startY: currentY,
       head: [['Concepto', 'Monto (Bs)', 'Fecha']],
-      body: gastosBody,
+      body: gastosBody as any,
       headStyles: { fillColor: CLR.red, fontSize: 8, textColor: [255,255,255] },
       styles: { fontSize: 8, cellPadding: 2.2 },
       columnStyles: { 1: { cellWidth: 40 }, 2: { cellWidth: 30 } },
@@ -1155,7 +1155,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     currentY = shipmentSectionTitle(doc, 'COSTOS FINALES POR PRODUCTO (Embarque Cerrado)', currentY, CLR.green);
     currentY += 2;
 
-    const costBody = data.costos.map((c, i) => [
+    const costBody: any[][] = data.costos.map((c, i) => [
       { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
       c.nombre || '—',
       { content: String(c.cantidad), styles: { halign: 'center' as const } },
@@ -1180,7 +1180,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     autoTable(doc, {
       startY: currentY,
       head: [['#', 'Producto', 'Cant.', 'Precio Bs', 'Envío', 'GA', 'IVA', 'Manipuleo', 'Batería', 'Costo Unit.', 'Costo Total']],
-      body: costBody,
+      body: costBody as any,
       headStyles: { fillColor: CLR.green, fontSize: 8, textColor: [255,255,255] },
       styles: { fontSize: 8, cellPadding: 2 },
       columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 12 } },

@@ -407,6 +407,42 @@ export type Database = {
           },
         ]
       }
+      inventory_lots_backup_20260314: {
+        Row: {
+          cantidad_disponible: number | null
+          cantidad_inicial: number | null
+          costo_unitario: number | null
+          created_at: string | null
+          fecha_ingreso: string | null
+          id: string | null
+          import_lot_id: string | null
+          product_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          cantidad_disponible?: number | null
+          cantidad_inicial?: number | null
+          costo_unitario?: number | null
+          created_at?: string | null
+          fecha_ingreso?: string | null
+          id?: string | null
+          import_lot_id?: string | null
+          product_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          cantidad_disponible?: number | null
+          cantidad_inicial?: number | null
+          costo_unitario?: number | null
+          created_at?: string | null
+          fecha_ingreso?: string | null
+          id?: string | null
+          import_lot_id?: string | null
+          product_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       inventory_movements: {
         Row: {
           cantidad: number
@@ -469,6 +505,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      inventory_movements_backup_20260314: {
+        Row: {
+          cantidad: number | null
+          costo_total: number | null
+          costo_unitario: number | null
+          created_at: string | null
+          fecha: string | null
+          id: string | null
+          inventory_lot_id: string | null
+          journal_entry_id: string | null
+          metodo_valuacion: string | null
+          product_id: string | null
+          referencia: string | null
+          tipo: string | null
+          user_id: string | null
+        }
+        Insert: {
+          cantidad?: number | null
+          costo_total?: number | null
+          costo_unitario?: number | null
+          created_at?: string | null
+          fecha?: string | null
+          id?: string | null
+          inventory_lot_id?: string | null
+          journal_entry_id?: string | null
+          metodo_valuacion?: string | null
+          product_id?: string | null
+          referencia?: string | null
+          tipo?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          cantidad?: number | null
+          costo_total?: number | null
+          costo_unitario?: number | null
+          created_at?: string | null
+          fecha?: string | null
+          id?: string | null
+          inventory_lot_id?: string | null
+          journal_entry_id?: string | null
+          metodo_valuacion?: string | null
+          product_id?: string | null
+          referencia?: string | null
+          tipo?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       invitation_codes: {
         Row: {
@@ -695,6 +779,7 @@ export type Database = {
           descripcion: string | null
           id: string
           is_active: boolean
+          metodo_valuacion: string
           nombre: string
           unidad_medida: string
           updated_at: string
@@ -708,6 +793,7 @@ export type Database = {
           descripcion?: string | null
           id?: string
           is_active?: boolean
+          metodo_valuacion?: string
           nombre: string
           unidad_medida?: string
           updated_at?: string
@@ -721,6 +807,7 @@ export type Database = {
           descripcion?: string | null
           id?: string
           is_active?: boolean
+          metodo_valuacion?: string
           nombre?: string
           unidad_medida?: string
           updated_at?: string
