@@ -1130,7 +1130,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     currentY = shipmentSectionTitle(doc, 'GASTOS DE ADUANA / MANIPULEO', currentY, CLR.red);
     currentY += 2;
 
-    const gastosBody = data.gastos_aduana.map(g => [
+    const gastosBody: any[][] = data.gastos_aduana.map(g => [
       g.concepto,
       { content: fmt(g.monto), styles: { halign: 'right' as const } },
       g.fecha,
