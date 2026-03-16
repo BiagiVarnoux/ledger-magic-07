@@ -26,7 +26,6 @@ export interface ProductData {
   unidad_medida: string;
   is_active: boolean;
   user_id: string;
-  metodo_valuacion: 'CPP' | 'FIFO';
 }
 
 interface NewProductModalProps {
@@ -44,140 +43,10 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
   const [cuentaId, setCuentaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [unidadMedida, setUnidadMedida] = useState('unidad');
-  const [metodoValuacion, setMetodoValuacion] = useState<'CPP' | 'FIFO'>('CPP');
   const [saving, setSaving] = useState(false);
 
   const isEditing = !!editProduct;
   const activoAccounts = accounts.filter(a => a.type === 'ACTIVO' && a.is_active);
-
-  useEffect(() => {
-    if (editProduct) {
-      setNombre(editProduct.nombre);
-      setCodigo(editProduct.codigo);
-      setCategoria(editProduct.categoria || 'otros');
-      setCuentaId(editProduct.cuenta_inventario_id || '');
-      setDescripcion(editProduct.descripcion || '');
-      setUnidadMedida(editProduct.unidad_medida || 'unidad');
-      setMetodoValuacion(editProduct.metodo_valuacion || 'CPP');
-    } else {
-      resetFields();
-    }
-  }, [editProduct, isOpen]);
-
-  function resetFields() {
-    setNombre(''); setCodigo(''); setCategoria('otros'); setCuentaId('');
-    setDescripcion(''); setUnidadMedida('unidad'); setMetodoValuacion('CPP');
-  }
-
-  async function handleSave() {
-    if (!nombre.trim() || !codigo.trim()) {
-      toast.error('Nombre y código son requeridos');
-      return;
-    }
-    setSaving(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No autenticado');
-
-      const payload = {
-        nombre: nombre.trim(),
-        codigo: codigo.trim(),
-        categoria,
-        cuenta_inventario_id: cuentaId || null,
-        descripcion: descripcion.trim() || null,
-        unidad_medida: unidadMedida.trim() || 'unidad',
-        metodo_valuacion: metodoValuacion,
-      };
-
-      if (isEditing) {
-        const { error } = await supabase.from('products').update(payload).eq('id', editProduct!.id);
-        if (error) throw error;
-        toast.success('Producto actualizado');
-      } else {
-        const { error } = await supabase.from('products').insert({ ...payload, user_id: user.id });
-        if (error) throw error;
-        toast.success('Producto creado');
-      }
-
-      onSaved();
-      resetAndClose();
-    } catch (e: any) {
-      toast.error(e.message || 'Error al guardar producto');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function resetAndClose() {
-    resetFields();
-    onClose();
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={v => !v && resetAndClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Nombre *</Label>
-            <Input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre del producto" />
-          </div>
-          <div className="space-y-2">
-            <Label>Código/SKU *</Label>
-            <Input value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="SKU-001" />
-          </div>
-          <div className="space-y-2">
-            <Label>Categoría</Label>
-            <Select value={categoria} onValueChange={setCategoria}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CATEGORIAS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Método de valuación de inventario</Label>
-            <Select value={metodoValuacion} onValueChange={v => setMetodoValuacion(v as 'CPP' | 'FIFO')}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CPP">CPP — Costo Promedio Ponderado</SelectItem>
-                <SelectItem value="FIFO">FIFO — Primera entrada, primera salida</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {metodoValuacion === 'CPP'
-                ? 'El costo de salida es el promedio de todos los lotes disponibles.'
-                : 'El costo de salida usa primero el lote más antiguo (importación más vieja).'}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label>Cuenta Contable (Activo)</Label>
-            <Select value={cuentaId} onValueChange={setCuentaId}>
-              <SelectTrigger><SelectValue placeholder="Seleccionar cuenta" /></SelectTrigger>
-              <SelectContent>
-                {activoAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Descripción</Label>
-            <Textarea value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Descripción opcional" />
-          </div>
-          <div className="space-y-2">
-            <Label>Unidad de medida</Label>
-            <Input value={unidadMedida} onChange={e => setUnidadMedida(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={resetAndClose}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : isEditing ? 'Actualizar' : 'Guardar'}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
   useEffect(() => {
     if (editProduct) {

@@ -180,7 +180,6 @@ export default function InventoryPage() {
                 <TableRow>
                   <TableHead>Código</TableHead>
                   <TableHead>Nombre</TableHead>
-                  <TableHead>Método</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
                   <TableHead className="text-right">C.U. CPP</TableHead>
                   <TableHead className="text-right">Valor Total</TableHead>
@@ -195,11 +194,6 @@ export default function InventoryPage() {
                     <TableRow key={p.id}>
                       <TableCell><Badge variant="outline">{p.codigo}</Badge></TableCell>
                       <TableCell>{p.nombre}</TableCell>
-                      <TableCell>
-                        <Badge variant={p.metodo_valuacion === 'FIFO' ? 'default' : 'secondary'} className="text-xs">
-                          {p.metodo_valuacion || 'CPP'}
-                        </Badge>
-                      </TableCell>
                       <TableCell className="text-right">{s.saldo} {p.unidad_medida}</TableCell>
                       <TableCell className="text-right">Bs {fmt(s.costoUnitario)}</TableCell>
                       <TableCell className="text-right font-medium">Bs {fmt(s.saldoValorado)}</TableCell>
