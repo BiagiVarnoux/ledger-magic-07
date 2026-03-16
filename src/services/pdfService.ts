@@ -1158,7 +1158,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     currentY = shipmentSectionTitle(doc, 'COSTOS FINALES POR PRODUCTO (Embarque Cerrado)', currentY, CLR.green);
     currentY += 2;
 
-    const costBody = data.costos.map((c, i) => [
+    const costBody: any[][] = data.costos.map((c, i) => [
       { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
       c.nombre || '—',
       { content: String(c.cantidad), styles: { halign: 'center' as const } },
