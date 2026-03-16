@@ -179,26 +179,6 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
   );
 }
 
-interface NewProductModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSaved: () => void;
-  editProduct?: ProductData | null;
-}
-
-export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewProductModalProps) {
-  const { accounts } = useAccounting();
-  const [nombre, setNombre] = useState('');
-  const [codigo, setCodigo] = useState('');
-  const [categoria, setCategoria] = useState('otros');
-  const [cuentaId, setCuentaId] = useState('');
-  const [descripcion, setDescripcion] = useState('');
-  const [unidadMedida, setUnidadMedida] = useState('unidad');
-  const [saving, setSaving] = useState(false);
-
-  const isEditing = !!editProduct;
-  const activoAccounts = accounts.filter(a => a.type === 'ACTIVO' && a.is_active);
-
   useEffect(() => {
     if (editProduct) {
       setNombre(editProduct.nombre);
