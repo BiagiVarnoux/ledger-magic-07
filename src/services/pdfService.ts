@@ -826,183 +826,385 @@ export interface ShipmentPDFData {
   }>;
 }
 
+// Colores por sección del embarque
+const CLR = {
+  navy:     [15, 52, 96]   as [number, number, number],
+  blue:     [30, 100, 220] as [number, number, number],
+  purple:   [100, 60, 180] as [number, number, number],
+  orange:   [190, 100, 20] as [number, number, number],
+  red:      [160, 40, 40]  as [number, number, number],
+  green:    [30, 140, 70]  as [number, number, number],
+  gray:     [80, 80, 80]   as [number, number, number],
+  lightblue:[220, 232, 255] as [number, number, number],
+  lightgray:[240, 240, 242] as [number, number, number],
+  totalrow: [210, 225, 210] as [number, number, number],
+};
+
+function shipmentSectionTitle(doc: jsPDF, title: string, y: number, color: [number,number,number]): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  doc.setFillColor(...color);
+  doc.rect(14, y - 4, pageWidth - 28, 7, 'F');
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(title, 17, y + 0.5);
+  doc.setTextColor(0, 0, 0);
+  return y + 7;
+}
+
 export function exportShipmentToPDF(data: ShipmentPDFData): void {
   const doc = new jsPDF('p', 'mm', 'letter');
   const pageWidth = doc.internal.pageSize.getWidth();
+  const ML = 14; // margin left
+  const MR = 14; // margin right
 
-  const y = addReportHeader(doc, {
-    title: `Embarque ${data.numero}`,
-    subtitle: data.descripcion || undefined,
-    date: `Estado: ${data.status} — Creado: ${data.created_at}`,
-  });
+  // ── Pre-calcular totales ──────────────────────────────────────────────────
+  const totalUnidades  = data.products.reduce((s, p) => s + p.cantidad, 0);
+  const totalUSD       = data.products.reduce((s, p) =>
+    s + (p.precio_usd_total != null ? p.precio_usd_total : p.precio_usd * p.cantidad), 0);
+  const totalBsPagado  = data.products.reduce((s, p) =>
+    s + (p.precio_bs_pagado_total != null ? p.precio_bs_pagado_total
+       : p.precio_bs_pagado != null ? p.precio_bs_pagado * p.cantidad : 0), 0);
+  const totalGA        = data.products.reduce((s, p) => s + (p.ga_monto ?? 0), 0);
+  const totalIVA       = data.products.reduce((s, p) => s + (p.iva_monto ?? 0), 0);
+  const totalGastos    = data.gastos_aduana.reduce((s, g) => s + g.monto, 0);
+  const totalCostoFinal = data.costos?.reduce((s, c) => s + c.costo_unitario * c.cantidad, 0);
+  const hasTributos    = data.products.some(p => p.ga_monto || p.iva_monto);
+  const hasMedias      = data.products.some(p => p.m1 || p.m2 || p.m3 || p.peso_bruto);
+  const isClosed       = !!data.costos && data.costos.length > 0;
 
-  let currentY = y;
+  // ── ENCABEZADO ────────────────────────────────────────────────────────────
+  // Barra superior navy
+  doc.setFillColor(...CLR.navy);
+  doc.rect(0, 0, pageWidth, 24, 'F');
 
-  // ─── Datos generales ───
-  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Datos Generales', 20, currentY);
-  currentY += 5;
-  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(18);
+  doc.setTextColor(255, 255, 255);
+  doc.text(`Embarque ${data.numero}`, ML, 11);
+
+  // Descripción
+  if (data.descripcion) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.descripcion, ML, 17);
+  }
+
+  // Estado (badge derecha)
   doc.setFontSize(9);
-  const info = [
-    `T/C Paralelo: ${data.tc_paralelo}`,
-    `T/C Oficial: ${data.tc_oficial}`,
-    `Tarifa Manipuleo: ${data.tarifa_manipuleo_por_kg} Bs/kg`,
-    `Método Peso: ${data.metodo_peso ?? 'automático'}`,
-  ];
-  if (data.flete_total_bs != null) info.push(`Flete Total: ${fmt(data.flete_total_bs)} Bs`);
-  if (data.flete_fecha) info.push(`Fecha Flete: ${data.flete_fecha}`);
-  doc.text(info.join('   |   '), 20, currentY);
-  currentY += 8;
-
-  // ─── Productos ───
-  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Productos (${data.products.length})`, 20, currentY);
+  const statusText = `● ${data.status}`;
+  const statusW = doc.getTextWidth(statusText) + 6;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(pageWidth - MR - statusW, 8, statusW, 8, 2, 2, 'F');
+  doc.setTextColor(...CLR.navy);
+  doc.text(statusText, pageWidth - MR - statusW + 3, 13.5);
+
+  // Fecha creación
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 200, 230);
+  doc.setFontSize(8);
+  doc.text(`Creado: ${data.created_at}  ·  Generado: ${new Date().toLocaleDateString('es-BO')}`, ML, 22);
+
+  doc.setTextColor(0, 0, 0);
+  let currentY = 30;
+
+  // ── RESUMEN EJECUTIVO ──────────────────────────────────────────────────────
+  currentY = shipmentSectionTitle(doc, 'RESUMEN EJECUTIVO', currentY, CLR.navy);
   currentY += 2;
 
-  const productHead = ['Producto', 'Cat.', 'Cant.', 'USD Unit.', 'Tax%', 'GA%', 'Bs Pagado', 'T/C', 'Fecha'];
-  const productBody = data.products.map(p => [
-    p.nombre || '—',
-    p.categoria,
-    String(p.cantidad),
-    p.precio_usd_total ? `${fmt(p.precio_usd_total)} (tot)` : fmt(p.precio_usd),
-    `${p.tax_pct}%`,
-    `${p.ga_pct}%`,
-    p.precio_bs_pagado_total ? fmt(p.precio_bs_pagado_total) : (p.precio_bs_pagado ? fmt(p.precio_bs_pagado) : '—'),
-    p.tc_producto ? String(p.tc_producto) : '—',
-    p.fecha_compra,
+  // Fila de tarjetas de resumen (tabla de 2 columnas: etiqueta | valor)
+  const summaryLeft: Array<[string, string]> = [
+    ['Productos distintos', `${data.products.length} ítems (${totalUnidades} unidades)`],
+    ['Total compra (USD)', `$${totalUSD.toLocaleString('es-BO', {minimumFractionDigits:2, maximumFractionDigits:2})}`],
+    ['Total compra (Bs pagado)', totalBsPagado > 0 ? fmt(totalBsPagado) : `≈ ${fmt(totalUSD * data.tc_paralelo)}  (estimado a T/C paralelo)`],
+    ['Flete total', data.flete_total_bs != null ? `${fmt(data.flete_total_bs)} Bs` : 'No registrado'],
+  ];
+  const summaryRight: Array<[string, string]> = [
+    ['Tributos (GA + IVA)', hasTributos ? `${fmt(totalGA + totalIVA)} Bs` : 'No registrados'],
+    ['Gastos de aduana', data.gastos_aduana.length > 0 ? `${fmt(totalGastos)} Bs` : 'No registrados'],
+    ['Costo total final', isClosed ? `${fmt(totalCostoFinal!)} Bs` : 'Embarque no cerrado'],
+    ['Estado del embarque', data.status],
+  ];
+
+  // Renderizar como dos tablas side-by-side simuladas con una tabla de 4 columnas
+  const summaryBody = summaryLeft.map(([lk, lv], i) => {
+    const [rk, rv] = summaryRight[i] ?? ['', ''];
+    return [
+      { content: lk, styles: { fontStyle: 'bold' as const, fillColor: CLR.lightgray, cellWidth: 42 } },
+      { content: lv, styles: { fillColor: CLR.lightgray } },
+      { content: rk, styles: { fontStyle: 'bold' as const, fillColor: [248, 248, 248] as [number,number,number], cellWidth: 42 } },
+      { content: rv, styles: { fillColor: [248, 248, 248] as [number,number,number] } },
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    body: summaryBody,
+    styles: { fontSize: 9, cellPadding: 3 },
+    columnStyles: { 0: { cellWidth: 42 }, 2: { cellWidth: 42 } },
+    margin: { left: ML, right: MR },
+    tableLineColor: [200, 200, 210],
+    tableLineWidth: 0.2,
+  });
+  currentY = (doc as any).lastAutoTable.finalY + 6;
+
+  // ── DATOS GENERALES ────────────────────────────────────────────────────────
+  currentY = shipmentSectionTitle(doc, 'DATOS GENERALES DEL EMBARQUE', currentY, CLR.gray);
+  currentY += 2;
+
+  const metodoLabel: Record<string, string> = {
+    automatico:      'Automático (mayor entre volumen y bruto)',
+    peso_volumen:    'Peso Volumétrico',
+    peso_bruto:      'Peso Bruto',
+  };
+
+  const generalBody: any[] = [
+    [
+      { content: 'T/C Paralelo', styles: { fontStyle: 'bold' as const } }, String(data.tc_paralelo),
+      { content: 'T/C Oficial', styles: { fontStyle: 'bold' as const } }, String(data.tc_oficial),
+    ],
+    [
+      { content: 'Tarifa Manipuleo', styles: { fontStyle: 'bold' as const } }, `${data.tarifa_manipuleo_por_kg} Bs/kg`,
+      { content: 'Método de Peso', styles: { fontStyle: 'bold' as const } }, metodoLabel[data.metodo_peso ?? 'automatico'] ?? (data.metodo_peso ?? 'Automático'),
+    ],
+  ];
+  if (data.flete_total_bs != null || data.flete_fecha) {
+    generalBody.push([
+      { content: 'Flete Total', styles: { fontStyle: 'bold' as const } },
+      data.flete_total_bs != null ? `${fmt(data.flete_total_bs)} Bs` : '—',
+      { content: 'Fecha de Flete', styles: { fontStyle: 'bold' as const } },
+      data.flete_fecha ?? '—',
+    ]);
+  }
+
+  autoTable(doc, {
+    startY: currentY,
+    body: generalBody,
+    styles: { fontSize: 9, cellPadding: 3 },
+    columnStyles: { 0: { cellWidth: 38, fillColor: CLR.lightgray }, 2: { cellWidth: 38, fillColor: CLR.lightgray } },
+    margin: { left: ML, right: MR },
+    tableLineColor: [200, 200, 210],
+    tableLineWidth: 0.2,
+  });
+  currentY = (doc as any).lastAutoTable.finalY + 6;
+
+  // ── PRODUCTOS ─────────────────────────────────────────────────────────────
+  currentY = shipmentSectionTitle(doc, `PRODUCTOS (${data.products.length} ítems · ${totalUnidades} unidades)`, currentY, CLR.blue);
+  currentY += 2;
+
+  const productBody = data.products.map((p, i) => {
+    const usdTotal = p.precio_usd_total != null ? p.precio_usd_total : p.precio_usd * p.cantidad;
+    const bsTotal  = p.precio_bs_pagado_total != null ? p.precio_bs_pagado_total
+                   : p.precio_bs_pagado != null ? p.precio_bs_pagado * p.cantidad : null;
+    return [
+      { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
+      p.nombre || '—',
+      p.categoria,
+      { content: String(p.cantidad), styles: { halign: 'center' as const } },
+      { content: `$${fmt(p.precio_usd)}`, styles: { halign: 'right' as const } },
+      { content: `$${fmt(usdTotal)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      { content: bsTotal != null ? fmt(bsTotal) : '—', styles: { halign: 'right' as const } },
+      { content: p.tc_producto ? String(p.tc_producto) : '—', styles: { halign: 'center' as const } },
+      { content: `${p.ga_pct}%`, styles: { halign: 'center' as const } },
+      p.fecha_compra,
+    ];
+  });
+
+  // Fila de totales
+  const totalBsPagadoStr = totalBsPagado > 0 ? fmt(totalBsPagado) : '—';
+  productBody.push([
+    { content: '', styles: { fillColor: CLR.totalrow } },
+    { content: 'TOTALES', colSpan: 3, styles: { fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+    '',
+    { content: `$${fmt(totalUSD)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+    { content: `$${fmt(totalUSD)}`, styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+    { content: totalBsPagadoStr, styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+    { content: '', styles: { fillColor: CLR.totalrow } },
+    { content: '', styles: { fillColor: CLR.totalrow } },
+    { content: '', styles: { fillColor: CLR.totalrow } },
   ]);
 
   autoTable(doc, {
     startY: currentY,
-    head: [productHead],
+    head: [['#', 'Producto', 'Categoría', 'Cant.', 'USD Unit.', 'USD Total', 'Bs Pagado', 'T/C', 'GA%', 'F. Compra']],
     body: productBody,
-    headStyles: { fillColor: [41, 98, 255], fontSize: 8 },
-    styles: { fontSize: 8, cellPadding: 2 },
-    margin: { left: 20, right: 20 },
+    headStyles: { fillColor: CLR.blue, fontSize: 8, textColor: [255,255,255] },
+    styles: { fontSize: 8, cellPadding: 2.2 },
+    columnStyles: {
+      0: { cellWidth: 8 },
+      3: { cellWidth: 12 },
+      4: { cellWidth: 20 },
+      5: { cellWidth: 22 },
+      6: { cellWidth: 22 },
+      7: { cellWidth: 14 },
+      8: { cellWidth: 12 },
+      9: { cellWidth: 20 },
+    },
+    margin: { left: ML, right: MR },
   });
   currentY = (doc as any).lastAutoTable.finalY + 6;
 
-  // ─── Medidas (si hay) ───
-  const hasMedias = data.products.some(p => p.m1 || p.m2 || p.m3 || p.peso_bruto);
+  // ── MEDIDAS Y PESOS ────────────────────────────────────────────────────────
   if (hasMedias) {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Medidas y Pesos', 20, currentY);
+    currentY = shipmentSectionTitle(doc, 'MEDIDAS Y PESOS', currentY, CLR.purple);
     currentY += 2;
 
-    const medidasHead = ['Producto', 'M1 (cm)', 'M2 (cm)', 'M3 (cm)', 'Peso Bruto (kg)', 'Peso Vol. (kg)'];
-    const medidasBody = data.products.map(p => {
-      const pv = (p.m1 && p.m2 && p.m3) ? ((p.m1 * p.m2 * p.m3) / 5000).toFixed(2) : '—';
+    const medidasBody = data.products.map((p, i) => {
+      const pesoVol = (p.m1 && p.m2 && p.m3) ? (p.m1 * p.m2 * p.m3) / 5000 : null;
+      const pesoEfectivo = pesoVol != null && p.peso_bruto != null
+        ? Math.max(pesoVol, p.peso_bruto)
+        : pesoVol ?? p.peso_bruto ?? null;
       return [
+        { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
         p.nombre || '—',
-        p.m1 ? String(p.m1) : '—',
-        p.m2 ? String(p.m2) : '—',
-        p.m3 ? String(p.m3) : '—',
-        p.peso_bruto ? String(p.peso_bruto) : '—',
-        pv,
+        { content: p.m1 ? String(p.m1) : '—', styles: { halign: 'center' as const } },
+        { content: p.m2 ? String(p.m2) : '—', styles: { halign: 'center' as const } },
+        { content: p.m3 ? String(p.m3) : '—', styles: { halign: 'center' as const } },
+        { content: p.peso_bruto ? String(p.peso_bruto) : '—', styles: { halign: 'center' as const } },
+        { content: pesoVol != null ? pesoVol.toFixed(2) : '—', styles: { halign: 'center' as const } },
+        { content: pesoEfectivo != null ? pesoEfectivo.toFixed(2) : '—', styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
       ];
     });
 
     autoTable(doc, {
       startY: currentY,
-      head: [medidasHead],
+      head: [['#', 'Producto', 'M1 (cm)', 'M2 (cm)', 'M3 (cm)', 'Peso Bruto (kg)', 'Peso Vol. (kg)', 'Peso Efectivo (kg)']],
       body: medidasBody,
-      headStyles: { fillColor: [120, 80, 200], fontSize: 8 },
-      styles: { fontSize: 8, cellPadding: 2 },
-      margin: { left: 20, right: 20 },
+      headStyles: { fillColor: CLR.purple, fontSize: 8, textColor: [255,255,255] },
+      styles: { fontSize: 8, cellPadding: 2.2 },
+      columnStyles: { 0: { cellWidth: 8 } },
+      margin: { left: ML, right: MR },
     });
     currentY = (doc as any).lastAutoTable.finalY + 6;
   }
 
-  // ─── Tributos aduaneros ───
-  const hasTributos = data.products.some(p => p.ga_monto || p.iva_monto);
+  // ── TRIBUTOS ADUANEROS ────────────────────────────────────────────────────
   if (hasTributos) {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Tributos Aduaneros (DIM)', 20, currentY);
+    currentY = shipmentSectionTitle(doc, 'TRIBUTOS ADUANEROS (DIM)', currentY, CLR.orange);
     currentY += 2;
 
-    const tribHead = ['Producto', 'GA Monto (Bs)', 'IVA Monto (Bs)', 'Total Tributos'];
-    const tribBody = data.products.filter(p => p.ga_monto || p.iva_monto).map(p => [
-      p.nombre || '—',
-      fmt(p.ga_monto ?? 0),
-      fmt(p.iva_monto ?? 0),
-      fmt((p.ga_monto ?? 0) + (p.iva_monto ?? 0)),
+    const tribBody = data.products
+      .filter(p => p.ga_monto || p.iva_monto)
+      .map((p, i) => [
+        { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
+        p.nombre || '—',
+        { content: `${p.ga_pct}%`, styles: { halign: 'center' as const } },
+        { content: fmt(p.ga_monto ?? 0), styles: { halign: 'right' as const } },
+        { content: fmt(p.iva_monto ?? 0), styles: { halign: 'right' as const } },
+        { content: fmt((p.ga_monto ?? 0) + (p.iva_monto ?? 0)), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      ]);
+
+    tribBody.push([
+      { content: '', styles: { fillColor: CLR.totalrow } },
+      { content: 'TOTAL', styles: { fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+      { content: '', styles: { fillColor: CLR.totalrow } },
+      { content: fmt(totalGA), styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+      { content: fmt(totalIVA), styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+      { content: fmt(totalGA + totalIVA), styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
     ]);
-    const totalGA = data.products.reduce((s, p) => s + (p.ga_monto ?? 0), 0);
-    const totalIVA = data.products.reduce((s, p) => s + (p.iva_monto ?? 0), 0);
-    tribBody.push(['TOTAL', fmt(totalGA), fmt(totalIVA), fmt(totalGA + totalIVA)]);
 
     autoTable(doc, {
       startY: currentY,
-      head: [tribHead],
+      head: [['#', 'Producto', 'GA %', 'GA (Bs)', 'IVA (Bs)', 'Total Tributos (Bs)']],
       body: tribBody,
-      headStyles: { fillColor: [200, 120, 40], fontSize: 8 },
-      styles: { fontSize: 8, cellPadding: 2 },
-      margin: { left: 20, right: 20 },
+      headStyles: { fillColor: CLR.orange, fontSize: 8, textColor: [255,255,255] },
+      styles: { fontSize: 8, cellPadding: 2.2 },
+      columnStyles: {
+        0: { cellWidth: 8 },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 30 },
+        5: { cellWidth: 38 },
+      },
+      margin: { left: ML, right: MR },
     });
     currentY = (doc as any).lastAutoTable.finalY + 6;
   }
 
-  // ─── Gastos de aduana (manipuleo) ───
+  // ── GASTOS DE ADUANA ───────────────────────────────────────────────────────
   if (data.gastos_aduana.length > 0) {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Gastos de Aduana / Manipuleo', 20, currentY);
+    currentY = shipmentSectionTitle(doc, 'GASTOS DE ADUANA / MANIPULEO', currentY, CLR.red);
     currentY += 2;
 
-    const gastosHead = ['Concepto', 'Monto (Bs)', 'Fecha'];
-    const gastosBody = data.gastos_aduana.map(g => [g.concepto, fmt(g.monto), g.fecha]);
-    const totalGastos = data.gastos_aduana.reduce((s, g) => s + g.monto, 0);
-    gastosBody.push(['TOTAL', fmt(totalGastos), '']);
+    const gastosBody = data.gastos_aduana.map(g => [
+      g.concepto,
+      { content: fmt(g.monto), styles: { halign: 'right' as const } },
+      g.fecha,
+    ]);
+    gastosBody.push([
+      { content: 'TOTAL', styles: { fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+      { content: fmt(totalGastos), styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+      { content: '', styles: { fillColor: CLR.totalrow } },
+    ]);
 
     autoTable(doc, {
       startY: currentY,
-      head: [gastosHead],
+      head: [['Concepto', 'Monto (Bs)', 'Fecha']],
       body: gastosBody,
-      headStyles: { fillColor: [180, 60, 60], fontSize: 8 },
-      styles: { fontSize: 8, cellPadding: 2 },
-      margin: { left: 20, right: 20 },
+      headStyles: { fillColor: CLR.red, fontSize: 8, textColor: [255,255,255] },
+      styles: { fontSize: 8, cellPadding: 2.2 },
+      columnStyles: { 1: { cellWidth: 40 }, 2: { cellWidth: 30 } },
+      margin: { left: ML, right: MR },
     });
     currentY = (doc as any).lastAutoTable.finalY + 6;
   }
 
-  // ─── Costos finales (si embarque cerrado o calculados) ───
-  if (data.costos && data.costos.length > 0) {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Costos Finales por Producto', 20, currentY);
+  // ── COSTOS FINALES ─────────────────────────────────────────────────────────
+  if (isClosed && data.costos && data.costos.length > 0) {
+    currentY = shipmentSectionTitle(doc, 'COSTOS FINALES POR PRODUCTO (Embarque Cerrado)', currentY, CLR.green);
     currentY += 2;
 
-    const costHead = ['Producto', 'Cant.', 'Precio Bs', 'Envío', 'GA', 'IVA', 'Manipuleo', 'Batería', 'Costo Unit.', 'Costo Total'];
-    const costBody = data.costos.map(c => [
+    const costBody = data.costos.map((c, i) => [
+      { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
       c.nombre || '—',
-      String(c.cantidad),
-      fmt(c.precioBs),
-      fmt(c.envio),
-      fmt(c.ga),
-      fmt(c.iva),
-      fmt(c.manipuleo),
-      fmt(c.bateria),
-      fmt(c.costo_unitario),
-      fmt(c.costo_unitario * c.cantidad),
+      { content: String(c.cantidad), styles: { halign: 'center' as const } },
+      { content: fmt(c.precioBs), styles: { halign: 'right' as const } },
+      { content: fmt(c.envio), styles: { halign: 'right' as const } },
+      { content: fmt(c.ga), styles: { halign: 'right' as const } },
+      { content: fmt(c.iva), styles: { halign: 'right' as const } },
+      { content: fmt(c.manipuleo), styles: { halign: 'right' as const } },
+      { content: c.bateria > 0 ? fmt(c.bateria) : '—', styles: { halign: 'right' as const } },
+      { content: fmt(c.costo_unitario), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      { content: fmt(c.costo_unitario * c.cantidad), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
     ]);
-    const grandTotal = data.costos.reduce((s, c) => s + c.costo_unitario * c.cantidad, 0);
-    costBody.push(['TOTAL', '', '', '', '', '', '', '', '', fmt(grandTotal)]);
+
+    costBody.push([
+      { content: '', styles: { fillColor: CLR.totalrow } },
+      { content: 'GRAN TOTAL', colSpan: 2, styles: { fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+      '', '', '', '', '', '', '',
+      { content: '', styles: { fillColor: CLR.totalrow } },
+      { content: fmt(totalCostoFinal!), styles: { halign: 'right' as const, fontStyle: 'bold' as const, fillColor: CLR.totalrow } },
+    ]);
 
     autoTable(doc, {
       startY: currentY,
-      head: [costHead],
+      head: [['#', 'Producto', 'Cant.', 'Precio Bs', 'Envío', 'GA', 'IVA', 'Manipuleo', 'Batería', 'Costo Unit.', 'Costo Total']],
       body: costBody,
-      headStyles: { fillColor: [40, 160, 80], fontSize: 7 },
-      styles: { fontSize: 7, cellPadding: 1.5 },
-      margin: { left: 15, right: 15 },
+      headStyles: { fillColor: CLR.green, fontSize: 8, textColor: [255,255,255] },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 12 } },
+      margin: { left: ML, right: MR },
     });
   }
 
-  addFooter(doc);
+  // ── PIE DE PÁGINA ─────────────────────────────────────────────────────────
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const ph = doc.internal.pageSize.getHeight();
+    doc.setFillColor(...CLR.navy);
+    doc.rect(0, ph - 10, pageWidth, 10, 'F');
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 200, 230);
+    doc.text(
+      `Embarque ${data.numero}  ·  Página ${i} de ${pageCount}  ·  Ledger Magic  ·  ${new Date().toLocaleString('es-BO')}`,
+      pageWidth / 2, ph - 3.5,
+      { align: 'center' }
+    );
+    doc.setTextColor(0, 0, 0);
+  }
+
   doc.save(`embarque-${data.numero.toLowerCase()}.pdf`);
 }
