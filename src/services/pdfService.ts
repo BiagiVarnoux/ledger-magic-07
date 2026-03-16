@@ -996,7 +996,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   currentY = shipmentSectionTitle(doc, `PRODUCTOS (${data.products.length} ítems · ${totalUnidades} unidades)`, currentY, CLR.blue);
   currentY += 2;
 
-  const productBody = data.products.map((p, i) => {
+  const productBody: any[][] = data.products.map((p, i) => {
     const usdTotal = p.precio_usd_total != null ? p.precio_usd_total : p.precio_usd * p.cantidad;
     const bsTotal  = p.precio_bs_pagado_total != null ? p.precio_bs_pagado_total
                    : p.precio_bs_pagado != null ? p.precio_bs_pagado * p.cantidad : null;
