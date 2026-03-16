@@ -840,9 +840,6 @@ const CLR = {
   totalrow: [210, 225, 210] as [number, number, number],
 };
 
-// Helper to create cell style objects for autoTable (bypasses strict typing)
-const cs = (styles: Record<string, any>) => ({ styles } as any);
-
 function shipmentSectionTitle(doc: jsPDF, title: string, y: number, color: [number,number,number]): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   doc.setFillColor(...color);
