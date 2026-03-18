@@ -48,6 +48,10 @@ export function calcularEstadoProducto(movements: InventoryMovement[]): ProductS
       const cpp = saldo > 0 ? saldoValorado / saldo : 0;
       saldo -= mov.cantidad;
       saldoValorado = saldo * cpp;
+    } else if (mov.tipo === 'AJUSTE_COSTO') {
+      // NIC 2: capitalización de costos posteriores al costo original
+      // Suma al saldo valorado sin cambiar la cantidad → sube el CPP
+      saldoValorado += mov.costo_total;
     }
     ultimaFecha = mov.fecha;
   }
@@ -77,13 +81,20 @@ export function buildKardexRows(movements: InventoryMovement[]): KardexRow[] {
       const cpp = saldo > 0 ? saldoValorado / saldo : 0;
       saldo -= mov.cantidad;
       saldoValorado = saldo * cpp;
+    } else if (mov.tipo === 'AJUSTE_COSTO') {
+      // NIC 2: capitalización — incrementa saldo valorado, cantidad sin cambio
+      saldoValorado += mov.costo_total;
     }
 
     rows.push({
       fecha: mov.fecha,
-      concepto: mov.referencia || (mov.tipo === 'ENTRADA' ? 'Entrada' : 'Salida'),
+      concepto: mov.referencia || (
+        mov.tipo === 'ENTRADA' ? 'Entrada' :
+        mov.tipo === 'SALIDA'  ? 'Salida'  :
+        mov.tipo === 'AJUSTE_COSTO' ? 'Ajuste de Costo (NIC 2)' : mov.tipo
+      ),
       entrada: mov.tipo === 'ENTRADA' ? mov.cantidad : 0,
-      salida: mov.tipo === 'SALIDA' ? mov.cantidad : 0,
+      salida:  mov.tipo === 'SALIDA'  ? mov.cantidad : 0,
       saldo,
       costoUnitario: saldo > 0 ? saldoValorado / saldo : 0,
       saldoValorado,
