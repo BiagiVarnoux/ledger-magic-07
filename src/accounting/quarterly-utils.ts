@@ -90,11 +90,12 @@ export function isDateInQuarter(date: string, quarter: Quarter): boolean {
 }
 
 export function getQuarterIdentifier(date: string): string {
-  const dateObj = new Date(date);
-  const year = dateObj.getFullYear();
-  const month = dateObj.getMonth() + 1; // getMonth() returns 0-11
+  // Parse date string directly to avoid timezone issues
+  const [yearStr, monthStr] = date.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
   const quarter = Math.ceil(month / 3);
-  const shortYear = year.toString().slice(-2); // Last 2 digits of year
+  const shortYear = year.toString().slice(-2);
   
   return `Q${quarter}-${shortYear}`;
 }
