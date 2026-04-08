@@ -1,0 +1,2 @@
+ALTER TABLE public.inventory_movements DROP CONSTRAINT inventory_movements_tipo_check;
+ALTER TABLE public.inventory_movements ADD CONSTRAINT inventory_movements_tipo_check CHECK (tipo IN ('ENTRADA', 'SALIDA', 'AJUSTE_COSTO'));
