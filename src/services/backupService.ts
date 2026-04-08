@@ -114,24 +114,49 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
   if (!user) throw new Error('Usuario no autenticado');
 
   try {
+    // Helper to delete and throw on error
+    async function del(table: string, filter: { column: string; value: string }) {
+      const { error } = await supabase.from(table).delete().eq(filter.column, filter.value);
+      if (error) throw new Error(`Error eliminando ${table}: ${error.message}`);
+    }
+
+    // Get all journal entry IDs for this user (needed to delete journal_lines which has no user_id)
+    const { data: userEntries } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('user_id', user.id);
+    const entryIds = (userEntries || []).map(e => e.id);
+
     // Delete existing data in reverse order of dependencies
-    await supabase.from('shipments').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_movement_details').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_ledger').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_ledger_definitions').delete().eq('user_id', user.id);
-    await supabase.from('kardex_movements').delete().eq('user_id', user.id);
-    await supabase.from('kardex_entries').delete().eq('user_id', user.id);
-    await supabase.from('kardex_definitions').delete().eq('user_id', user.id);
-    await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
-    await supabase.from('inventory_movements').delete().eq('user_id', user.id);
-    await supabase.from('inventory_lots').delete().eq('user_id', user.id);
-    await supabase.from('import_lots').delete().eq('user_id', user.id);
-    await supabase.from('cost_sheet_cells').delete().eq('user_id', user.id);
-    await supabase.from('cost_sheets').delete().eq('user_id', user.id);
-    await supabase.from('products').delete().eq('user_id', user.id);
-    await supabase.from('report_settings').delete().eq('user_id', user.id);
-    await supabase.from('journal_entries').delete().eq('user_id', user.id);
-    await supabase.from('accounts').delete().eq('user_id', user.id);
+    await del('shipments', { column: 'user_id', value: user.id });
+    await del('auxiliary_movement_details', { column: 'user_id', value: user.id });
+    await del('auxiliary_ledger', { column: 'user_id', value: user.id });
+    await del('auxiliary_ledger_definitions', { column: 'user_id', value: user.id });
+    await del('kardex_movements', { column: 'user_id', value: user.id });
+    await del('kardex_entries', { column: 'user_id', value: user.id });
+    await del('kardex_definitions', { column: 'user_id', value: user.id });
+    await del('quarterly_closures', { column: 'user_id', value: user.id });
+    await del('inventory_movements', { column: 'user_id', value: user.id });
+    await del('inventory_lots', { column: 'user_id', value: user.id });
+    await del('import_lots', { column: 'user_id', value: user.id });
+    await del('cost_sheet_cells', { column: 'user_id', value: user.id });
+    await del('cost_sheets', { column: 'user_id', value: user.id });
+    await del('products', { column: 'user_id', value: user.id });
+    await del('report_settings', { column: 'user_id', value: user.id });
+
+    // Delete journal_lines BEFORE journal_entries (journal_lines has FK to journal_entries and no user_id)
+    if (entryIds.length > 0) {
+      // Delete in batches to avoid URL length limits
+      const batchSize = 100;
+      for (let i = 0; i < entryIds.length; i += batchSize) {
+        const batch = entryIds.slice(i, i + batchSize);
+        const { error } = await supabase.from('journal_lines').delete().in('entry_id', batch);
+        if (error) throw new Error(`Error eliminando journal_lines: ${error.message}`);
+      }
+    }
+
+    await del('journal_entries', { column: 'user_id', value: user.id });
+    await del('accounts', { column: 'user_id', value: user.id });
 
     // Insert new data with correct user_id
     if (backup.accounts.length > 0) {
