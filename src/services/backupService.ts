@@ -115,33 +115,21 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
 
   try {
     // Delete existing data in reverse order of dependencies
-    // First: tables that reference journal_entries
+    await supabase.from('shipments').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_movement_details').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_ledger').delete().eq('user_id', user.id);
     await supabase.from('auxiliary_ledger_definitions').delete().eq('user_id', user.id);
     await supabase.from('kardex_movements').delete().eq('user_id', user.id);
     await supabase.from('kardex_entries').delete().eq('user_id', user.id);
     await supabase.from('kardex_definitions').delete().eq('user_id', user.id);
+    await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
     await supabase.from('inventory_movements').delete().eq('user_id', user.id);
     await supabase.from('inventory_lots').delete().eq('user_id', user.id);
     await supabase.from('import_lots').delete().eq('user_id', user.id);
     await supabase.from('cost_sheet_cells').delete().eq('user_id', user.id);
     await supabase.from('cost_sheets').delete().eq('user_id', user.id);
     await supabase.from('products').delete().eq('user_id', user.id);
-    await supabase.from('shipments').delete().eq('user_id', user.id);
-    await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
     await supabase.from('report_settings').delete().eq('user_id', user.id);
-    // journal_lines MUST be deleted before journal_entries (FK constraint)
-    const { error: linesDelErr } = await supabase.from('journal_lines').delete().neq('id', 0);
-    if (linesDelErr) {
-      // Fallback: delete via entry IDs
-      const { data: entryIds } = await supabase.from('journal_entries').select('id').eq('user_id', user.id);
-      if (entryIds) {
-        for (const e of entryIds) {
-          await supabase.from('journal_lines').delete().eq('entry_id', e.id);
-        }
-      }
-    }
     await supabase.from('journal_entries').delete().eq('user_id', user.id);
     await supabase.from('accounts').delete().eq('user_id', user.id);
 
