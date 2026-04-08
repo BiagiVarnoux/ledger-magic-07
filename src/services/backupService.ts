@@ -115,8 +115,8 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
 
   try {
     // Helper to delete and throw on error
-    async function del(table: string, filter: { column: string; value: string }) {
-      const { error } = await supabase.from(table).delete().eq(filter.column, filter.value);
+    async function del(table: string, column: string, value: string) {
+      const { error } = await (supabase.from(table as any).delete() as any).eq(column, value);
       if (error) throw new Error(`Error eliminando ${table}: ${error.message}`);
     }
 
