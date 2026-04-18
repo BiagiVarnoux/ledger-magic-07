@@ -15,7 +15,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
-  Plus, Trash2, Package, ChevronRight, ArrowRight,
+  Plus, Trash2, Package, ChevronRight, ArrowRight, ArrowLeft,
   CheckCircle, Plane, ShoppingCart, Warehouse,
   FileText, Calculator, AlertCircle, Eye, Pencil, GripVertical, Download
 } from 'lucide-react';
