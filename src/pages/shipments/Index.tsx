@@ -92,6 +92,7 @@ export default function ShipmentsPage() {
     costos: Array<{ product: ShipmentProduct; costo_unitario: number; precioBsTotal: number; detalle: any }>;
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
+  const [revertConfirm, setRevertConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
 
   const reloadShipments = useCallback(async () => {
     try {
