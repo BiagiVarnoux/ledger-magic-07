@@ -10,6 +10,7 @@ import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } f
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportCashFlowNIIFToPDF, CashFlowNIIFData } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { useReportSettings } from '@/hooks/useReportSettings';
@@ -21,6 +22,12 @@ interface CashFlowReportProps {
   onQuarterChange: (quarter: string) => void;
   availableQuarters: Quarter[];
   currentQuarter: Quarter;
+  periodType?: PeriodType;
+  onPeriodTypeChange?: (t: PeriodType) => void;
+  selectedYear?: number;
+  onYearChange?: (y: number) => void;
+  selectedMonth?: string;
+  onMonthChange?: (m: string) => void;
 }
 
 // Identify cash accounts (NIC 7 - Cash and cash equivalents)
@@ -338,7 +345,9 @@ export function CashFlowReport({
   const ratioCobertura = sharedData.totalLiabilities > 0 ? flujoOperacion / sharedData.totalLiabilities : null;
 
   const handleExportPDF = () => {
-    const periodLabel = periodType === 'quarterly' ? selectedQuarter : `Año ${selectedYear}`;
+    const periodLabel = periodType === 'monthly' ? selectedMonth
+      : periodType === 'quarterly' ? selectedQuarter
+      : `Año ${selectedYear}`;
     const pdfData: CashFlowNIIFData = {
       metodo,
       initialCashBalance: sharedData.initialCashBalance,
