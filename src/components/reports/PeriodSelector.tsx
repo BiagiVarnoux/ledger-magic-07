@@ -2,58 +2,41 @@
 import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Quarter, getAllQuartersFromStart } from '@/accounting/quarterly-utils';
 import { Label } from '@/components/ui/label';
+import { Quarter } from '@/accounting/quarterly-utils';
+import {
+  PeriodType,
+  YearPeriod,
+  MonthPeriod,
+  getAllMonthsFromStart,
+  getAvailableYears,
+  getYearPeriod,
+  isDateInYear,
+  parseMonthString,
+} from '@/accounting/period-utils';
 
-export type PeriodType = 'quarterly' | 'annual';
-
-export interface YearPeriod {
-  year: number;
-  label: string;
-  startDate: string;
-  endDate: string;
-}
+// Re-export so existing imports keep working
+export type { PeriodType, YearPeriod, MonthPeriod };
+export { getYearPeriod, isDateInYear, getAvailableYears };
 
 interface PeriodSelectorProps {
   periodType: PeriodType;
   onPeriodTypeChange: (type: PeriodType) => void;
+
   selectedQuarter: string;
   onQuarterChange: (quarter: string) => void;
+
   selectedYear: number;
   onYearChange: (year: number) => void;
+
+  // New: monthly support
+  selectedMonth?: string; // e.g. "Abril 2026"
+  onMonthChange?: (label: string) => void;
+
   availableQuarters: Quarter[];
   showPeriodInfo?: boolean;
   currentQuarter?: Quarter;
   currentYear?: YearPeriod;
-}
-
-export function getAvailableYears(startYear: number = 2020): YearPeriod[] {
-  const currentYear = new Date().getFullYear();
-  const years: YearPeriod[] = [];
-  
-  for (let year = currentYear; year >= startYear; year--) {
-    years.push({
-      year,
-      label: `Año ${year}`,
-      startDate: `${year}-01-01`,
-      endDate: `${year}-12-31`,
-    });
-  }
-  
-  return years;
-}
-
-export function getYearPeriod(year: number): YearPeriod {
-  return {
-    year,
-    label: `Año ${year}`,
-    startDate: `${year}-01-01`,
-    endDate: `${year}-12-31`,
-  };
-}
-
-export function isDateInYear(date: string, year: number): boolean {
-  return date >= `${year}-01-01` && date <= `${year}-12-31`;
 }
 
 export function PeriodSelector({
@@ -63,20 +46,29 @@ export function PeriodSelector({
   onQuarterChange,
   selectedYear,
   onYearChange,
+  selectedMonth,
+  onMonthChange,
   availableQuarters,
   showPeriodInfo = true,
   currentQuarter,
   currentYear,
 }: PeriodSelectorProps) {
-  const availableYears = getAvailableYears();
+  const availableYears = React.useMemo(() => getAvailableYears(), []);
+  const availableMonths = React.useMemo(() => getAllMonthsFromStart(2020), []);
+
+  const currentMonth = React.useMemo(() => {
+    if (periodType !== 'monthly' || !selectedMonth) return null;
+    try { return parseMonthString(selectedMonth); } catch { return null; }
+  }, [periodType, selectedMonth]);
 
   return (
     <div className="space-y-4">
       {/* Period Type Toggle */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <Label className="text-sm font-medium">Tipo de período:</Label>
         <Tabs value={periodType} onValueChange={(v) => onPeriodTypeChange(v as PeriodType)}>
-          <TabsList className="grid w-[280px] grid-cols-2">
+          <TabsList className="grid w-[360px] grid-cols-3">
+            <TabsTrigger value="monthly">Mensual</TabsTrigger>
             <TabsTrigger value="quarterly">Trimestral</TabsTrigger>
             <TabsTrigger value="annual">Anual</TabsTrigger>
           </TabsList>
@@ -84,8 +76,26 @@ export function PeriodSelector({
       </div>
 
       {/* Period Selector */}
-      <div className="flex items-center gap-4">
-        {periodType === 'quarterly' ? (
+      <div className="flex items-center gap-4 flex-wrap">
+        {periodType === 'monthly' && (
+          <Select
+            value={selectedMonth || ''}
+            onValueChange={(v) => onMonthChange?.(v)}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Seleccionar mes" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableMonths.map((m) => (
+                <SelectItem key={m.label} value={m.label}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {periodType === 'quarterly' && (
           <Select value={selectedQuarter} onValueChange={onQuarterChange}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Seleccionar trimestre" />
@@ -98,9 +108,11 @@ export function PeriodSelector({
               ))}
             </SelectContent>
           </Select>
-        ) : (
-          <Select 
-            value={selectedYear.toString()} 
+        )}
+
+        {periodType === 'annual' && (
+          <Select
+            value={selectedYear.toString()}
             onValueChange={(v) => onYearChange(parseInt(v))}
           >
             <SelectTrigger className="w-[180px]">
@@ -119,15 +131,14 @@ export function PeriodSelector({
         {/* Period Info */}
         {showPeriodInfo && (
           <div className="text-sm text-muted-foreground">
+            {periodType === 'monthly' && currentMonth && (
+              <span>Del {currentMonth.startDate} al {currentMonth.endDate}</span>
+            )}
             {periodType === 'quarterly' && currentQuarter && (
-              <span>
-                Del {currentQuarter.startDate} al {currentQuarter.endDate}
-              </span>
+              <span>Del {currentQuarter.startDate} al {currentQuarter.endDate}</span>
             )}
             {periodType === 'annual' && currentYear && (
-              <span>
-                Del {currentYear.startDate} al {currentYear.endDate}
-              </span>
+              <span>Del {currentYear.startDate} al {currentYear.endDate}</span>
             )}
           </div>
         )}
