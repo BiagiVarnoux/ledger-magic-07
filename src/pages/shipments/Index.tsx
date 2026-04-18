@@ -669,6 +669,39 @@ export default function ShipmentsPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          {/* Modal doble confirmación retroceder estado */}
+          <AlertDialog open={!!revertConfirm} onOpenChange={(open) => { if (!open) setRevertConfirm(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {revertConfirm?.step === 2
+                    ? '⚠️ Confirmación final'
+                    : '¿Retroceder estado del embarque?'}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {(() => {
+                    if (!revertConfirm) return null;
+                    const flow: ShipmentStatus[] = ['EN_COMPRA', 'FLETE_PAGADO', 'EN_ADUANA', 'EN_ALMACEN'];
+                    const idx = flow.indexOf(revertConfirm.shipment.status);
+                    const prev = idx > 0 ? flow[idx - 1] : null;
+                    const currentLabel = SHIPMENT_STATUS_LABELS[revertConfirm.shipment.status];
+                    const prevLabel = prev ? SHIPMENT_STATUS_LABELS[prev] : '';
+                    if (revertConfirm.step === 2) {
+                      return `Esta acción es reversible volviendo a avanzar, pero asegúrate de que es lo que quieres hacer. Se cambiará el estado de "${currentLabel}" a "${prevLabel}".`;
+                    }
+                    return `¿Seguro que quieres retroceder el estado de "${currentLabel}" a "${prevLabel}"? Los datos ingresados en este paso (ej. flete, aduana, medidas) se conservan, solo cambia el estado.`;
+                  })()}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmRevert}>
+                  {revertConfirm?.step === 2 ? 'Sí, retroceder' : 'Continuar'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
     </div>
   );
 }
