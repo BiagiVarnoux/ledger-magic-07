@@ -95,31 +95,52 @@ export function CashFlowReport({
   onQuarterChange,
   availableQuarters,
   currentQuarter,
+  periodType: periodTypeProp,
+  onPeriodTypeChange,
+  selectedYear: selectedYearProp,
+  onYearChange,
+  selectedMonth: selectedMonthProp,
+  onMonthChange,
 }: CashFlowReportProps) {
-  const [periodType, setPeriodType] = useState<PeriodType>('quarterly');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [periodTypeLocal, setPeriodTypeLocal] = useState<PeriodType>('quarterly');
+  const [selectedYearLocal, setSelectedYearLocal] = useState(new Date().getFullYear());
+  const [selectedMonthLocal, setSelectedMonthLocal] = useState('');
   const [metodo, setMetodo] = useState<CashFlowMethod>('directo');
   const { settings } = useReportSettings();
 
+  const periodType = periodTypeProp ?? periodTypeLocal;
+  const setPeriodType = onPeriodTypeChange ?? setPeriodTypeLocal;
+  const selectedYear = selectedYearProp ?? selectedYearLocal;
+  const setSelectedYear = onYearChange ?? setSelectedYearLocal;
+  const selectedMonth = selectedMonthProp ?? selectedMonthLocal;
+  const setSelectedMonth = onMonthChange ?? setSelectedMonthLocal;
+
   const currentYear = useMemo(() => getYearPeriod(selectedYear), [selectedYear]);
+  const currentMonth = useMemo<MonthPeriod | null>(() => {
+    if (periodType !== 'monthly' || !selectedMonth) return null;
+    try { return parseMonthString(selectedMonth); } catch { return null; }
+  }, [periodType, selectedMonth]);
 
   // Period helpers
   const isInPeriod = useMemo(() => {
     return (date: string) => {
+      if (periodType === 'monthly' && currentMonth) return isDateInMonth(date, currentMonth);
       if (periodType === 'quarterly') return isDateInQuarter(date, currentQuarter);
       return isDateInYear(date, selectedYear);
     };
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const periodStart = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) return currentMonth.startDate;
     if (periodType === 'quarterly') return currentQuarter.startDate;
     return `${selectedYear}-01-01`;
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const periodEnd = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) return currentMonth.endDate;
     if (periodType === 'quarterly') return currentQuarter.endDate;
     return `${selectedYear}-12-31`;
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   // === SHARED DATA ===
   const sharedData = useMemo(() => {
