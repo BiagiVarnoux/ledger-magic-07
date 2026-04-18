@@ -1001,6 +1001,12 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
                   <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive">
                     <Trash2 className="w-4 h-4" />
                   </Button>
+                  {!isClosed && s.status !== 'EN_COMPRA' && (
+                    <Button size="sm" variant="outline" onClick={onRevert} title="Volver al estado anterior">
+                      <ArrowLeft className="w-4 h-4 mr-1.5" />
+                      Retroceder
+                    </Button>
+                  )}
                   {!isClosed && (
                     s.status === 'EN_ALMACEN' ? (
                       <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={onClose}>
