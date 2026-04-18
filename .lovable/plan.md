@@ -1,43 +1,71 @@
 
 
-## Plan: Deshacer transiciones de estado en Embarques
+## Plan: Filtro mensual + Migas de pan con memoria de estado
 
-### Problema
-En el embarque **EMB-2026-002** se presionó por error "Registrar Flete", que avanzó el estado de `EN_COMPRA` → `FLETE_PAGADO`. Actualmente no hay forma de retroceder. Lo mismo aplica a las otras transiciones intermedias.
+### Parte 1 — Filtro por mes (además de trimestre/anual)
 
-### Buenas noticias
-Las transiciones entre `EN_COMPRA → FLETE_PAGADO → EN_ADUANA → EN_ALMACEN` **solo cambian el campo `status`** del embarque — no generan asientos contables, lotes ni movimientos de inventario. Esos efectos solo ocurren en el paso final "Cerrar Embarque". Por eso, deshacer es seguro y reversible siempre que el embarque **no esté en estado `CERRADO`**.
+**Alcance**: Libro Diario, Libros Auxiliares, Libro Mayor, y los 5 reportes (Balance Comprobación, Estado Resultados, Balance General, Flujo de Caja, Cambios Patrimonio).
 
-### Diseño de la funcionalidad
+**Diseño del selector unificado** (`PeriodSelector` ampliado):
+- Tabs con 3 opciones: **Mensual** | **Trimestral** | **Anual**.
+- Cuando se elige Mensual: dropdown con todos los meses desde 2020 hasta el mes actual, formato `Enero 2026`, `Febrero 2026`, etc. (más reciente primero).
+- Cuando se elige Trimestral: dropdown actual `Q1 2026`, `Q2 2026`...
+- Cuando se elige Anual: dropdown `Año 2026`...
+- Muestra siempre la franja "Del YYYY-MM-DD al YYYY-MM-DD" debajo.
 
-1. **Botón "Retroceder estado"** junto al botón de avanzar, en `ShipmentDetail` (`src/pages/shipments/Index.tsx`).
-   - Visible solo cuando `status` es `FLETE_PAGADO`, `EN_ADUANA` o `EN_ALMACEN` (no en `EN_COMPRA` ni `CERRADO`).
-   - Ícono `ArrowLeft` + tooltip "Volver al estado anterior".
-   - Estilo `outline` discreto para no competir visualmente con "Avanzar".
+**Nuevas utilidades** (`src/accounting/quarterly-utils.ts` o nuevo `period-utils.ts`):
+- `interface MonthPeriod { year, month, label, startDate, endDate }`.
+- `getCurrentMonth()`, `getAllMonthsFromStart(2020)`, `parseMonthString()`, `isDateInMonth()`.
+- `type PeriodType = 'monthly' | 'quarterly' | 'annual'`.
+- `isDateInPeriod(date, periodType, periodValue)` helper unificado.
 
-2. **Doble confirmación** mediante `AlertDialog` en dos pasos:
-   - **Paso 1**: "¿Seguro que quieres retroceder el estado de `[Estado actual]` a `[Estado anterior]`? Los datos ingresados en este paso (ej. flete, aduana) **se conservan**, solo cambia el estado."
-   - **Paso 2**: "Confirmación final: esta acción es reversible volviendo a avanzar, pero asegúrate de que es lo que quieres hacer."
-   - Solo después de confirmar ambos pasos se ejecuta el cambio.
+**Reemplazos por página**:
+- **Libro Diario** (`src/pages/journal/Index.tsx`): reemplazar el `Select` de trimestre por `PeriodSelector` con las 3 opciones; ajustar `filteredEntries` para usar `isDateInPeriod`.
+- **Libro Mayor** (`src/pages/ledger/Index.tsx`): igual; el "saldo inicial" se calcula como saldo acumulado hasta `period.startDate - 1`.
+- **Libros Auxiliares** (`src/pages/auxiliary-ledgers/Index.tsx`): cambiar `selectedQuarter: Quarter` a un objeto período genérico; toda la lógica de balance/cierre usa `period.startDate`/`period.endDate` (ya parametrizada así internamente).
+- **Reportes** (`src/pages/reports/Index.tsx`): elevar `periodType` + valor seleccionado al nivel de la página (compartido entre tabs); actualizar `TrialBalanceReport` para usar `PeriodSelector` (hoy usa `QuarterSelector`); los otros 3 ya usan `PeriodSelector`, solo añadirles la opción mensual.
 
-3. **Lógica `handleRevert(s)`**:
-   - Calcula el estado anterior con el mismo array `flow` invertido.
-   - Llama `persist({ ...s, status: prev })`.
-   - Toast: "Estado revertido a [Estado anterior]".
-   - **No** borra los datos ya capturados (flete, gastos de aduana, medidas) — quedan disponibles si el usuario decide volver a avanzar.
+### Parte 2 — Migas de pan con memoria de filtros
 
-4. **Bloqueo de seguridad**: si `status === 'CERRADO'`, el botón no aparece. Para revertir un embarque cerrado se debe usar el flujo de eliminación existente (que ya advierte sobre ajustes manuales en contabilidad).
+**Problema actual**: Al navegar entre páginas, los filtros (trimestre/mes seleccionado, cuenta del mayor, definición auxiliar, orden, etc.) se reinician.
 
-### Archivos a modificar
-- `src/pages/shipments/Index.tsx`:
-  - Nuevo estado `revertConfirm` con pasos 1/2.
-  - Función `handleRevert` y `confirmRevert`.
-  - Pasar `onRevert` a `ShipmentDetail`.
-  - Renderizar botón "Retroceder" + `AlertDialog` de doble confirmación.
+**Solución**: Persistir estado de filtros por página en `sessionStorage` + agregar componente `Breadcrumbs` en `AppShell`.
 
-### Resultado esperado para EMB-2026-002
-Una vez aplicado el cambio, el usuario podrá:
-1. Abrir EMB-2026-002 (estado `FLETE_PAGADO`).
-2. Hacer clic en "Retroceder estado" → confirmar paso 1 → confirmar paso 2.
-3. El embarque vuelve a `EN_COMPRA` sin pérdida de datos.
+**Diseño de migas de pan** (componente nuevo `src/components/layout/Breadcrumbs.tsx`):
+Aparece debajo del header en `AppShell`, contextual a la ruta. Ideas:
+
+1. **Ruta jerárquica básica**: `Inicio › Libro Diario › Q2 2026` (clickeable, regresa a la sección con el período mantenido).
+2. **Historial de navegación reciente** (últimas 3-5 páginas visitadas): chips clickeables tipo `Reportes › Libros Auxiliares › Libro Diario` mostrando dónde estuviste, con sus filtros guardados.
+3. **Indicador de período activo**: muestra el período seleccionado como chip removible al lado de la sección actual (`Libro Diario · Abril 2026 ✕`); clic en ✕ vuelve al período por defecto (mes/trimestre actual).
+4. **Botón "Volver al estado anterior"**: flecha `‹` que restaura los filtros previos de esa misma página (útil si exploras y quieres volver).
+5. **Acciones rápidas contextuales**: al final de la miga, mini-botones `Exportar` / `Filtros` según la página.
+
+**Persistencia de estado** (`src/hooks/usePersistedState.ts`):
+- Hook genérico `usePersistedState(key, defaultValue)` que sincroniza con `sessionStorage`.
+- Aplicar a: `selectedQuarter/Period` en cada página, `ledgerAccount`, `selectedDefinitionId`, `sortOrder`, `filters` del libro diario.
+- Clave por página: `journal:period`, `ledger:period`, `ledger:account`, `auxiliary:period`, `auxiliary:definition`, `reports:period`, `reports:tab`.
+
+**Historial de navegación** (`src/contexts/NavigationHistoryContext.tsx`):
+- Provider que escucha `useLocation` y mantiene array de las últimas 5 rutas visitadas + timestamp.
+- Expone `useNavigationHistory()` para que `Breadcrumbs` lo lea.
+
+### Archivos a crear / modificar
+
+**Crear**:
+- `src/accounting/period-utils.ts` (utilidades unificadas mes/trimestre/año + `isDateInPeriod`).
+- `src/components/layout/Breadcrumbs.tsx`.
+- `src/contexts/NavigationHistoryContext.tsx`.
+- `src/hooks/usePersistedState.ts`.
+
+**Modificar**:
+- `src/components/reports/PeriodSelector.tsx` (añadir opción mensual).
+- `src/components/reports/TrialBalanceReport.tsx` (migrar a `PeriodSelector`).
+- `src/components/reports/IncomeStatementReport.tsx`, `CashFlowReport.tsx`, `EquityChangesReport.tsx` (añadir mensual).
+- `src/pages/journal/Index.tsx`, `src/pages/ledger/Index.tsx`, `src/pages/auxiliary-ledgers/Index.tsx`, `src/pages/reports/Index.tsx` (usar `PeriodSelector` + `usePersistedState`).
+- `src/components/layout/AppShell.tsx` (incluir `Breadcrumbs` y envolver con `NavigationHistoryProvider`).
+- `src/App.tsx` (registrar el provider de historial).
+
+### Pregunta para confirmar antes de implementar
+
+Para las migas de pan, ¿prefieres que implemente **todas las ideas (1-5)** o solo un subconjunto? Mi recomendación mínima viable sería **1 + 3 + 4** (jerárquica con período activo + botón volver), dejando el historial de navegación reciente (idea 2) como mejora opcional posterior.
 
