@@ -15,7 +15,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
-  Plus, Trash2, Package, ChevronRight, ArrowRight,
+  Plus, Trash2, Package, ChevronRight, ArrowRight, ArrowLeft,
   CheckCircle, Plane, ShoppingCart, Warehouse,
   FileText, Calculator, AlertCircle, Eye, Pencil, GripVertical, Download
 } from 'lucide-react';
@@ -92,6 +92,7 @@ export default function ShipmentsPage() {
     costos: Array<{ product: ShipmentProduct; costo_unitario: number; precioBsTotal: number; detalle: any }>;
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
+  const [revertConfirm, setRevertConfirm] = useState<{ shipment: Shipment; step: 1 | 2 } | null>(null);
 
   const reloadShipments = useCallback(async () => {
     try {
@@ -219,6 +220,33 @@ export default function ShipmentsPage() {
     const next = flow[idx + 1];
     await persist({ ...s, status: next });
     toast.success(`Estado actualizado: ${SHIPMENT_STATUS_LABELS[next]}`);
+  }
+
+  // ── Retroceder estado (con doble confirmación) ──────────────────────────────
+  function handleRevertRequest(s: Shipment) {
+    if (s.status === 'EN_COMPRA' || s.status === 'CERRADO') return;
+    setRevertConfirm({ shipment: s, step: 1 });
+  }
+
+  async function confirmRevert() {
+    if (!revertConfirm) return;
+    const { shipment, step } = revertConfirm;
+    if (step === 1) {
+      setRevertConfirm({ shipment, step: 2 });
+      return;
+    }
+    const flow: ShipmentStatus[] = ['EN_COMPRA', 'FLETE_PAGADO', 'EN_ADUANA', 'EN_ALMACEN'];
+    const idx = flow.indexOf(shipment.status);
+    if (idx <= 0) { setRevertConfirm(null); return; }
+    const prev = flow[idx - 1];
+    try {
+      await persist({ ...shipment, status: prev });
+      toast.success(`Estado revertido a: ${SHIPMENT_STATUS_LABELS[prev]}`);
+    } catch (e: any) {
+      toast.error('Error al retroceder: ' + e.message);
+    } finally {
+      setRevertConfirm(null);
+    }
   }
 
   // ── Cerrar embarque ──────────────────────────────────────────────────────────
@@ -574,6 +602,7 @@ export default function ShipmentsPage() {
               onSave={persist}
               onDelete={() => handleDeleteRequest(selected)}
               onAdvance={() => handleAdvance(selected)}
+              onRevert={() => handleRevertRequest(selected)}
               onClose={() => handleClose(selected)}
             />
           )}
@@ -637,6 +666,39 @@ export default function ShipmentsPage() {
                     {deleteConfirm?.step === 2 ? 'Eliminar definitivamente' : 'Eliminar'}
                   </AlertDialogAction>
                 )}
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Modal doble confirmación retroceder estado */}
+          <AlertDialog open={!!revertConfirm} onOpenChange={(open) => { if (!open) setRevertConfirm(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {revertConfirm?.step === 2
+                    ? '⚠️ Confirmación final'
+                    : '¿Retroceder estado del embarque?'}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {(() => {
+                    if (!revertConfirm) return null;
+                    const flow: ShipmentStatus[] = ['EN_COMPRA', 'FLETE_PAGADO', 'EN_ADUANA', 'EN_ALMACEN'];
+                    const idx = flow.indexOf(revertConfirm.shipment.status);
+                    const prev = idx > 0 ? flow[idx - 1] : null;
+                    const currentLabel = SHIPMENT_STATUS_LABELS[revertConfirm.shipment.status];
+                    const prevLabel = prev ? SHIPMENT_STATUS_LABELS[prev] : '';
+                    if (revertConfirm.step === 2) {
+                      return `Esta acción es reversible volviendo a avanzar, pero asegúrate de que es lo que quieres hacer. Se cambiará el estado de "${currentLabel}" a "${prevLabel}".`;
+                    }
+                    return `¿Seguro que quieres retroceder el estado de "${currentLabel}" a "${prevLabel}"? Los datos ingresados en este paso (ej. flete, aduana, medidas) se conservan, solo cambia el estado.`;
+                  })()}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmRevert}>
+                  {revertConfirm?.step === 2 ? 'Sí, retroceder' : 'Continuar'}
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -889,12 +951,13 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
 
 // ─── Detalle del embarque ──────────────────────────────────────────────────────
 
-function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, onClose }: {
+function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, onRevert, onClose }: {
   shipment: Shipment;
   isReadOnly: boolean;
   onSave: (s: Shipment) => void;
   onDelete: () => void;
   onAdvance: () => void;
+  onRevert: () => void;
   onClose: () => void;
 }) {
   const isClosed = s.status === 'CERRADO';
@@ -971,6 +1034,12 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
                   <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive">
                     <Trash2 className="w-4 h-4" />
                   </Button>
+                  {!isClosed && s.status !== 'EN_COMPRA' && (
+                    <Button size="sm" variant="outline" onClick={onRevert} title="Volver al estado anterior">
+                      <ArrowLeft className="w-4 h-4 mr-1.5" />
+                      Retroceder
+                    </Button>
+                  )}
                   {!isClosed && (
                     s.status === 'EN_ALMACEN' ? (
                       <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={onClose}>
