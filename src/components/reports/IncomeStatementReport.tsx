@@ -360,7 +360,9 @@ export function IncomeStatementReport({
   const hasPreviousData = previous.totalIngresosOperativos !== 0 || previous.totalCostoVentas !== 0 || previous.totalGastosOperativos !== 0;
 
   const handleExportPDF = () => {
-    const periodLabel = periodType === 'quarterly' ? selectedQuarter : `Año ${selectedYear}`;
+    const periodLabel = periodType === 'monthly' ? selectedMonth
+      : periodType === 'quarterly' ? selectedQuarter
+      : `Año ${selectedYear}`;
     exportIncomeStatementNIIFToPDF(current, periodLabel, hasPreviousData ? previous : undefined);
   };
 
