@@ -918,12 +918,13 @@ function NewShipmentForm({ draft, onChange, onCreate, onCancel }: {
 
 // ─── Detalle del embarque ──────────────────────────────────────────────────────
 
-function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, onClose }: {
+function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, onRevert, onClose }: {
   shipment: Shipment;
   isReadOnly: boolean;
   onSave: (s: Shipment) => void;
   onDelete: () => void;
   onAdvance: () => void;
+  onRevert: () => void;
   onClose: () => void;
 }) {
   const isClosed = s.status === 'CERRADO';
