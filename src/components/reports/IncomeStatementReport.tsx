@@ -460,6 +460,8 @@ export function IncomeStatementReport({
           onQuarterChange={onQuarterChange}
           selectedYear={selectedYear}
           onYearChange={setSelectedYear}
+          selectedMonth={selectedMonth}
+          onMonthChange={setSelectedMonth}
           availableQuarters={availableQuarters}
           currentQuarter={currentQuarter}
           currentYear={currentYear}
@@ -683,9 +685,11 @@ export function IncomeStatementReport({
 
         {hasPreviousData && (
           <div className="text-xs text-muted-foreground mt-2">
-            📊 Comparativo: {periodType === 'quarterly'
-              ? `${selectedQuarter} vs ${getPreviousQuarter(currentQuarter.year, currentQuarter.quarter).label}`
-              : `${selectedYear} vs ${selectedYear - 1}`
+            📊 Comparativo: {periodType === 'monthly'
+              ? `${selectedMonth} vs mes anterior`
+              : periodType === 'quarterly'
+                ? `${selectedQuarter} vs ${getPreviousQuarter(currentQuarter.year, currentQuarter.quarter).label}`
+                : `${selectedYear} vs ${selectedYear - 1}`
             }
           </div>
         )}
