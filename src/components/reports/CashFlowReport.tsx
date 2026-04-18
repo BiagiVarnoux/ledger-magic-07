@@ -552,6 +552,8 @@ export function CashFlowReport({
           onQuarterChange={onQuarterChange}
           selectedYear={selectedYear}
           onYearChange={setSelectedYear}
+          selectedMonth={selectedMonth}
+          onMonthChange={setSelectedMonth}
           availableQuarters={availableQuarters}
           currentQuarter={currentQuarter}
           currentYear={currentYear}
