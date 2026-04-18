@@ -602,6 +602,7 @@ export default function ShipmentsPage() {
               onSave={persist}
               onDelete={() => handleDeleteRequest(selected)}
               onAdvance={() => handleAdvance(selected)}
+              onRevert={() => handleRevertRequest(selected)}
               onClose={() => handleClose(selected)}
             />
           )}
