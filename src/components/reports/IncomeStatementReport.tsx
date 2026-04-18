@@ -8,6 +8,7 @@ import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } f
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter, getPreviousQuarter, parseQuarterString } from '@/accounting/quarterly-utils';
+import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportIncomeStatementNIIFToPDF } from '@/services/pdfService';
 import { useReportSettings } from '@/hooks/useReportSettings';
 
@@ -18,6 +19,12 @@ interface IncomeStatementReportProps {
   onQuarterChange: (quarter: string) => void;
   availableQuarters: Quarter[];
   currentQuarter: Quarter;
+  periodType?: PeriodType;
+  onPeriodTypeChange?: (t: PeriodType) => void;
+  selectedYear?: number;
+  onYearChange?: (y: number) => void;
+  selectedMonth?: string;
+  onMonthChange?: (m: string) => void;
 }
 
 interface AccountDetail {
@@ -289,27 +296,56 @@ export function IncomeStatementReport({
   onQuarterChange,
   availableQuarters,
   currentQuarter,
+  periodType: periodTypeProp,
+  onPeriodTypeChange,
+  selectedYear: selectedYearProp,
+  onYearChange,
+  selectedMonth: selectedMonthProp,
+  onMonthChange,
 }: IncomeStatementReportProps) {
   const { settings } = useReportSettings();
-  const [periodType, setPeriodType] = useState<PeriodType>('quarterly');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [periodTypeLocal, setPeriodTypeLocal] = useState<PeriodType>('quarterly');
+  const [selectedYearLocal, setSelectedYearLocal] = useState(new Date().getFullYear());
+  const [selectedMonthLocal, setSelectedMonthLocal] = useState('');
+
+  const periodType = periodTypeProp ?? periodTypeLocal;
+  const setPeriodType = onPeriodTypeChange ?? setPeriodTypeLocal;
+  const selectedYear = selectedYearProp ?? selectedYearLocal;
+  const setSelectedYear = onYearChange ?? setSelectedYearLocal;
+  const selectedMonth = selectedMonthProp ?? selectedMonthLocal;
+  const setSelectedMonth = onMonthChange ?? setSelectedMonthLocal;
 
   const currentYear = useMemo(() => getYearPeriod(selectedYear), [selectedYear]);
+  const currentMonth = useMemo<MonthPeriod | null>(() => {
+    if (periodType !== 'monthly' || !selectedMonth) return null;
+    try { return parseMonthString(selectedMonth); } catch { return null; }
+  }, [periodType, selectedMonth]);
 
   const isInPeriod = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) {
+      return (date: string) => isDateInMonth(date, currentMonth);
+    }
     if (periodType === 'quarterly') {
       return (date: string) => isDateInQuarter(date, currentQuarter);
     }
     return (date: string) => isDateInYear(date, selectedYear);
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const isInPreviousPeriod = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) {
+      // Previous month
+      let py = currentMonth.year;
+      let pm = currentMonth.month - 1;
+      if (pm === 0) { pm = 12; py -= 1; }
+      const prev = parseMonthString(`${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][pm-1]} ${py}`);
+      return (date: string) => isDateInMonth(date, prev);
+    }
     if (periodType === 'quarterly') {
       const prev = getPreviousQuarter(currentQuarter.year, currentQuarter.quarter);
       return (date: string) => isDateInQuarter(date, prev);
     }
     return (date: string) => isDateInYear(date, selectedYear - 1);
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const current = useMemo(
     () => computeIncomeStatement(accounts, entries, isInPeriod, settings),
