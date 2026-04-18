@@ -222,6 +222,33 @@ export default function ShipmentsPage() {
     toast.success(`Estado actualizado: ${SHIPMENT_STATUS_LABELS[next]}`);
   }
 
+  // ── Retroceder estado (con doble confirmación) ──────────────────────────────
+  function handleRevertRequest(s: Shipment) {
+    if (s.status === 'EN_COMPRA' || s.status === 'CERRADO') return;
+    setRevertConfirm({ shipment: s, step: 1 });
+  }
+
+  async function confirmRevert() {
+    if (!revertConfirm) return;
+    const { shipment, step } = revertConfirm;
+    if (step === 1) {
+      setRevertConfirm({ shipment, step: 2 });
+      return;
+    }
+    const flow: ShipmentStatus[] = ['EN_COMPRA', 'FLETE_PAGADO', 'EN_ADUANA', 'EN_ALMACEN'];
+    const idx = flow.indexOf(shipment.status);
+    if (idx <= 0) { setRevertConfirm(null); return; }
+    const prev = flow[idx - 1];
+    try {
+      await persist({ ...shipment, status: prev });
+      toast.success(`Estado revertido a: ${SHIPMENT_STATUS_LABELS[prev]}`);
+    } catch (e: any) {
+      toast.error('Error al retroceder: ' + e.message);
+    } finally {
+      setRevertConfirm(null);
+    }
+  }
+
   // ── Cerrar embarque ──────────────────────────────────────────────────────────
   function handleClose(s: Shipment) {
     const metodo = s.metodo_peso ?? 'automatico';
