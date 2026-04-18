@@ -1,9 +1,11 @@
 // src/pages/reports/Index.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { todayISO } from '@/accounting/utils';
 import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
+import { PeriodType, getCurrentMonth } from '@/accounting/period-utils';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 // Report components
 import { TrialBalanceReport } from '@/components/reports/TrialBalanceReport';
@@ -12,20 +14,48 @@ import { BalanceSheetReport } from '@/components/reports/BalanceSheetReport';
 import { CashFlowReport } from '@/components/reports/CashFlowReport';
 import { EquityChangesReport } from '@/components/reports/EquityChangesReport';
 
+interface PersistedReportPeriod {
+  periodType: PeriodType;
+  quarter: string;
+  year: number;
+  month: string;
+}
+
 export default function ReportsPage() {
   const { accounts, entries } = useAccounting();
-  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
-  const [bsDate, setBsDate] = useState<string>(todayISO());
-  
-  // Available quarters for selection
+
+  const [period, setPeriod] = usePersistedState<PersistedReportPeriod>('reports:period', {
+    periodType: 'quarterly',
+    quarter: getCurrentQuarter().label,
+    year: new Date().getFullYear(),
+    month: getCurrentMonth().label,
+  });
+  const [activeTab, setActiveTab] = usePersistedState<string>('reports:tab', 'trial-balance');
+  const [bsDate, setBsDate] = usePersistedState<string>('reports:bsDate', todayISO());
+
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
-  const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
+  const currentQuarter = useMemo(() => parseQuarterString(period.quarter), [period.quarter]);
+
+  const sharedProps = {
+    accounts,
+    entries,
+    selectedQuarter: period.quarter,
+    onQuarterChange: (q: string) => setPeriod((p) => ({ ...p, quarter: q })),
+    selectedYear: period.year,
+    onYearChange: (y: number) => setPeriod((p) => ({ ...p, year: y })),
+    selectedMonth: period.month,
+    onMonthChange: (m: string) => setPeriod((p) => ({ ...p, month: m })),
+    periodType: period.periodType,
+    onPeriodTypeChange: (t: PeriodType) => setPeriod((p) => ({ ...p, periodType: t })),
+    availableQuarters,
+    currentQuarter,
+  };
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Reportes Financieros</h1>
 
-      <Tabs defaultValue="trial-balance" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full max-w-4xl grid-cols-5">
           <TabsTrigger value="trial-balance">Balance Comprobación</TabsTrigger>
           <TabsTrigger value="income-statement">Estado Resultados</TabsTrigger>
@@ -34,31 +64,14 @@ export default function ReportsPage() {
           <TabsTrigger value="equity-changes">Cambios Patrimonio</TabsTrigger>
         </TabsList>
 
-        {/* Balance de Comprobación */}
         <TabsContent value="trial-balance" className="mt-6">
-          <TrialBalanceReport
-            accounts={accounts}
-            entries={entries}
-            selectedQuarter={selectedQuarter}
-            onQuarterChange={setSelectedQuarter}
-            availableQuarters={availableQuarters}
-            currentQuarter={currentQuarter}
-          />
+          <TrialBalanceReport {...sharedProps} />
         </TabsContent>
 
-        {/* Estado de Resultados */}
         <TabsContent value="income-statement" className="mt-6">
-          <IncomeStatementReport
-            accounts={accounts}
-            entries={entries}
-            selectedQuarter={selectedQuarter}
-            onQuarterChange={setSelectedQuarter}
-            availableQuarters={availableQuarters}
-            currentQuarter={currentQuarter}
-          />
+          <IncomeStatementReport {...sharedProps} />
         </TabsContent>
 
-        {/* Balance General */}
         <TabsContent value="balance-sheet" className="mt-6">
           <BalanceSheetReport
             accounts={accounts}
@@ -68,28 +81,12 @@ export default function ReportsPage() {
           />
         </TabsContent>
 
-        {/* Flujo de Caja */}
         <TabsContent value="cash-flow" className="mt-6">
-          <CashFlowReport
-            accounts={accounts}
-            entries={entries}
-            selectedQuarter={selectedQuarter}
-            onQuarterChange={setSelectedQuarter}
-            availableQuarters={availableQuarters}
-            currentQuarter={currentQuarter}
-          />
+          <CashFlowReport {...sharedProps} />
         </TabsContent>
 
-        {/* Estado de Cambios en el Patrimonio */}
         <TabsContent value="equity-changes" className="mt-6">
-          <EquityChangesReport
-            accounts={accounts}
-            entries={entries}
-            selectedQuarter={selectedQuarter}
-            onQuarterChange={setSelectedQuarter}
-            availableQuarters={availableQuarters}
-            currentQuarter={currentQuarter}
-          />
+          <EquityChangesReport {...sharedProps} />
         </TabsContent>
       </Tabs>
     </div>

@@ -10,6 +10,7 @@ import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear, YearPeriod } f
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportCashFlowNIIFToPDF, CashFlowNIIFData } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { useReportSettings } from '@/hooks/useReportSettings';
@@ -21,6 +22,12 @@ interface CashFlowReportProps {
   onQuarterChange: (quarter: string) => void;
   availableQuarters: Quarter[];
   currentQuarter: Quarter;
+  periodType?: PeriodType;
+  onPeriodTypeChange?: (t: PeriodType) => void;
+  selectedYear?: number;
+  onYearChange?: (y: number) => void;
+  selectedMonth?: string;
+  onMonthChange?: (m: string) => void;
 }
 
 // Identify cash accounts (NIC 7 - Cash and cash equivalents)
@@ -88,31 +95,52 @@ export function CashFlowReport({
   onQuarterChange,
   availableQuarters,
   currentQuarter,
+  periodType: periodTypeProp,
+  onPeriodTypeChange,
+  selectedYear: selectedYearProp,
+  onYearChange,
+  selectedMonth: selectedMonthProp,
+  onMonthChange,
 }: CashFlowReportProps) {
-  const [periodType, setPeriodType] = useState<PeriodType>('quarterly');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [periodTypeLocal, setPeriodTypeLocal] = useState<PeriodType>('quarterly');
+  const [selectedYearLocal, setSelectedYearLocal] = useState(new Date().getFullYear());
+  const [selectedMonthLocal, setSelectedMonthLocal] = useState('');
   const [metodo, setMetodo] = useState<CashFlowMethod>('directo');
   const { settings } = useReportSettings();
 
+  const periodType = periodTypeProp ?? periodTypeLocal;
+  const setPeriodType = onPeriodTypeChange ?? setPeriodTypeLocal;
+  const selectedYear = selectedYearProp ?? selectedYearLocal;
+  const setSelectedYear = onYearChange ?? setSelectedYearLocal;
+  const selectedMonth = selectedMonthProp ?? selectedMonthLocal;
+  const setSelectedMonth = onMonthChange ?? setSelectedMonthLocal;
+
   const currentYear = useMemo(() => getYearPeriod(selectedYear), [selectedYear]);
+  const currentMonth = useMemo<MonthPeriod | null>(() => {
+    if (periodType !== 'monthly' || !selectedMonth) return null;
+    try { return parseMonthString(selectedMonth); } catch { return null; }
+  }, [periodType, selectedMonth]);
 
   // Period helpers
   const isInPeriod = useMemo(() => {
     return (date: string) => {
+      if (periodType === 'monthly' && currentMonth) return isDateInMonth(date, currentMonth);
       if (periodType === 'quarterly') return isDateInQuarter(date, currentQuarter);
       return isDateInYear(date, selectedYear);
     };
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const periodStart = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) return currentMonth.startDate;
     if (periodType === 'quarterly') return currentQuarter.startDate;
     return `${selectedYear}-01-01`;
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const periodEnd = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) return currentMonth.endDate;
     if (periodType === 'quarterly') return currentQuarter.endDate;
     return `${selectedYear}-12-31`;
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   // === SHARED DATA ===
   const sharedData = useMemo(() => {
@@ -338,7 +366,9 @@ export function CashFlowReport({
   const ratioCobertura = sharedData.totalLiabilities > 0 ? flujoOperacion / sharedData.totalLiabilities : null;
 
   const handleExportPDF = () => {
-    const periodLabel = periodType === 'quarterly' ? selectedQuarter : `Año ${selectedYear}`;
+    const periodLabel = periodType === 'monthly' ? selectedMonth
+      : periodType === 'quarterly' ? selectedQuarter
+      : `Año ${selectedYear}`;
     const pdfData: CashFlowNIIFData = {
       metodo,
       initialCashBalance: sharedData.initialCashBalance,
@@ -522,6 +552,8 @@ export function CashFlowReport({
           onQuarterChange={onQuarterChange}
           selectedYear={selectedYear}
           onYearChange={setSelectedYear}
+          selectedMonth={selectedMonth}
+          onMonthChange={setSelectedMonth}
           availableQuarters={availableQuarters}
           currentQuarter={currentQuarter}
           currentYear={currentYear}

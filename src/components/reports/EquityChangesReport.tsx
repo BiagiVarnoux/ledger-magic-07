@@ -8,6 +8,7 @@ import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear } from './Perio
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportEquityChangesToPDF } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { useReportSettings } from '@/hooks/useReportSettings';
@@ -19,6 +20,12 @@ interface EquityChangesReportProps {
   onQuarterChange: (quarter: string) => void;
   availableQuarters: Quarter[];
   currentQuarter: Quarter;
+  periodType?: PeriodType;
+  onPeriodTypeChange?: (t: PeriodType) => void;
+  selectedYear?: number;
+  onYearChange?: (y: number) => void;
+  selectedMonth?: string;
+  onMonthChange?: (m: string) => void;
 }
 
 export interface EquityColumn {
@@ -194,32 +201,53 @@ export function EquityChangesReport({
   onQuarterChange,
   availableQuarters,
   currentQuarter,
+  periodType: periodTypeProp,
+  onPeriodTypeChange,
+  selectedYear: selectedYearProp,
+  onYearChange,
+  selectedMonth: selectedMonthProp,
+  onMonthChange,
 }: EquityChangesReportProps) {
-  const [periodType, setPeriodType] = useState<PeriodType>('annual');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [periodTypeLocal, setPeriodTypeLocal] = useState<PeriodType>('annual');
+  const [selectedYearLocal, setSelectedYearLocal] = useState(new Date().getFullYear());
+  const [selectedMonthLocal, setSelectedMonthLocal] = useState('');
   const { settings } = useReportSettings();
 
+  const periodType = periodTypeProp ?? periodTypeLocal;
+  const setPeriodType = onPeriodTypeChange ?? setPeriodTypeLocal;
+  const selectedYear = selectedYearProp ?? selectedYearLocal;
+  const setSelectedYear = onYearChange ?? setSelectedYearLocal;
+  const selectedMonth = selectedMonthProp ?? selectedMonthLocal;
+  const setSelectedMonth = onMonthChange ?? setSelectedMonthLocal;
+
   const currentYear = useMemo(() => getYearPeriod(selectedYear), [selectedYear]);
+  const currentMonth = useMemo<MonthPeriod | null>(() => {
+    if (periodType !== 'monthly' || !selectedMonth) return null;
+    try { return parseMonthString(selectedMonth); } catch { return null; }
+  }, [periodType, selectedMonth]);
 
   const isInPeriod = useMemo(() => {
     return (date: string) => {
+      if (periodType === 'monthly' && currentMonth) return isDateInMonth(date, currentMonth);
       if (periodType === 'quarterly') return isDateInQuarter(date, currentQuarter);
       return isDateInYear(date, selectedYear);
     };
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const periodStart = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) return currentMonth.startDate;
     if (periodType === 'quarterly') return currentQuarter.startDate;
     return `${selectedYear}-01-01`;
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
   const periodEnd = useMemo(() => {
+    if (periodType === 'monthly' && currentMonth) return currentMonth.endDate;
     if (periodType === 'quarterly') return currentQuarter.endDate;
     return `${selectedYear}-12-31`;
-  }, [periodType, currentQuarter, selectedYear]);
+  }, [periodType, currentMonth, currentQuarter, selectedYear]);
 
-  const periodLabel = periodType === 'quarterly'
-    ? selectedQuarter
+  const periodLabel = periodType === 'monthly' ? selectedMonth
+    : periodType === 'quarterly' ? selectedQuarter
     : `Año ${selectedYear}`;
 
   // Compute net income for the period
@@ -285,6 +313,8 @@ export function EquityChangesReport({
           onQuarterChange={onQuarterChange}
           selectedYear={selectedYear}
           onYearChange={setSelectedYear}
+          selectedMonth={selectedMonth}
+          onMonthChange={setSelectedMonth}
           availableQuarters={availableQuarters}
           currentQuarter={currentQuarter}
           currentYear={currentYear}
