@@ -8,6 +8,7 @@ import { PeriodSelector, PeriodType, getYearPeriod, isDateInYear } from './Perio
 import { Account, JournalEntry } from '@/accounting/types';
 import { fmt, round2 } from '@/accounting/utils';
 import { Quarter, isDateInQuarter } from '@/accounting/quarterly-utils';
+import { parseMonthString, isDateInMonth, MonthPeriod } from '@/accounting/period-utils';
 import { exportEquityChangesToPDF } from '@/services/pdfService';
 import { computeIncomeStatement } from './IncomeStatementReport';
 import { useReportSettings } from '@/hooks/useReportSettings';
@@ -19,6 +20,12 @@ interface EquityChangesReportProps {
   onQuarterChange: (quarter: string) => void;
   availableQuarters: Quarter[];
   currentQuarter: Quarter;
+  periodType?: PeriodType;
+  onPeriodTypeChange?: (t: PeriodType) => void;
+  selectedYear?: number;
+  onYearChange?: (y: number) => void;
+  selectedMonth?: string;
+  onMonthChange?: (m: string) => void;
 }
 
 export interface EquityColumn {
