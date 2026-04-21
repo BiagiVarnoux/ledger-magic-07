@@ -36,7 +36,13 @@ function readPeriodLabel(routeKey: string): string | null {
     const parsed = JSON.parse(raw);
     if (typeof parsed === 'string') return parsed;
     if (parsed && typeof parsed === 'object') {
-      // shape { type, value }
+      // Reports shape: { periodType, quarter, year, month }
+      if ('periodType' in parsed) {
+        if (parsed.periodType === 'monthly') return String(parsed.month);
+        if (parsed.periodType === 'annual') return `Año ${parsed.year}`;
+        return String(parsed.quarter);
+      }
+      // Generic { type, value } shape
       if ('value' in parsed) return String(parsed.value);
       if ('label' in parsed) return String(parsed.label);
     }
