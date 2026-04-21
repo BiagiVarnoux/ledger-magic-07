@@ -477,7 +477,7 @@ export default function JournalPage() {
         accounts={accounts}
         isReadOnly={isReadOnly}
         sortOrder={sortOrder}
-        selectedQuarter={selectedQuarter}
+        selectedQuarter={resolvedPeriod.label}
         onSortOrderChange={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
         onEdit={form.editEntry}
         onVoid={voidEntry}
