@@ -18,7 +18,15 @@ import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/type
 import { fmt, todayISO, toDecimal, round2 } from '@/accounting/utils';
 import { AuxiliaryDefinitionsModal } from '@/components/auxiliary-ledger/AuxiliaryDefinitionsModal';
 import { KardexCPP } from '@/components/kardex/KardexCPP';
-import { Quarter, getCurrentQuarter, getAllQuartersFromStart } from '@/accounting/quarterly-utils';
+import { Quarter, getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
+import {
+  PeriodType,
+  getCurrentMonth,
+  resolvePeriod,
+  ResolvedPeriod,
+} from '@/accounting/period-utils';
+import { PeriodSelector } from '@/components/reports/PeriodSelector';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 export default function AuxiliaryLedgersPage() {
   const { 
@@ -30,8 +38,16 @@ export default function AuxiliaryLedgersPage() {
     entries: journalEntries 
   } = useAccounting();
   const { isReadOnly } = useUserAccess();
-  const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>('');
-  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getCurrentQuarter());
+  const [selectedDefinitionId, setSelectedDefinitionId] = usePersistedState<string>('auxiliary:definition', '');
+  const [period, setPeriod] = usePersistedState<{ periodType: PeriodType; quarter: string; year: number; month: string }>(
+    'auxiliary:period',
+    {
+      periodType: 'quarterly',
+      quarter: getCurrentQuarter().label,
+      year: new Date().getFullYear(),
+      month: getCurrentMonth().label,
+    }
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDefinitionsModalOpen, setIsDefinitionsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AuxiliaryLedgerEntry | null>(null);
