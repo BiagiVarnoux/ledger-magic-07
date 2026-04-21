@@ -72,6 +72,15 @@ export default function AuxiliaryLedgersPage() {
   const selectedDefinition = auxiliaryDefinitions.find(d => d.id === selectedDefinitionId);
   const selectedAccountId = selectedDefinition?.account_id || '';
 
+  // Resolved period (works for monthly/quarterly/annual). Keeps the same shape used everywhere as `selectedQuarter`.
+  const selectedQuarter: ResolvedPeriod = useMemo(() => {
+    const value = period.periodType === 'monthly' ? period.month
+      : period.periodType === 'quarterly' ? period.quarter
+      : String(period.year);
+    return resolvePeriod({ type: period.periodType, value });
+  }, [period]);
+  const currentQuarterObj = useMemo(() => parseQuarterString(period.quarter), [period.quarter]);
+
   // Cargar TODOS los movimientos cuando cambia la definición seleccionada
   useEffect(() => {
     const loadAllMovements = async () => {
