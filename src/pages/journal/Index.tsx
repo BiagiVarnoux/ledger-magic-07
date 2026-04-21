@@ -2,8 +2,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download, FileText, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -12,8 +10,9 @@ import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { JournalEntry } from '@/accounting/types';
 import { generateEntryId, generateChronologicalEntryId } from '@/accounting/utils';
-import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter } from '@/accounting/quarterly-utils';
-import { PeriodType, getCurrentMonth, parseMonthString, isDateInMonth, isDateInYear } from '@/accounting/period-utils';
+import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
+import { PeriodType, getCurrentMonth, isDateInPeriod, resolvePeriod } from '@/accounting/period-utils';
+import { PeriodSelector } from '@/components/reports/PeriodSelector';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { supabase } from '@/integrations/supabase/client';
 import { getCurrentKardexState } from '@/accounting/kardex-utils';
@@ -52,7 +51,15 @@ export default function JournalPage() {
   const { isReadOnly } = useUserAccess();
   
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
+  const [period, setPeriod] = usePersistedState<{ periodType: PeriodType; quarter: string; year: number; month: string }>(
+    'journal:period',
+    {
+      periodType: 'quarterly',
+      quarter: getCurrentQuarter().label,
+      year: new Date().getFullYear(),
+      month: getCurrentMonth().label,
+    }
+  );
   const [showLineMemos, setShowLineMemos] = useState<boolean>(() => {
     return localStorage.getItem('journal-show-line-memos') === 'true';
   });
@@ -112,10 +119,16 @@ export default function JournalPage() {
     }
   });
 
-  // Filter entries by selected quarter and filters
-  const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
+  // Filter entries by selected period and filters
+  const currentQuarter = useMemo(() => parseQuarterString(period.quarter), [period.quarter]);
+  const resolvedPeriod = useMemo(() => {
+    const value = period.periodType === 'monthly' ? period.month
+      : period.periodType === 'quarterly' ? period.quarter
+      : String(period.year);
+    return resolvePeriod({ type: period.periodType, value });
+  }, [period]);
   const filteredEntries = useMemo(() => {
-    let result = entries.filter(entry => isDateInQuarter(entry.date, currentQuarter));
+    let result = entries.filter(entry => isDateInPeriod(entry.date, resolvedPeriod));
     
     if (filters.searchText) {
       const search = filters.searchText.toLowerCase();
@@ -148,7 +161,7 @@ export default function JournalPage() {
     }
     
     return result;
-  }, [entries, currentQuarter, filters]);
+  }, [entries, resolvedPeriod, filters]);
 
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
 
@@ -414,21 +427,18 @@ export default function JournalPage() {
 
       <Card className="shadow-sm">
         <CardHeader>
-          <div className="flex items-center gap-4">
-            <Label htmlFor="quarter-select">Trimestre:</Label>
-            <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Seleccionar trimestre" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableQuarters.map((quarter) => (
-                  <SelectItem key={`${quarter.year}-Q${quarter.quarter}`} value={quarter.label}>
-                    {quarter.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <PeriodSelector
+            periodType={period.periodType}
+            onPeriodTypeChange={(t) => setPeriod((p) => ({ ...p, periodType: t }))}
+            selectedQuarter={period.quarter}
+            onQuarterChange={(q) => setPeriod((p) => ({ ...p, quarter: q }))}
+            selectedYear={period.year}
+            onYearChange={(y) => setPeriod((p) => ({ ...p, year: y }))}
+            selectedMonth={period.month}
+            onMonthChange={(m) => setPeriod((p) => ({ ...p, month: m }))}
+            availableQuarters={availableQuarters}
+            currentQuarter={currentQuarter}
+          />
         </CardHeader>
       </Card>
 
