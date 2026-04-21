@@ -162,16 +162,9 @@ export default function AuxiliaryLedgersPage() {
         }
       } else {
         // Cliente cerrado
-        const closureQuarter = getQuarterForDate(entry.closed_date);
-        
-        if (!closureQuarter) {
-          // Fecha inválida, tratar como activo
-          active.push(enrichedEntry);
-          return;
-        }
-
-        const isClosedInCurrentQuarter = 
-          selectedQuarter.label === closureQuarter.label;
+        const isClosedInCurrentQuarter =
+          entry.closed_date >= selectedQuarter.startDate &&
+          entry.closed_date <= selectedQuarter.endDate;
         const isClosedInFutureQuarter = 
           selectedQuarter.startDate > entry.closed_date;
 
@@ -481,32 +474,23 @@ export default function AuxiliaryLedgersPage() {
                 </p>
               )}
             </div>
-            <div>
+            <div className="md:col-span-2">
               <Label className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                Trimestre
+                Período
               </Label>
-              <Select
-                value={selectedQuarter.label}
-                onValueChange={(val) => {
-                  const q = availableQuarters.find(q => q.label === val);
-                  if (q) setSelectedQuarter(q);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableQuarters.map(q => (
-                    <SelectItem key={q.label} value={q.label}>
-                      {q.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                {selectedQuarter.startDate} — {selectedQuarter.endDate}
-              </p>
+              <PeriodSelector
+                periodType={period.periodType}
+                onPeriodTypeChange={(t) => setPeriod((p) => ({ ...p, periodType: t }))}
+                selectedQuarter={period.quarter}
+                onQuarterChange={(q) => setPeriod((p) => ({ ...p, quarter: q }))}
+                selectedYear={period.year}
+                onYearChange={(y) => setPeriod((p) => ({ ...p, year: y }))}
+                selectedMonth={period.month}
+                onMonthChange={(m) => setPeriod((p) => ({ ...p, month: m }))}
+                availableQuarters={availableQuarters}
+                currentQuarter={currentQuarterObj}
+              />
             </div>
             {!isReadOnly && (
             <div className="flex items-end gap-2">
