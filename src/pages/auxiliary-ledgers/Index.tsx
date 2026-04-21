@@ -18,7 +18,15 @@ import { AuxiliaryLedgerEntry, AuxiliaryMovementDetail } from '@/accounting/type
 import { fmt, todayISO, toDecimal, round2 } from '@/accounting/utils';
 import { AuxiliaryDefinitionsModal } from '@/components/auxiliary-ledger/AuxiliaryDefinitionsModal';
 import { KardexCPP } from '@/components/kardex/KardexCPP';
-import { Quarter, getCurrentQuarter, getAllQuartersFromStart } from '@/accounting/quarterly-utils';
+import { Quarter, getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
+import {
+  PeriodType,
+  getCurrentMonth,
+  resolvePeriod,
+  ResolvedPeriod,
+} from '@/accounting/period-utils';
+import { PeriodSelector } from '@/components/reports/PeriodSelector';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 export default function AuxiliaryLedgersPage() {
   const { 
@@ -30,8 +38,16 @@ export default function AuxiliaryLedgersPage() {
     entries: journalEntries 
   } = useAccounting();
   const { isReadOnly } = useUserAccess();
-  const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>('');
-  const [selectedQuarter, setSelectedQuarter] = useState<Quarter>(getCurrentQuarter());
+  const [selectedDefinitionId, setSelectedDefinitionId] = usePersistedState<string>('auxiliary:definition', '');
+  const [period, setPeriod] = usePersistedState<{ periodType: PeriodType; quarter: string; year: number; month: string }>(
+    'auxiliary:period',
+    {
+      periodType: 'quarterly',
+      quarter: getCurrentQuarter().label,
+      year: new Date().getFullYear(),
+      month: getCurrentMonth().label,
+    }
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDefinitionsModalOpen, setIsDefinitionsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AuxiliaryLedgerEntry | null>(null);
@@ -55,6 +71,15 @@ export default function AuxiliaryLedgersPage() {
   const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
   const selectedDefinition = auxiliaryDefinitions.find(d => d.id === selectedDefinitionId);
   const selectedAccountId = selectedDefinition?.account_id || '';
+
+  // Resolved period (works for monthly/quarterly/annual). Keeps the same shape used everywhere as `selectedQuarter`.
+  const selectedQuarter: ResolvedPeriod = useMemo(() => {
+    const value = period.periodType === 'monthly' ? period.month
+      : period.periodType === 'quarterly' ? period.quarter
+      : String(period.year);
+    return resolvePeriod({ type: period.periodType, value });
+  }, [period]);
+  const currentQuarterObj = useMemo(() => parseQuarterString(period.quarter), [period.quarter]);
 
   // Cargar TODOS los movimientos cuando cambia la definición seleccionada
   useEffect(() => {
@@ -137,16 +162,9 @@ export default function AuxiliaryLedgersPage() {
         }
       } else {
         // Cliente cerrado
-        const closureQuarter = getQuarterForDate(entry.closed_date);
-        
-        if (!closureQuarter) {
-          // Fecha inválida, tratar como activo
-          active.push(enrichedEntry);
-          return;
-        }
-
-        const isClosedInCurrentQuarter = 
-          selectedQuarter.label === closureQuarter.label;
+        const isClosedInCurrentQuarter =
+          entry.closed_date >= selectedQuarter.startDate &&
+          entry.closed_date <= selectedQuarter.endDate;
         const isClosedInFutureQuarter = 
           selectedQuarter.startDate > entry.closed_date;
 
@@ -426,7 +444,7 @@ export default function AuxiliaryLedgersPage() {
           <CardTitle>Seleccionar Libro Auxiliar</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label>Libro Auxiliar</Label>
               <Select value={selectedDefinitionId} onValueChange={setSelectedDefinitionId}>
@@ -456,32 +474,23 @@ export default function AuxiliaryLedgersPage() {
                 </p>
               )}
             </div>
-            <div>
+            <div className="md:col-span-2">
               <Label className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                Trimestre
+                Período
               </Label>
-              <Select
-                value={selectedQuarter.label}
-                onValueChange={(val) => {
-                  const q = availableQuarters.find(q => q.label === val);
-                  if (q) setSelectedQuarter(q);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableQuarters.map(q => (
-                    <SelectItem key={q.label} value={q.label}>
-                      {q.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                {selectedQuarter.startDate} — {selectedQuarter.endDate}
-              </p>
+              <PeriodSelector
+                periodType={period.periodType}
+                onPeriodTypeChange={(t) => setPeriod((p) => ({ ...p, periodType: t }))}
+                selectedQuarter={period.quarter}
+                onQuarterChange={(q) => setPeriod((p) => ({ ...p, quarter: q }))}
+                selectedYear={period.year}
+                onYearChange={(y) => setPeriod((p) => ({ ...p, year: y }))}
+                selectedMonth={period.month}
+                onMonthChange={(m) => setPeriod((p) => ({ ...p, month: m }))}
+                availableQuarters={availableQuarters}
+                currentQuarter={currentQuarterObj}
+              />
             </div>
             {!isReadOnly && (
             <div className="flex items-end gap-2">

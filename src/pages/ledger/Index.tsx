@@ -8,19 +8,40 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Download } from 'lucide-react';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { cmpDate, signedBalanceFor, fmt } from '@/accounting/utils';
-import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString, isDateInQuarter, getPreviousQuarter } from '@/accounting/quarterly-utils';
+import { getCurrentQuarter, getAllQuartersFromStart, parseQuarterString } from '@/accounting/quarterly-utils';
+import {
+  PeriodType,
+  getCurrentMonth,
+  resolvePeriod,
+  isDateInPeriod,
+} from '@/accounting/period-utils';
+import { PeriodSelector } from '@/components/reports/PeriodSelector';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { exportLedgerToCSV, LedgerRow } from '@/services/exportService';
 
 export default function LedgerPage() {
   const { accounts, entries, adapter } = useAccounting();
-  const [ledgerAccount, setLedgerAccount] = useState<string>('A.1');
-  const [selectedQuarter, setSelectedQuarter] = useState<string>(getCurrentQuarter().label);
-  
-  // Available quarters for selection
-  const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
-  const currentQuarter = useMemo(() => parseQuarterString(selectedQuarter), [selectedQuarter]);
+  const [ledgerAccount, setLedgerAccount] = usePersistedState<string>('ledger:account', 'A.1');
+  const [period, setPeriod] = usePersistedState<{ periodType: PeriodType; quarter: string; year: number; month: string }>(
+    'ledger:period',
+    {
+      periodType: 'quarterly',
+      quarter: getCurrentQuarter().label,
+      year: new Date().getFullYear(),
+      month: getCurrentMonth().label,
+    }
+  );
 
-  // Ledger data with quarterly support
+  const availableQuarters = useMemo(() => getAllQuartersFromStart(2020), []);
+  const currentQuarter = useMemo(() => parseQuarterString(period.quarter), [period.quarter]);
+  const resolvedPeriod = useMemo(() => {
+    const value = period.periodType === 'monthly' ? period.month
+      : period.periodType === 'quarterly' ? period.quarter
+      : String(period.year);
+    return resolvePeriod({ type: period.periodType, value });
+  }, [period]);
+
+  // Ledger data
   const [ledgerState, setLedgerState] = useState<{
     rows: LedgerRow[];
     opening: number;
@@ -31,18 +52,26 @@ export default function LedgerPage() {
     const acc = accounts.find(a => a.id === ledgerAccount);
     if (!acc) return { rows: [], opening: 0, closing: 0 };
 
-    // Get previous quarter's closing balance
-    const previousQuarter = getPreviousQuarter(currentQuarter.year, currentQuarter.quarter);
+    // Compute initial balance: sum signed balances for all entries strictly before period.startDate
     let initialBalance = 0;
-    
+
+    // Fast path: try cached closing balances at the day before period start
     try {
-      const closingBalances = await adapter.loadClosingBalances(previousQuarter.endDate);
-      initialBalance = closingBalances[ledgerAccount] || 0;
-    } catch (error) {
-      console.error('Error loading closing balances:', error);
-      // Calculate initial balance manually if closure doesn't exist
+      // Day before the period starts
+      const start = new Date(resolvedPeriod.startDate + 'T00:00:00');
+      start.setDate(start.getDate() - 1);
+      const beforeStart = start.toISOString().slice(0, 10);
+      const closingBalances = await adapter.loadClosingBalances(beforeStart);
+      const cached = closingBalances?.[ledgerAccount];
+      if (typeof cached === 'number') {
+        initialBalance = cached;
+      } else {
+        throw new Error('no-cache');
+      }
+    } catch {
+      // Manual fallback
       entries.forEach(entry => {
-        if (entry.date < currentQuarter.startDate) {
+        if (entry.date < resolvedPeriod.startDate) {
           entry.lines.forEach(line => {
             if (line.account_id === ledgerAccount) {
               initialBalance += signedBalanceFor(line.debit, line.credit, acc.normal_side);
@@ -52,9 +81,9 @@ export default function LedgerPage() {
       });
     }
 
-    // Filter entries for current quarter
+    // Filter entries within current period
     const inRange = entries
-      .filter(e => isDateInQuarter(e.date, currentQuarter))
+      .filter(e => isDateInPeriod(e.date, resolvedPeriod))
       .flatMap(e => e.lines.map(l => ({ e, l })))
       .filter(x => x.l.account_id === ledgerAccount)
       .sort((a, b) => cmpDate(a.e.date, b.e.date));
@@ -73,9 +102,9 @@ export default function LedgerPage() {
         balance: running
       };
     });
-    
+
     return { rows, opening: initialBalance, closing: running };
-  }, [accounts, entries, ledgerAccount, currentQuarter, adapter]);
+  }, [accounts, entries, ledgerAccount, resolvedPeriod, adapter]);
 
   // Handle async ledger data
   useEffect(() => {
@@ -86,7 +115,7 @@ export default function LedgerPage() {
     exportLedgerToCSV(
       ledgerState.rows,
       ledgerAccount,
-      selectedQuarter,
+      resolvedPeriod.label,
       ledgerState.opening,
       ledgerState.closing
     );
@@ -107,8 +136,8 @@ export default function LedgerPage() {
           <CardTitle>Libro Mayor</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-6 gap-3 items-end">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div className="md:col-span-1">
               <Label>Cuenta</Label>
               <Select value={ledgerAccount} onValueChange={setLedgerAccount}>
                 <SelectTrigger>
@@ -123,22 +152,7 @@ export default function LedgerPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Trimestre:</Label>
-              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Seleccionar trimestre" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableQuarters.map((quarter) => (
-                    <SelectItem key={`${quarter.year}-Q${quarter.quarter}`} value={quarter.label}>
-                      {quarter.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 text-right">
+            <div className="md:col-span-2 text-right">
               <div className="text-sm text-muted-foreground">
                 Saldo inicial: <span className="font-semibold">{fmt(ledgerState.opening)}</span>
               </div>
@@ -147,6 +161,20 @@ export default function LedgerPage() {
               </div>
             </div>
           </div>
+
+          <PeriodSelector
+            periodType={period.periodType}
+            onPeriodTypeChange={(t) => setPeriod((p) => ({ ...p, periodType: t }))}
+            selectedQuarter={period.quarter}
+            onQuarterChange={(q) => setPeriod((p) => ({ ...p, quarter: q }))}
+            selectedYear={period.year}
+            onYearChange={(y) => setPeriod((p) => ({ ...p, year: y }))}
+            selectedMonth={period.month}
+            onMonthChange={(m) => setPeriod((p) => ({ ...p, month: m }))}
+            availableQuarters={availableQuarters}
+            currentQuarter={currentQuarter}
+          />
+
           <div className="border rounded-xl overflow-hidden">
             <Table>
               <TableHeader>
@@ -171,7 +199,7 @@ export default function LedgerPage() {
                 {ledgerState.rows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      No hay movimientos en el trimestre seleccionado
+                      No hay movimientos en el período seleccionado
                     </TableCell>
                   </TableRow>
                 ) : (

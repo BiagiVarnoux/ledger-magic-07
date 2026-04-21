@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/components/auth/AuthProvider";
 import { UserAccessProvider, useUserAccess } from "@/contexts/UserAccessContext";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { AccountingProvider } from "@/accounting/AccountingProvider";
+import { NavigationHistoryProvider } from "@/contexts/NavigationHistoryContext";
 import { AppShell } from "./components/layout/AppShell";
 import AccountsPage from "./pages/accounts/Index";
 import JournalPage from "./pages/journal/Index";
@@ -78,11 +79,13 @@ function AppContent() {
 
   return (
     <BrowserRouter>
-      <UserAccessProvider>
-        <AccountingProvider>
-          <AppRoutes />
-        </AccountingProvider>
-      </UserAccessProvider>
+      <NavigationHistoryProvider>
+        <UserAccessProvider>
+          <AccountingProvider>
+            <AppRoutes />
+          </AccountingProvider>
+        </UserAccessProvider>
+      </NavigationHistoryProvider>
     </BrowserRouter>
   );
 }

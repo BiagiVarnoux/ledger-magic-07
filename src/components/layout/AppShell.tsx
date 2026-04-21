@@ -4,6 +4,7 @@ import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { Eye, Settings, Package } from 'lucide-react';
 import {
   DropdownMenu,
@@ -117,7 +118,9 @@ export function AppShell() {
           </nav>
         </div>
       </header>
-      
+
+      <Breadcrumbs />
+
       <main className="container px-6 py-6">
         <Outlet />
       </main>
