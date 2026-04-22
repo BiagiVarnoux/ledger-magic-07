@@ -113,25 +113,49 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuario no autenticado');
 
+  // Helper: delete with error check
+  const safeDelete = async (table: string) => {
+    const { error } = await (supabase.from(table as any) as any).delete().eq('user_id', user.id);
+    if (error) throw new Error(`Error limpiando ${table}: ${error.message}`);
+  };
+
+  // Helper: chunked insert to avoid payload limits & partial failures
+  const chunkedInsert = async (table: string, rows: any[], chunkSize = 500) => {
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const { error } = await (supabase.from(table as any) as any).insert(chunk);
+      if (error) throw new Error(`Error insertando en ${table} (lote ${i / chunkSize + 1}): ${error.message}`);
+    }
+  };
+
   try {
     // Delete existing data in reverse order of dependencies
-    await supabase.from('shipments').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_movement_details').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_ledger').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_ledger_definitions').delete().eq('user_id', user.id);
-    await supabase.from('kardex_movements').delete().eq('user_id', user.id);
-    await supabase.from('kardex_entries').delete().eq('user_id', user.id);
-    await supabase.from('kardex_definitions').delete().eq('user_id', user.id);
-    await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
-    await supabase.from('inventory_movements').delete().eq('user_id', user.id);
-    await supabase.from('inventory_lots').delete().eq('user_id', user.id);
-    await supabase.from('import_lots').delete().eq('user_id', user.id);
-    await supabase.from('cost_sheet_cells').delete().eq('user_id', user.id);
-    await supabase.from('cost_sheets').delete().eq('user_id', user.id);
-    await supabase.from('products').delete().eq('user_id', user.id);
-    await supabase.from('report_settings').delete().eq('user_id', user.id);
-    await supabase.from('journal_entries').delete().eq('user_id', user.id);
-    await supabase.from('accounts').delete().eq('user_id', user.id);
+    // journal_lines are deleted via CASCADE when journal_entries are deleted
+    // auxiliary_movement_details and inventory_movements are deleted via triggers on journal_entries delete
+    await safeDelete('shipments');
+    await safeDelete('auxiliary_movement_details');
+    await safeDelete('auxiliary_ledger');
+    await safeDelete('auxiliary_ledger_definitions');
+    await safeDelete('kardex_movements');
+    await safeDelete('kardex_entries');
+    await safeDelete('kardex_definitions');
+    await safeDelete('quarterly_closures');
+    await safeDelete('inventory_movements');
+    await safeDelete('inventory_lots');
+    await safeDelete('import_lots');
+    await safeDelete('cost_sheet_cells');
+    await safeDelete('cost_sheets');
+    await safeDelete('products');
+    await safeDelete('report_settings');
+    // Delete journal_lines explicitly first (no user_id column, so use entry_id via RLS)
+    // Then journal_entries
+    const { error: linesDelError } = await supabase
+      .from('journal_lines')
+      .delete()
+      .gte('id', 0); // RLS will scope to user's entries
+    if (linesDelError) throw new Error(`Error limpiando journal_lines: ${linesDelError.message}`);
+    await safeDelete('journal_entries');
+    await safeDelete('accounts');
 
     // Insert new data with correct user_id
     if (backup.accounts.length > 0) {
