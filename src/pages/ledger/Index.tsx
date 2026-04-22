@@ -81,6 +81,9 @@ export default function LedgerPage() {
       });
     }
 
+    const isResultAccount = acc.type === 'INGRESO' || acc.type === 'GASTO';
+    if (isResultAccount) initialBalance = 0;
+
     // Filter entries within current period
     const inRange = entries
       .filter(e => isDateInPeriod(e.date, resolvedPeriod))
