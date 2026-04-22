@@ -113,127 +113,136 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuario no autenticado');
 
+  // Helper: delete with error check
+  const safeDelete = async (table: string) => {
+    const { error } = await (supabase.from(table as any) as any).delete().eq('user_id', user.id);
+    if (error) throw new Error(`Error limpiando ${table}: ${error.message}`);
+  };
+
+  // Helper: chunked insert to avoid payload limits & partial failures
+  const chunkedInsert = async (table: string, rows: any[], chunkSize = 500) => {
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const { error } = await (supabase.from(table as any) as any).insert(chunk);
+      if (error) throw new Error(`Error insertando en ${table} (lote ${i / chunkSize + 1}): ${error.message}`);
+    }
+  };
+
   try {
     // Delete existing data in reverse order of dependencies
-    await supabase.from('shipments').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_movement_details').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_ledger').delete().eq('user_id', user.id);
-    await supabase.from('auxiliary_ledger_definitions').delete().eq('user_id', user.id);
-    await supabase.from('kardex_movements').delete().eq('user_id', user.id);
-    await supabase.from('kardex_entries').delete().eq('user_id', user.id);
-    await supabase.from('kardex_definitions').delete().eq('user_id', user.id);
-    await supabase.from('quarterly_closures').delete().eq('user_id', user.id);
-    await supabase.from('inventory_movements').delete().eq('user_id', user.id);
-    await supabase.from('inventory_lots').delete().eq('user_id', user.id);
-    await supabase.from('import_lots').delete().eq('user_id', user.id);
-    await supabase.from('cost_sheet_cells').delete().eq('user_id', user.id);
-    await supabase.from('cost_sheets').delete().eq('user_id', user.id);
-    await supabase.from('products').delete().eq('user_id', user.id);
-    await supabase.from('report_settings').delete().eq('user_id', user.id);
-    await supabase.from('journal_entries').delete().eq('user_id', user.id);
-    await supabase.from('accounts').delete().eq('user_id', user.id);
+    // journal_lines are deleted via CASCADE when journal_entries are deleted
+    // auxiliary_movement_details and inventory_movements are deleted via triggers on journal_entries delete
+    await safeDelete('shipments');
+    await safeDelete('auxiliary_movement_details');
+    await safeDelete('auxiliary_ledger');
+    await safeDelete('auxiliary_ledger_definitions');
+    await safeDelete('kardex_movements');
+    await safeDelete('kardex_entries');
+    await safeDelete('kardex_definitions');
+    await safeDelete('quarterly_closures');
+    await safeDelete('inventory_movements');
+    await safeDelete('inventory_lots');
+    await safeDelete('import_lots');
+    await safeDelete('cost_sheet_cells');
+    await safeDelete('cost_sheets');
+    await safeDelete('products');
+    await safeDelete('report_settings');
+    // Delete journal_lines explicitly first (no user_id column, so use entry_id via RLS)
+    // Then journal_entries
+    const { error: linesDelError } = await supabase
+      .from('journal_lines')
+      .delete()
+      .gte('id', 0); // RLS will scope to user's entries
+    if (linesDelError) throw new Error(`Error limpiando journal_lines: ${linesDelError.message}`);
+    await safeDelete('journal_entries');
+    await safeDelete('accounts');
 
     // Insert new data with correct user_id
     if (backup.accounts.length > 0) {
       const accounts = backup.accounts.map(a => ({ ...a, user_id: user.id }));
-      const { error } = await supabase.from('accounts').insert(accounts);
-      if (error) throw error;
+      await chunkedInsert('accounts', accounts);
     }
 
     if (backup.journal_entries.length > 0) {
       const entries = backup.journal_entries.map(e => ({ ...e, user_id: user.id }));
-      const { error } = await supabase.from('journal_entries').insert(entries);
-      if (error) throw error;
+      await chunkedInsert('journal_entries', entries);
     }
 
     if (backup.journal_lines.length > 0) {
-      const { error } = await supabase.from('journal_lines').insert(backup.journal_lines);
-      if (error) throw error;
+      // Strip auto-generated id to let DB regenerate (avoids sequence conflicts)
+      const lines = backup.journal_lines.map(({ id, ...rest }: any) => rest);
+      await chunkedInsert('journal_lines', lines);
     }
 
     if (backup.auxiliary_ledger_definitions?.length) {
       const defs = backup.auxiliary_ledger_definitions.map(d => ({ ...d, user_id: user.id }));
-      const { error } = await supabase.from('auxiliary_ledger_definitions').insert(defs);
-      if (error) throw error;
+      await chunkedInsert('auxiliary_ledger_definitions', defs);
     }
 
     if (backup.auxiliary_ledger?.length) {
       const ledger = backup.auxiliary_ledger.map(l => ({ ...l, user_id: user.id }));
-      const { error } = await supabase.from('auxiliary_ledger').insert(ledger);
-      if (error) throw error;
+      await chunkedInsert('auxiliary_ledger', ledger);
     }
 
     if (backup.auxiliary_movement_details?.length) {
       const movements = backup.auxiliary_movement_details.map(m => ({ ...m, user_id: user.id }));
-      const { error } = await supabase.from('auxiliary_movement_details').insert(movements);
-      if (error) throw error;
+      await chunkedInsert('auxiliary_movement_details', movements);
     }
 
     if (backup.kardex_definitions?.length) {
       const defs = backup.kardex_definitions.map(d => ({ ...d, user_id: user.id }));
-      const { error } = await supabase.from('kardex_definitions').insert(defs);
-      if (error) throw error;
+      await chunkedInsert('kardex_definitions', defs);
     }
 
     if (backup.kardex_entries?.length) {
       const entries = backup.kardex_entries.map(e => ({ ...e, user_id: user.id }));
-      const { error } = await supabase.from('kardex_entries').insert(entries);
-      if (error) throw error;
+      await chunkedInsert('kardex_entries', entries);
     }
 
     if (backup.kardex_movements?.length) {
       const movements = backup.kardex_movements.map(m => ({ ...m, user_id: user.id }));
-      const { error } = await supabase.from('kardex_movements').insert(movements);
-      if (error) throw error;
+      await chunkedInsert('kardex_movements', movements);
     }
 
     if (backup.quarterly_closures?.length) {
       const closures = backup.quarterly_closures.map(c => ({ ...c, user_id: user.id }));
-      const { error } = await supabase.from('quarterly_closures').insert(closures);
-      if (error) throw error;
+      await chunkedInsert('quarterly_closures', closures);
     }
 
     // v2.0 tables
     if (backup.products?.length) {
       const products = backup.products.map(p => ({ ...p, user_id: user.id }));
-      const { error } = await supabase.from('products').insert(products);
-      if (error) throw error;
+      await chunkedInsert('products', products);
     }
 
     if (backup.import_lots?.length) {
       const lots = backup.import_lots.map(l => ({ ...l, user_id: user.id }));
-      const { error } = await supabase.from('import_lots').insert(lots);
-      if (error) throw error;
+      await chunkedInsert('import_lots', lots);
     }
 
     if (backup.inventory_lots?.length) {
       const lots = backup.inventory_lots.map(l => ({ ...l, user_id: user.id }));
-      const { error } = await supabase.from('inventory_lots').insert(lots);
-      if (error) throw error;
+      await chunkedInsert('inventory_lots', lots);
     }
 
     if (backup.inventory_movements?.length) {
       const movements = backup.inventory_movements.map(m => ({ ...m, user_id: user.id }));
-      const { error } = await supabase.from('inventory_movements').insert(movements);
-      if (error) throw error;
+      await chunkedInsert('inventory_movements', movements);
     }
 
     if (backup.cost_sheets?.length) {
       const sheets = backup.cost_sheets.map(s => ({ ...s, user_id: user.id }));
-      const { error } = await supabase.from('cost_sheets').insert(sheets);
-      if (error) throw error;
+      await chunkedInsert('cost_sheets', sheets);
     }
 
     if (backup.cost_sheet_cells?.length) {
       const cells = backup.cost_sheet_cells.map(c => ({ ...c, user_id: user.id }));
-      const { error } = await supabase.from('cost_sheet_cells').insert(cells);
-      if (error) throw error;
+      await chunkedInsert('cost_sheet_cells', cells);
     }
 
     if (backup.report_settings?.length) {
       const settings = backup.report_settings.map(s => ({ ...s, user_id: user.id }));
-      const { error } = await supabase.from('report_settings').insert(settings);
-      if (error) throw error;
+      await chunkedInsert('report_settings', settings);
     }
 
     // Shipments (now in Supabase)
@@ -248,8 +257,7 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
         const { id, numero, status, ...rest } = s;
         return { id, user_id: user.id, numero, status, data: rest };
       });
-      const { error } = await supabase.from('shipments').insert(shipmentRows);
-      if (error) throw error;
+      await chunkedInsert('shipments', shipmentRows);
     }
 
     const extras = [];
