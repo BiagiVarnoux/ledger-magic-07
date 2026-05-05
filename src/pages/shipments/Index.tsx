@@ -1923,19 +1923,25 @@ function MedidasTab({ s, isReadOnly, onSave }: { s: Shipment; isReadOnly: boolea
 function CostosFinalesTab({ s }: { s: Shipment }) {
   const allCategories = getAllCategories();
   const costos = calcCostoFinalPorProducto(s);
+  const [showWithIVA, setShowWithIVA] = useState(false);
 
   // Total por filas (suma de costos unitarios × cantidad) — valor del Kárdex
-  const totalFilas = round2(costos.reduce((sum, { product, costo_unitario }) => sum + costo_unitario * product.cantidad, 0));
+  const totalFilas = round2(costos.reduce((sum, { product, costo_unitario, detalle }) => {
+    const unit = costo_unitario + (showWithIVA ? detalle.iva : 0);
+    return sum + unit * product.cantidad;
+  }, 0));
 
   // Total exacto desde los componentes originales — evita acumulación de redondeos
   const totalProductosExacto = round2(s.products.reduce((sum, p) => sum + calcTotalBsProducto(p, s.tc_paralelo), 0));
   const totalGAExacto        = round2(s.products.reduce((sum, p) => sum + (p.ga_monto ?? 0), 0));
+  const totalIVAExacto       = round2(s.products.reduce((sum, p) => sum + (p.iva_monto ?? 0), 0));
   const totalManipuleoExacto = round2(s.gastos_aduana.reduce((sum, g) => sum + g.monto, 0));
   const totalBateriasExacto  = round2(s.products.reduce((sum, p) => sum + (p.tiene_bateria ? p.costo_bateria : 0), 0));
   const totalExacto = round2(
     totalProductosExacto +
     (s.flete_total_bs ?? 0) +
     totalGAExacto +
+    (showWithIVA ? totalIVAExacto : 0) +
     totalManipuleoExacto +
     totalBateriasExacto
   );
@@ -1952,6 +1958,21 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
         </div>
       </div>
 
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {showWithIVA
+            ? 'Mostrando costo unitario + IVA (informativo — no es el costo contable registrado en Kárdex).'
+            : 'Costo contable registrado en Kárdex (sin IVA, ya que es Crédito Fiscal).'}
+        </p>
+        <Button
+          size="sm"
+          variant={showWithIVA ? 'default' : 'outline'}
+          onClick={() => setShowWithIVA(v => !v)}
+        >
+          {showWithIVA ? 'Ver costo sin IVA (contable)' : 'Ver costo + IVA'}
+        </Button>
+      </div>
+
       <Table>
         <TableHeader>
           <TableRow>
@@ -1960,33 +1981,42 @@ function CostosFinalesTab({ s }: { s: Shipment }) {
             <TableHead className="text-right">Precio Bs</TableHead>
             <TableHead className="text-right">Flete/u</TableHead>
             <TableHead className="text-right">GA/u</TableHead>
-            <TableHead className="text-right">IVA/u</TableHead>
+            <TableHead className={`text-right ${showWithIVA ? 'font-semibold text-primary' : ''}`}>
+              IVA/u{showWithIVA ? ' ✓' : ''}
+            </TableHead>
             <TableHead className="text-right">Manipuleo/u</TableHead>
-            <TableHead className="text-right font-semibold">Costo unitario</TableHead>
+            <TableHead className="text-right font-semibold">
+              Costo unitario{showWithIVA ? ' (+IVA)' : ''}
+            </TableHead>
             <TableHead className="text-right font-semibold">Costo total</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {costos.map(({ product: p, costo_unitario, detalle }) => (
-            <TableRow key={p.id}>
-              <TableCell>
-                <div>
-                  <p className="font-medium text-sm">{p.nombre}</p>
-                  <p className="text-xs text-muted-foreground">{allCategories[p.categoria] ?? p.categoria}</p>
-                </div>
-              </TableCell>
-              <TableCell className="text-right">{p.cantidad}</TableCell>
-              <TableCell className="text-right">{fmt(detalle.precioBs)}</TableCell>
-              <TableCell className="text-right">{fmt(detalle.envioUnitario)}</TableCell>
-              <TableCell className="text-right">{fmt(detalle.ga)}</TableCell>
-              <TableCell className="text-right">{fmt(detalle.iva)}</TableCell>
-              <TableCell className="text-right">{fmt(detalle.manipuleo)}</TableCell>
-              <TableCell className="text-right font-semibold text-primary">{fmt(costo_unitario)}</TableCell>
-              <TableCell className="text-right font-semibold">{fmt(round2(costo_unitario * p.cantidad))}</TableCell>
-            </TableRow>
-          ))}
+          {costos.map(({ product: p, costo_unitario, detalle }) => {
+            const unit = costo_unitario + (showWithIVA ? detalle.iva : 0);
+            return (
+              <TableRow key={p.id}>
+                <TableCell>
+                  <div>
+                    <p className="font-medium text-sm">{p.nombre}</p>
+                    <p className="text-xs text-muted-foreground">{allCategories[p.categoria] ?? p.categoria}</p>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">{p.cantidad}</TableCell>
+                <TableCell className="text-right">{fmt(detalle.precioBs)}</TableCell>
+                <TableCell className="text-right">{fmt(detalle.envioUnitario)}</TableCell>
+                <TableCell className="text-right">{fmt(detalle.ga)}</TableCell>
+                <TableCell className={`text-right ${showWithIVA ? 'font-semibold text-primary' : ''}`}>{fmt(detalle.iva)}</TableCell>
+                <TableCell className="text-right">{fmt(detalle.manipuleo)}</TableCell>
+                <TableCell className="text-right font-semibold text-primary">{fmt(unit)}</TableCell>
+                <TableCell className="text-right font-semibold">{fmt(round2(unit * p.cantidad))}</TableCell>
+              </TableRow>
+            );
+          })}
           <TableRow className="font-bold bg-muted/30">
-            <TableCell colSpan={8} className="text-right">TOTAL EMBARQUE</TableCell>
+            <TableCell colSpan={8} className="text-right">
+              TOTAL EMBARQUE{showWithIVA ? ' (con IVA)' : ''}
+            </TableCell>
             <TableCell className="text-right">
               {fmt(totalExacto)} Bs
               {hayDiferencia && (
