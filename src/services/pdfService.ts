@@ -1157,22 +1157,26 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
 
   // ── COSTOS FINALES ─────────────────────────────────────────────────────────
   if (isClosed && data.costos && data.costos.length > 0) {
-    currentY = shipmentSectionTitle(doc, 'COSTOS FINALES POR PRODUCTO (Embarque Cerrado)', currentY, CLR.green);
+    currentY = shipmentSectionTitle(doc, includeIVA
+      ? 'COSTOS FINALES POR PRODUCTO (con IVA — solo informativo, no contable)'
+      : 'COSTOS FINALES POR PRODUCTO (Embarque Cerrado)', currentY, CLR.green);
     currentY += 2;
 
-    const costBody: any[][] = data.costos.map((c, i) => [
+    const costBody: any[][] = data.costos.map((c, i) => {
+      const costoUnit = adjustedCosto(c);
+      return [
       { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
       c.nombre || '—',
       { content: String(c.cantidad), styles: { halign: 'center' as const } },
       { content: fmt(c.precioBs), styles: { halign: 'right' as const } },
       { content: fmt(c.envio), styles: { halign: 'right' as const } },
       { content: fmt(c.ga), styles: { halign: 'right' as const } },
-      { content: fmt(c.iva), styles: { halign: 'right' as const } },
+      { content: fmt(c.iva), styles: { halign: 'right' as const, fontStyle: includeIVA ? ('bold' as const) : ('normal' as const) } },
       { content: fmt(c.manipuleo), styles: { halign: 'right' as const } },
       { content: c.bateria > 0 ? fmt(c.bateria) : '—', styles: { halign: 'right' as const } },
-      { content: fmt(c.costo_unitario), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
-      { content: fmt(c.costo_unitario * c.cantidad), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
-    ]);
+      { content: fmt(costoUnit), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      { content: fmt(costoUnit * c.cantidad), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+    ]; });
 
     costBody.push([
       { content: '', styles: { fillColor: CLR.totalrow } },
