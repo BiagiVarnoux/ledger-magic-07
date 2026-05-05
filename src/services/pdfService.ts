@@ -928,7 +928,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   const summaryRight: Array<[string, string]> = [
     ['Tributos (GA + IVA)', hasTributos ? `${fmt(totalGA + totalIVA)} Bs` : 'No registrados'],
     ['Gastos de aduana', data.gastos_aduana.length > 0 ? `${fmt(totalGastos)} Bs` : 'No registrados'],
-    ['Costo total final', isClosed ? `${fmt(totalCostoFinal!)} Bs` : 'Embarque no cerrado'],
+    [includeIVA ? 'Costo total final (con IVA)' : 'Costo total final', isClosed ? `${fmt(totalCostoFinal!)} Bs` : 'Embarque no cerrado'],
     ['Estado del embarque', data.status],
   ];
 
