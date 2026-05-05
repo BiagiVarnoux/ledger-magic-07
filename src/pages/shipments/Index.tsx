@@ -997,38 +997,50 @@ function ShipmentDetail({ shipment: s, isReadOnly, onSave, onDelete, onAdvance, 
           </div>
 
           <div className="flex gap-2 items-center">
-              <Button size="sm" variant="ghost" onClick={() => {
-                const costos = calcCostoFinalPorProducto(s);
-                const pdfData: ShipmentPDFData = {
-                  numero: s.numero,
-                  descripcion: s.descripcion,
-                  status: SHIPMENT_STATUS_LABELS[s.status],
-                  created_at: s.created_at,
-                  tc_paralelo: s.tc_paralelo,
-                  tc_oficial: s.tc_oficial,
-                  flete_total_bs: s.flete_total_bs,
-                  flete_fecha: s.flete_fecha,
-                  metodo_peso: s.metodo_peso,
-                  tarifa_manipuleo_por_kg: s.tarifa_manipuleo_por_kg,
-                  products: s.products,
-                  gastos_aduana: s.gastos_aduana,
-                  costos: costos.map(c => ({
-                    nombre: c.product.nombre,
-                    cantidad: c.product.cantidad,
-                    precioBs: c.detalle.precioBs,
-                    envio: c.detalle.envioUnitario,
-                    ga: c.detalle.ga,
-                    iva: c.detalle.iva,
-                    manipuleo: c.detalle.manipuleo,
-                    bateria: c.detalle.bateria,
-                    costo_unitario: c.costo_unitario,
-                  })),
+              {(() => {
+                const buildAndExport = (includeIVA: boolean) => {
+                  const costos = calcCostoFinalPorProducto(s);
+                  const pdfData: ShipmentPDFData = {
+                    numero: s.numero,
+                    descripcion: s.descripcion,
+                    status: SHIPMENT_STATUS_LABELS[s.status],
+                    created_at: s.created_at,
+                    tc_paralelo: s.tc_paralelo,
+                    tc_oficial: s.tc_oficial,
+                    flete_total_bs: s.flete_total_bs,
+                    flete_fecha: s.flete_fecha,
+                    metodo_peso: s.metodo_peso,
+                    tarifa_manipuleo_por_kg: s.tarifa_manipuleo_por_kg,
+                    products: s.products,
+                    gastos_aduana: s.gastos_aduana,
+                    costos: costos.map(c => ({
+                      nombre: c.product.nombre,
+                      cantidad: c.product.cantidad,
+                      precioBs: c.detalle.precioBs,
+                      envio: c.detalle.envioUnitario,
+                      ga: c.detalle.ga,
+                      iva: c.detalle.iva,
+                      manipuleo: c.detalle.manipuleo,
+                      bateria: c.detalle.bateria,
+                      costo_unitario: c.costo_unitario,
+                    })),
+                    includeIVA,
+                  };
+                  exportShipmentToPDF(pdfData);
+                  toast.success(includeIVA ? 'PDF (con IVA) descargado' : 'PDF descargado');
                 };
-                exportShipmentToPDF(pdfData);
-                toast.success('PDF descargado');
-              }} title="Descargar PDF">
-                <Download className="w-4 h-4" />
-              </Button>
+                return (
+                  <>
+                    <Button size="sm" variant="ghost" onClick={() => buildAndExport(false)} title="Descargar PDF (costo contable, sin IVA)">
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => buildAndExport(true)} title="Descargar PDF + IVA (informativo)">
+                      <Download className="w-4 h-4 mr-1" />
+                      <span className="text-[11px] font-semibold">+IVA</span>
+                    </Button>
+                  </>
+                );
+              })()}
               {!isReadOnly && (
                 <>
                   <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive">
