@@ -886,7 +886,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
-  doc.text(`Embarque ${data.numero}`, ML, 11);
+  doc.text(`Embarque ${data.numero}${includeIVA ? '  (con IVA)' : ''}`, ML, 11);
 
   // Descripción
   if (data.descripcion) {
