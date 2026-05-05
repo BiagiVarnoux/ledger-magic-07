@@ -824,6 +824,8 @@ export interface ShipmentPDFData {
     bateria: number;
     costo_unitario: number;
   }>;
+  /** Si es true, el PDF muestra el costo unitario sumando el IVA (no contable, solo informativo). */
+  includeIVA?: boolean;
 }
 
 // Colores por sección del embarque
