@@ -1215,5 +1215,5 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     doc.setTextColor(0, 0, 0);
   }
 
-  doc.save(`embarque-${data.numero.toLowerCase()}.pdf`);
+  doc.save(`embarque-${data.numero.toLowerCase()}${includeIVA ? '-con-iva' : ''}.pdf`);
 }
