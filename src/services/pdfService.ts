@@ -824,6 +824,8 @@ export interface ShipmentPDFData {
     bateria: number;
     costo_unitario: number;
   }>;
+  /** Si es true, el PDF muestra el costo unitario sumando el IVA (no contable, solo informativo). */
+  includeIVA?: boolean;
 }
 
 // Colores por sección del embarque
@@ -868,7 +870,10 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   const totalGA        = data.products.reduce((s, p) => s + (p.ga_monto ?? 0), 0);
   const totalIVA       = data.products.reduce((s, p) => s + (p.iva_monto ?? 0), 0);
   const totalGastos    = data.gastos_aduana.reduce((s, g) => s + g.monto, 0);
-  const totalCostoFinal = data.costos?.reduce((s, c) => s + c.costo_unitario * c.cantidad, 0);
+  const includeIVA = data.includeIVA === true;
+  const adjustedCosto = (c: NonNullable<ShipmentPDFData['costos']>[number]) =>
+    includeIVA ? c.costo_unitario + c.iva : c.costo_unitario;
+  const totalCostoFinal = data.costos?.reduce((s, c) => s + adjustedCosto(c) * c.cantidad, 0);
   const hasTributos    = data.products.some(p => p.ga_monto || p.iva_monto);
   const hasMedias      = data.products.some(p => p.m1 || p.m2 || p.m3 || p.peso_bruto);
   const isClosed       = !!data.costos && data.costos.length > 0;
@@ -881,7 +886,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
-  doc.text(`Embarque ${data.numero}`, ML, 11);
+  doc.text(`Embarque ${data.numero}${includeIVA ? '  (con IVA)' : ''}`, ML, 11);
 
   // Descripción
   if (data.descripcion) {
@@ -923,7 +928,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   const summaryRight: Array<[string, string]> = [
     ['Tributos (GA + IVA)', hasTributos ? `${fmt(totalGA + totalIVA)} Bs` : 'No registrados'],
     ['Gastos de aduana', data.gastos_aduana.length > 0 ? `${fmt(totalGastos)} Bs` : 'No registrados'],
-    ['Costo total final', isClosed ? `${fmt(totalCostoFinal!)} Bs` : 'Embarque no cerrado'],
+    [includeIVA ? 'Costo total final (con IVA)' : 'Costo total final', isClosed ? `${fmt(totalCostoFinal!)} Bs` : 'Embarque no cerrado'],
     ['Estado del embarque', data.status],
   ];
 
@@ -1152,22 +1157,26 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
 
   // ── COSTOS FINALES ─────────────────────────────────────────────────────────
   if (isClosed && data.costos && data.costos.length > 0) {
-    currentY = shipmentSectionTitle(doc, 'COSTOS FINALES POR PRODUCTO (Embarque Cerrado)', currentY, CLR.green);
+    currentY = shipmentSectionTitle(doc, includeIVA
+      ? 'COSTOS FINALES POR PRODUCTO (con IVA — solo informativo, no contable)'
+      : 'COSTOS FINALES POR PRODUCTO (Embarque Cerrado)', currentY, CLR.green);
     currentY += 2;
 
-    const costBody: any[][] = data.costos.map((c, i) => [
+    const costBody: any[][] = data.costos.map((c, i) => {
+      const costoUnit = adjustedCosto(c);
+      return [
       { content: String(i + 1), styles: { halign: 'center' as const, fillColor: CLR.lightblue } },
       c.nombre || '—',
       { content: String(c.cantidad), styles: { halign: 'center' as const } },
       { content: fmt(c.precioBs), styles: { halign: 'right' as const } },
       { content: fmt(c.envio), styles: { halign: 'right' as const } },
       { content: fmt(c.ga), styles: { halign: 'right' as const } },
-      { content: fmt(c.iva), styles: { halign: 'right' as const } },
+      { content: fmt(c.iva), styles: { halign: 'right' as const, fontStyle: includeIVA ? ('bold' as const) : ('normal' as const) } },
       { content: fmt(c.manipuleo), styles: { halign: 'right' as const } },
       { content: c.bateria > 0 ? fmt(c.bateria) : '—', styles: { halign: 'right' as const } },
-      { content: fmt(c.costo_unitario), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
-      { content: fmt(c.costo_unitario * c.cantidad), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
-    ]);
+      { content: fmt(costoUnit), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+      { content: fmt(costoUnit * c.cantidad), styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+    ]; });
 
     costBody.push([
       { content: '', styles: { fillColor: CLR.totalrow } },
@@ -1206,5 +1215,5 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     doc.setTextColor(0, 0, 0);
   }
 
-  doc.save(`embarque-${data.numero.toLowerCase()}.pdf`);
+  doc.save(`embarque-${data.numero.toLowerCase()}${includeIVA ? '-con-iva' : ''}.pdf`);
 }
