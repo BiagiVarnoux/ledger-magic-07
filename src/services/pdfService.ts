@@ -870,7 +870,10 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
   const totalGA        = data.products.reduce((s, p) => s + (p.ga_monto ?? 0), 0);
   const totalIVA       = data.products.reduce((s, p) => s + (p.iva_monto ?? 0), 0);
   const totalGastos    = data.gastos_aduana.reduce((s, g) => s + g.monto, 0);
-  const totalCostoFinal = data.costos?.reduce((s, c) => s + c.costo_unitario * c.cantidad, 0);
+  const includeIVA = data.includeIVA === true;
+  const adjustedCosto = (c: NonNullable<ShipmentPDFData['costos']>[number]) =>
+    includeIVA ? c.costo_unitario + c.iva : c.costo_unitario;
+  const totalCostoFinal = data.costos?.reduce((s, c) => s + adjustedCosto(c) * c.cantidad, 0);
   const hasTributos    = data.products.some(p => p.ga_monto || p.iva_monto);
   const hasMedias      = data.products.some(p => p.m1 || p.m2 || p.m3 || p.peso_bruto);
   const isClosed       = !!data.costos && data.costos.length > 0;
