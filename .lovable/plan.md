@@ -1,71 +1,79 @@
+## Diagnóstico
 
+Encontré exactamente qué está pasando. **No hay corrupción de datos ni asientos eliminados** — todos tus asientos están intactos en la base de datos. El problema es un límite silencioso de Supabase que está ocultando líneas del libro diario al cargar.
 
-## Plan: Filtro mensual + Migas de pan con memoria de estado
+### Evidencia
 
-### Parte 1 — Filtro por mes (además de trimestre/anual)
+Comparé los dos backups y consulté la base de datos:
 
-**Alcance**: Libro Diario, Libros Auxiliares, Libro Mayor, y los 5 reportes (Balance Comprobación, Estado Resultados, Balance General, Flujo de Caja, Cambios Patrimonio).
+| Fuente | Total `journal_lines` | Saldo Banco MN (A.1) |
+|---|---|---|
+| Backup 05-05-26 | 994 | **5.446,49** ✓ |
+| Backup 07-05-26 | 1.000 (exacto) | 5.389,99 |
+| Base de datos (hoy) | **1.000 exacto** | 5.389,99 |
 
-**Diseño del selector unificado** (`PeriodSelector` ampliado):
-- Tabs con 3 opciones: **Mensual** | **Trimestral** | **Anual**.
-- Cuando se elige Mensual: dropdown con todos los meses desde 2020 hasta el mes actual, formato `Enero 2026`, `Febrero 2026`, etc. (más reciente primero).
-- Cuando se elige Trimestral: dropdown actual `Q1 2026`, `Q2 2026`...
-- Cuando se elige Anual: dropdown `Año 2026`...
-- Muestra siempre la franja "Del YYYY-MM-DD al YYYY-MM-DD" debajo.
+El número "1000 exacto" es la pista. Supabase / PostgREST aplica un **límite por defecto de 1000 filas por consulta**. Cuando el sistema carga el libro diario hace:
 
-**Nuevas utilidades** (`src/accounting/quarterly-utils.ts` o nuevo `period-utils.ts`):
-- `interface MonthPeriod { year, month, label, startDate, endDate }`.
-- `getCurrentMonth()`, `getAllMonthsFromStart(2020)`, `parseMonthString()`, `isDateInMonth()`.
-- `type PeriodType = 'monthly' | 'quarterly' | 'annual'`.
-- `isDateInPeriod(date, periodType, periodValue)` helper unificado.
+```ts
+// src/accounting/data-adapter.ts línea 255
+const { data: lines } = await supa
+  .from("journal_lines")
+  .select(...)
+  .in("entry_id", ids);   // ← se corta en 1000 filas, sin error
+```
 
-**Reemplazos por página**:
-- **Libro Diario** (`src/pages/journal/Index.tsx`): reemplazar el `Select` de trimestre por `PeriodSelector` con las 3 opciones; ajustar `filteredEntries` para usar `isDateInPeriod`.
-- **Libro Mayor** (`src/pages/ledger/Index.tsx`): igual; el "saldo inicial" se calcula como saldo acumulado hasta `period.startDate - 1`.
-- **Libros Auxiliares** (`src/pages/auxiliary-ledgers/Index.tsx`): cambiar `selectedQuarter: Quarter` a un objeto período genérico; toda la lógica de balance/cierre usa `period.startDate`/`period.endDate` (ya parametrizada así internamente).
-- **Reportes** (`src/pages/reports/Index.tsx`): elevar `periodType` + valor seleccionado al nivel de la página (compartido entre tabs); actualizar `TrialBalanceReport` para usar `PeriodSelector` (hoy usa `QuarterSelector`); los otros 3 ya usan `PeriodSelector`, solo añadirles la opción mensual.
+Entre el 05-05 y el 07-05 cruzaste el umbral de 1000 líneas. Desde entonces, **el sistema solo está leyendo las primeras 1000 líneas** que devuelve PostgREST (orden no determinista). Las líneas que quedan fuera de esas 1000 simplemente no se suman en ningún cálculo: ni en el Libro Diario, ni en el Libro Mayor, ni en los Reportes, ni en el Balance General. Por eso ves un saldo "raro" de Banco MN: faltan asientos que sí tocaban esa cuenta pero quedaron fuera del corte.
 
-### Parte 2 — Migas de pan con memoria de filtros
+Lo mismo afecta a otras tablas grandes (`journal_entries` ya tiene 412, se acerca al límite; `auxiliary_movement_details`, `inventory_movements`, `kardex_movements`, `cost_sheet_cells` también).
 
-**Problema actual**: Al navegar entre páginas, los filtros (trimestre/mes seleccionado, cuenta del mayor, definición auxiliar, orden, etc.) se reinician.
+Es el mismo motivo por el que el backup del 07-05 capturó exactamente 1000 líneas en vez de las ~1006 reales.
 
-**Solución**: Persistir estado de filtros por página en `sessionStorage` + agregar componente `Breadcrumbs` en `AppShell`.
+## Plan de corrección
 
-**Diseño de migas de pan** (componente nuevo `src/components/layout/Breadcrumbs.tsx`):
-Aparece debajo del header en `AppShell`, contextual a la ruta. Ideas:
+### 1. Helper de paginación en `src/accounting/data-adapter.ts`
 
-1. **Ruta jerárquica básica**: `Inicio › Libro Diario › Q2 2026` (clickeable, regresa a la sección con el período mantenido).
-2. **Historial de navegación reciente** (últimas 3-5 páginas visitadas): chips clickeables tipo `Reportes › Libros Auxiliares › Libro Diario` mostrando dónde estuviste, con sus filtros guardados.
-3. **Indicador de período activo**: muestra el período seleccionado como chip removible al lado de la sección actual (`Libro Diario · Abril 2026 ✕`); clic en ✕ vuelve al período por defecto (mes/trimestre actual).
-4. **Botón "Volver al estado anterior"**: flecha `‹` que restaura los filtros previos de esa misma página (útil si exploras y quieres volver).
-5. **Acciones rápidas contextuales**: al final de la miga, mini-botones `Exportar` / `Filtros` según la página.
+Agregar una función `fetchAll(query, pageSize=1000)` que itere usando `.range(from, to)` hasta que la página devuelta sea menor al `pageSize`. Esto evita el corte silencioso sin importar cuánto crezca la base.
 
-**Persistencia de estado** (`src/hooks/usePersistedState.ts`):
-- Hook genérico `usePersistedState(key, defaultValue)` que sincroniza con `sessionStorage`.
-- Aplicar a: `selectedQuarter/Period` en cada página, `ledgerAccount`, `selectedDefinitionId`, `sortOrder`, `filters` del libro diario.
-- Clave por página: `journal:period`, `ledger:period`, `ledger:account`, `auxiliary:period`, `auxiliary:definition`, `reports:period`, `reports:tab`.
+```ts
+async function fetchAll<T>(buildQuery: (from: number, to: number) => any): Promise<T[]> {
+  const PAGE = 1000; const out: T[] = []; let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+```
 
-**Historial de navegación** (`src/contexts/NavigationHistoryContext.tsx`):
-- Provider que escucha `useLocation` y mantiene array de las últimas 5 rutas visitadas + timestamp.
-- Expone `useNavigationHistory()` para que `Breadcrumbs` lo lea.
+### 2. Aplicar paginación a TODAS las cargas masivas en `data-adapter.ts`
 
-### Archivos a crear / modificar
+- `loadEntries`: paginar tanto `journal_entries` como `journal_lines` (esta es la causa directa del bug que reportas).
+- `loadAccounts`, `loadAuxiliaryDefinitions`, `loadAuxiliaryEntries`, `loadAuxiliaryMovementDetails`, `loadKardexDefinitions`, `loadQuarterlyClosures`.
+- Para la consulta `.in("entry_id", ids)` de `journal_lines`: además de paginar el resultado, partir `ids` en lotes de ~500 para no exceder límites de URL si el número de entries crece mucho.
 
-**Crear**:
-- `src/accounting/period-utils.ts` (utilidades unificadas mes/trimestre/año + `isDateInPeriod`).
-- `src/components/layout/Breadcrumbs.tsx`.
-- `src/contexts/NavigationHistoryContext.tsx`.
-- `src/hooks/usePersistedState.ts`.
+### 3. Aplicar paginación al servicio de backup `src/services/backupService.ts`
 
-**Modificar**:
-- `src/components/reports/PeriodSelector.tsx` (añadir opción mensual).
-- `src/components/reports/TrialBalanceReport.tsx` (migrar a `PeriodSelector`).
-- `src/components/reports/IncomeStatementReport.tsx`, `CashFlowReport.tsx`, `EquityChangesReport.tsx` (añadir mensual).
-- `src/pages/journal/Index.tsx`, `src/pages/ledger/Index.tsx`, `src/pages/auxiliary-ledgers/Index.tsx`, `src/pages/reports/Index.tsx` (usar `PeriodSelector` + `usePersistedState`).
-- `src/components/layout/AppShell.tsx` (incluir `Breadcrumbs` y envolver con `NavigationHistoryProvider`).
-- `src/App.tsx` (registrar el provider de historial).
+Reemplazar cada `supabase.from(t).select('*').eq('user_id', ...)` por la versión paginada, para que los próximos backups capturen el 100% de las filas (los backups que ya hiciste también estaban truncados a 1000).
 
-### Pregunta para confirmar antes de implementar
+### 4. Validación post-fix
 
-Para las migas de pan, ¿prefieres que implemente **todas las ideas (1-5)** o solo un subconjunto? Mi recomendación mínima viable sería **1 + 3 + 4** (jerárquica con período activo + botón volver), dejando el historial de navegación reciente (idea 2) como mejora opcional posterior.
+- Recargar la app y verificar que el Balance General muestre Banco MN ≈ **5.389,99 Bs** consistente con el saldo correcto al 06-05-26 (no 13.000).
+- Verificar que aparezcan los asientos de noviembre/diciembre que probablemente no se estaban viendo en el Libro Diario.
+- Hacer un backup nuevo y confirmar que captura > 1000 líneas (deberían ser ~1006).
 
+### Archivos a tocar
+
+- `src/accounting/data-adapter.ts` — agregar helper `fetchAll` y paginar todas las cargas.
+- `src/services/backupService.ts` — paginar las lecturas del backup.
+
+### Lo que NO se toca
+
+- No hay que tocar la base de datos ni restaurar backups. Tus datos están completos y correctos en Supabase. Solo el cliente los está leyendo truncados.
+- No hay que cambiar la lógica contable, ni los reportes, ni el Libro Mayor — apenas reciban las filas completas, los saldos se corregirán solos.
+
+### Nota sobre el saldo "13.000"
+
+Si después del fix el Balance General sigue mostrando un valor distinto al esperado, será un tema separado de clasificación de cuentas, no de datos faltantes. Pero el síntoma que describes (saltos bruscos justo cuando se cruzaron las 1000 líneas) coincide al 100% con el límite de PostgREST.

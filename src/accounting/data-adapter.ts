@@ -9,6 +9,36 @@ async function getSupabase(): Promise<MaybeSupa> {
   return supabase;
 }
 
+/**
+ * Fetch ALL rows from a Supabase query, paginating in chunks of PAGE_SIZE.
+ * Avoids the silent 1000-row PostgREST limit that would otherwise truncate
+ * large tables (journal_lines, journal_entries, auxiliary_movement_details, etc).
+ */
+const PAGE_SIZE = 1000;
+export async function fetchAllPaginated<T>(
+  buildQuery: (from: number, to: number) => any
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  // Hard safety cap to avoid infinite loops (1M rows)
+  for (let i = 0; i < 1000; i++) {
+    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const rows = (data || []) as T[];
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
+}
+
+/** Chunk an array into smaller arrays of `size`. */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export interface IDataAdapter {
   loadAccounts(): Promise<Account[]>;
   upsertAccount(a: Account): Promise<void>;
@@ -217,8 +247,13 @@ export const LocalAdapter: IDataAdapter = {
 export const SupaAdapter: IDataAdapter = {
   async loadAccounts(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
-    const { data, error } = await supa.from("accounts").select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda").order("id");
-    if (error) throw error; return (data||[]) as Account[];
+    const data = await fetchAllPaginated<Account>((from, to) =>
+      supa.from("accounts")
+        .select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda")
+        .order("id")
+        .range(from, to)
+    );
+    return data;
   },
   async upsertAccount(a){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAccount(a);
@@ -250,13 +285,24 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadEntries();
-    const { data: heads, error: e1 } = await supa.from("journal_entries").select("id,date,memo,void_of").order("date");
-    if (e1) throw e1; const ids = (heads||[]).map(h=>h.id); if (ids.length===0) return [];
-    const { data: lines, error: e2 } = await supa.from("journal_lines").select("entry_id,account_id,debit,credit,line_memo").in("entry_id", ids);
-    if (e2) throw e2;
+    const heads = await fetchAllPaginated<any>((from, to) =>
+      supa.from("journal_entries").select("id,date,memo,void_of").order("date").range(from, to)
+    );
+    const ids = heads.map(h => h.id); if (ids.length === 0) return [];
+    // Fetch lines paginated AND chunk the .in() filter to avoid URL-length limits
+    const allLines: any[] = [];
+    for (const idsChunk of chunk(ids, 300)) {
+      const part = await fetchAllPaginated<any>((from, to) =>
+        supa.from("journal_lines")
+          .select("entry_id,account_id,debit,credit,line_memo")
+          .in("entry_id", idsChunk)
+          .range(from, to)
+      );
+      allLines.push(...part);
+    }
     const map = new Map<string, JournalEntry>();
-    for (const h of (heads||[])) map.set(h.id, { id: h.id, date: String(h.date), memo: (h as any).memo || undefined, void_of: (h as any).void_of || undefined, lines: [] });
-    for (const l of (lines||[])) { const e = map.get((l as any).entry_id)!; e.lines.push({ account_id: (l as any).account_id, debit: Number((l as any).debit)||0, credit: Number((l as any).credit)||0, line_memo: (l as any).line_memo||undefined }); }
+    for (const h of heads) map.set(h.id, { id: h.id, date: String(h.date), memo: h.memo || undefined, void_of: h.void_of || undefined, lines: [] });
+    for (const l of allLines) { const e = map.get(l.entry_id)!; if (e) e.lines.push({ account_id: l.account_id, debit: Number(l.debit)||0, credit: Number(l.credit)||0, line_memo: l.line_memo||undefined }); }
     return Array.from(map.values()).filter(e => e.lines.length > 0).sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id));
   },
   async saveEntry(e){
@@ -280,8 +326,10 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryDefinitions(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDefinitions();
-    const { data, error } = await supa.from("auxiliary_ledger_definitions").select("id,name,account_id").order("name");
-    if (error) throw error; return (data||[]) as AuxiliaryLedgerDefinition[];
+    const data = await fetchAllPaginated<AuxiliaryLedgerDefinition>((from, to) =>
+      supa.from("auxiliary_ledger_definitions").select("id,name,account_id").order("name").range(from, to)
+    );
+    return data;
   },
   async upsertAuxiliaryDefinition(d){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryDefinition(d);
@@ -298,29 +346,32 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
-    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id,closed_date").order("client_name");
-    if (error) throw error;
-    
-    const entries = data || [];
+    const entries = await fetchAllPaginated<any>((from, to) =>
+      supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id,closed_date").order("client_name").range(from, to)
+    );
     if (entries.length === 0) return [];
-    
-    // Load ALL movements in one query
+
+    // Load ALL movements (paginated + chunked) for the entries
     const entryIds = entries.map(e => e.id);
-    const { data: allMovements, error: movError } = await supa
-      .from("auxiliary_movement_details")
-      .select("aux_entry_id,movement_type,amount")
-      .in("aux_entry_id", entryIds);
-    
-    if (movError) throw movError;
-    
+    const allMovements: any[] = [];
+    for (const idsChunk of chunk(entryIds, 300)) {
+      const part = await fetchAllPaginated<any>((from, to) =>
+        supa.from("auxiliary_movement_details")
+          .select("aux_entry_id,movement_type,amount")
+          .in("aux_entry_id", idsChunk)
+          .range(from, to)
+      );
+      allMovements.push(...part);
+    }
+
     // Group movements by aux_entry_id in memory
     const movementsByEntry = new Map<string, AuxiliaryMovementDetail[]>();
-    for (const mov of (allMovements || [])) {
+    for (const mov of allMovements) {
       const entryMovs = movementsByEntry.get((mov as any).aux_entry_id) || [];
       entryMovs.push(mov as any);
       movementsByEntry.set((mov as any).aux_entry_id, entryMovs);
     }
-    
+
     // Calculate total_balance for each entry
     const result: AuxiliaryLedgerEntry[] = entries.map(entry => {
       const movements = movementsByEntry.get(entry.id) || [];
@@ -329,7 +380,7 @@ export const SupaAdapter: IDataAdapter = {
       }, 0);
       return { ...entry, total_balance };
     });
-    
+
     return result;
   },
   async upsertAuxiliaryEntry(a){
@@ -390,13 +441,14 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]> {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDetails(auxEntryId);
-    const { data, error } = await supa
-      .from("auxiliary_movement_details")
-      .select("id,aux_entry_id,journal_entry_id,movement_date,amount,movement_type")
-      .eq("aux_entry_id", auxEntryId)
-      .order("movement_date", { ascending: false });
-    if (error) throw error;
-    return (data || []) as AuxiliaryMovementDetail[];
+    const data = await fetchAllPaginated<AuxiliaryMovementDetail>((from, to) =>
+      supa.from("auxiliary_movement_details")
+        .select("id,aux_entry_id,journal_entry_id,movement_date,amount,movement_type")
+        .eq("aux_entry_id", auxEntryId)
+        .order("movement_date", { ascending: false })
+        .range(from, to)
+    );
+    return data;
   },
   async upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void> {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryMovementDetails(details);
@@ -428,8 +480,10 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadKardexDefinitions(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadKardexDefinitions();
-    const { data, error } = await supa.from("kardex_definitions").select("id,name,account_id,user_id,created_at").order("name");
-    if (error) throw error; return (data||[]) as KardexDefinition[];
+    const data = await fetchAllPaginated<KardexDefinition>((from, to) =>
+      supa.from("kardex_definitions").select("id,name,account_id,user_id,created_at").order("name").range(from, to)
+    );
+    return data;
   },
   async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadClosingBalances(quarterEndDate);
