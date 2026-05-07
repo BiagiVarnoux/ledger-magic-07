@@ -441,13 +441,14 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryDetails(auxEntryId: string): Promise<AuxiliaryMovementDetail[]> {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDetails(auxEntryId);
-    const { data, error } = await supa
-      .from("auxiliary_movement_details")
-      .select("id,aux_entry_id,journal_entry_id,movement_date,amount,movement_type")
-      .eq("aux_entry_id", auxEntryId)
-      .order("movement_date", { ascending: false });
-    if (error) throw error;
-    return (data || []) as AuxiliaryMovementDetail[];
+    const data = await fetchAllPaginated<AuxiliaryMovementDetail>((from, to) =>
+      supa.from("auxiliary_movement_details")
+        .select("id,aux_entry_id,journal_entry_id,movement_date,amount,movement_type")
+        .eq("aux_entry_id", auxEntryId)
+        .order("movement_date", { ascending: false })
+        .range(from, to)
+    );
+    return data;
   },
   async upsertAuxiliaryMovementDetails(details: AuxiliaryMovementDetail[]): Promise<void> {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryMovementDetails(details);
