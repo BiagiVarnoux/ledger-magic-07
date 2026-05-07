@@ -346,29 +346,32 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryEntries();
-    const { data, error } = await supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id,closed_date").order("client_name");
-    if (error) throw error;
-    
-    const entries = data || [];
+    const entries = await fetchAllPaginated<any>((from, to) =>
+      supa.from("auxiliary_ledger").select("id,client_name,account_id,definition_id,closed_date").order("client_name").range(from, to)
+    );
     if (entries.length === 0) return [];
-    
-    // Load ALL movements in one query
+
+    // Load ALL movements (paginated + chunked) for the entries
     const entryIds = entries.map(e => e.id);
-    const { data: allMovements, error: movError } = await supa
-      .from("auxiliary_movement_details")
-      .select("aux_entry_id,movement_type,amount")
-      .in("aux_entry_id", entryIds);
-    
-    if (movError) throw movError;
-    
+    const allMovements: any[] = [];
+    for (const idsChunk of chunk(entryIds, 300)) {
+      const part = await fetchAllPaginated<any>((from, to) =>
+        supa.from("auxiliary_movement_details")
+          .select("aux_entry_id,movement_type,amount")
+          .in("aux_entry_id", idsChunk)
+          .range(from, to)
+      );
+      allMovements.push(...part);
+    }
+
     // Group movements by aux_entry_id in memory
     const movementsByEntry = new Map<string, AuxiliaryMovementDetail[]>();
-    for (const mov of (allMovements || [])) {
+    for (const mov of allMovements) {
       const entryMovs = movementsByEntry.get((mov as any).aux_entry_id) || [];
       entryMovs.push(mov as any);
       movementsByEntry.set((mov as any).aux_entry_id, entryMovs);
     }
-    
+
     // Calculate total_balance for each entry
     const result: AuxiliaryLedgerEntry[] = entries.map(entry => {
       const movements = movementsByEntry.get(entry.id) || [];
@@ -377,7 +380,7 @@ export const SupaAdapter: IDataAdapter = {
       }, 0);
       return { ...entry, total_balance };
     });
-    
+
     return result;
   },
   async upsertAuxiliaryEntry(a){
