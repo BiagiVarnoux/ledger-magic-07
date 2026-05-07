@@ -480,8 +480,10 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadKardexDefinitions(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadKardexDefinitions();
-    const { data, error } = await supa.from("kardex_definitions").select("id,name,account_id,user_id,created_at").order("name");
-    if (error) throw error; return (data||[]) as KardexDefinition[];
+    const data = await fetchAllPaginated<KardexDefinition>((from, to) =>
+      supa.from("kardex_definitions").select("id,name,account_id,user_id,created_at").order("name").range(from, to)
+    );
+    return data;
   },
   async loadClosingBalances(quarterEndDate: string): Promise<Record<string, number>> {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadClosingBalances(quarterEndDate);
