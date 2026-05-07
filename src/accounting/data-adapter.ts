@@ -285,13 +285,24 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadEntries(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadEntries();
-    const { data: heads, error: e1 } = await supa.from("journal_entries").select("id,date,memo,void_of").order("date");
-    if (e1) throw e1; const ids = (heads||[]).map(h=>h.id); if (ids.length===0) return [];
-    const { data: lines, error: e2 } = await supa.from("journal_lines").select("entry_id,account_id,debit,credit,line_memo").in("entry_id", ids);
-    if (e2) throw e2;
+    const heads = await fetchAllPaginated<any>((from, to) =>
+      supa.from("journal_entries").select("id,date,memo,void_of").order("date").range(from, to)
+    );
+    const ids = heads.map(h => h.id); if (ids.length === 0) return [];
+    // Fetch lines paginated AND chunk the .in() filter to avoid URL-length limits
+    const allLines: any[] = [];
+    for (const idsChunk of chunk(ids, 300)) {
+      const part = await fetchAllPaginated<any>((from, to) =>
+        supa.from("journal_lines")
+          .select("entry_id,account_id,debit,credit,line_memo")
+          .in("entry_id", idsChunk)
+          .range(from, to)
+      );
+      allLines.push(...part);
+    }
     const map = new Map<string, JournalEntry>();
-    for (const h of (heads||[])) map.set(h.id, { id: h.id, date: String(h.date), memo: (h as any).memo || undefined, void_of: (h as any).void_of || undefined, lines: [] });
-    for (const l of (lines||[])) { const e = map.get((l as any).entry_id)!; e.lines.push({ account_id: (l as any).account_id, debit: Number((l as any).debit)||0, credit: Number((l as any).credit)||0, line_memo: (l as any).line_memo||undefined }); }
+    for (const h of heads) map.set(h.id, { id: h.id, date: String(h.date), memo: h.memo || undefined, void_of: h.void_of || undefined, lines: [] });
+    for (const l of allLines) { const e = map.get(l.entry_id)!; if (e) e.lines.push({ account_id: l.account_id, debit: Number(l.debit)||0, credit: Number(l.credit)||0, line_memo: l.line_memo||undefined }); }
     return Array.from(map.values()).filter(e => e.lines.length > 0).sort((a,b)=> cmpDate(a.date,b.date) || a.id.localeCompare(b.id));
   },
   async saveEntry(e){
