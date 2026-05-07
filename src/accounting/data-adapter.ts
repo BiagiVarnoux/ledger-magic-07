@@ -326,8 +326,10 @@ export const SupaAdapter: IDataAdapter = {
   },
   async loadAuxiliaryDefinitions(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAuxiliaryDefinitions();
-    const { data, error } = await supa.from("auxiliary_ledger_definitions").select("id,name,account_id").order("name");
-    if (error) throw error; return (data||[]) as AuxiliaryLedgerDefinition[];
+    const data = await fetchAllPaginated<AuxiliaryLedgerDefinition>((from, to) =>
+      supa.from("auxiliary_ledger_definitions").select("id,name,account_id").order("name").range(from, to)
+    );
+    return data;
   },
   async upsertAuxiliaryDefinition(d){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryDefinition(d);
