@@ -1,5 +1,24 @@
 // src/services/backupService.ts
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllPaginated } from '@/accounting/data-adapter';
+
+/** Paginated SELECT * WHERE user_id = ? to bypass PostgREST 1000-row default limit. */
+async function fetchAllUserRows(table: string, userId: string): Promise<any[]> {
+  return await fetchAllPaginated<any>((from, to) =>
+    supabase.from(table as any).select('*').eq('user_id', userId).range(from, to)
+  );
+}
+
+/** Paginated journal_lines via inner join on journal_entries.user_id. */
+async function fetchAllJournalLines(userId: string): Promise<any[]> {
+  const rows = await fetchAllPaginated<any>((from, to) =>
+    supabase.from('journal_lines')
+      .select('*, journal_entries!inner(user_id)')
+      .eq('journal_entries.user_id', userId)
+      .range(from, to)
+  );
+  return rows.map(({ journal_entries, ...line }: any) => line);
+}
 
 export interface BackupData {
   version: string;
