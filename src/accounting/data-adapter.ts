@@ -247,8 +247,13 @@ export const LocalAdapter: IDataAdapter = {
 export const SupaAdapter: IDataAdapter = {
   async loadAccounts(){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.loadAccounts();
-    const { data, error } = await supa.from("accounts").select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda").order("id");
-    if (error) throw error; return (data||[]) as Account[];
+    const data = await fetchAllPaginated<Account>((from, to) =>
+      supa.from("accounts")
+        .select("id,name,type,normal_side,is_active,expense_category,is_cash_equivalent,is_current,clasificacion_resultado,subclasificacion_resultado,clasificacion_flujo,es_partida_no_monetaria,es_capital_trabajo,es_financiera,es_extraordinaria,afecta_ebitda")
+        .order("id")
+        .range(from, to)
+    );
+    return data;
   },
   async upsertAccount(a){
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAccount(a);
