@@ -9,6 +9,36 @@ async function getSupabase(): Promise<MaybeSupa> {
   return supabase;
 }
 
+/**
+ * Fetch ALL rows from a Supabase query, paginating in chunks of PAGE_SIZE.
+ * Avoids the silent 1000-row PostgREST limit that would otherwise truncate
+ * large tables (journal_lines, journal_entries, auxiliary_movement_details, etc).
+ */
+const PAGE_SIZE = 1000;
+export async function fetchAllPaginated<T>(
+  buildQuery: (from: number, to: number) => any
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  // Hard safety cap to avoid infinite loops (1M rows)
+  for (let i = 0; i < 1000; i++) {
+    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const rows = (data || []) as T[];
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
+}
+
+/** Chunk an array into smaller arrays of `size`. */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export interface IDataAdapter {
   loadAccounts(): Promise<Account[]>;
   upsertAccount(a: Account): Promise<void>;
