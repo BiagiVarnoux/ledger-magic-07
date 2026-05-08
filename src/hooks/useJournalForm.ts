@@ -17,7 +17,7 @@ export interface UseJournalFormProps {
   accounts: Account[];
   entries: JournalEntry[];
   kardexDefinitions: Array<{ account_id: string }>;
-  onKardexPopupOpen: (lineIndex: number, accountId: string, lineAmount?: number) => void;
+  onKardexPopupOpen: (lineIndex: number, accountId: string, lineAmount?: number, lineMemo?: string) => void;
 }
 
 export interface UseJournalFormReturn {
