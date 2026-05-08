@@ -56,7 +56,7 @@ export function InlineKardexPopup({
         setCostoTotal(String(initialData.costo_total));
         setMovementType(initialData.entrada > 0 ? 'entrada' : 'salida');
       } else {
-        setConcepto('');
+        setConcepto(initialConcepto ?? '');
         setCantidad('');
         setCostoTotal('');
         setMovementType('entrada');
@@ -64,7 +64,7 @@ export function InlineKardexPopup({
         setCostoUnitarioActual(0);
       }
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData, initialConcepto]);
 
   // Load kardex data when opening or switching to salida
   useEffect(() => {
