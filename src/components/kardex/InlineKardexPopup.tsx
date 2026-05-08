@@ -24,6 +24,7 @@ interface InlineKardexPopupProps {
   lineAmount?: number;
   onSave: (data: KardexData) => void;
   initialData?: KardexData;
+  initialConcepto?: string;
 }
 
 export function InlineKardexPopup({
@@ -32,7 +33,8 @@ export function InlineKardexPopup({
   accountId,
   lineAmount,
   onSave,
-  initialData
+  initialData,
+  initialConcepto,
 }: InlineKardexPopupProps) {
   const { accounts, kardexDefinitions } = useAccounting();
   const [movementType, setMovementType] = useState<'entrada' | 'salida'>('entrada');
@@ -54,7 +56,7 @@ export function InlineKardexPopup({
         setCostoTotal(String(initialData.costo_total));
         setMovementType(initialData.entrada > 0 ? 'entrada' : 'salida');
       } else {
-        setConcepto('');
+        setConcepto(initialConcepto ?? '');
         setCantidad('');
         setCostoTotal('');
         setMovementType('entrada');
@@ -62,7 +64,7 @@ export function InlineKardexPopup({
         setCostoUnitarioActual(0);
       }
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData, initialConcepto]);
 
   // Load kardex data when opening or switching to salida
   useEffect(() => {

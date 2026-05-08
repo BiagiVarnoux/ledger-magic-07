@@ -17,7 +17,7 @@ export interface UseJournalFormProps {
   accounts: Account[];
   entries: JournalEntry[];
   kardexDefinitions: Array<{ account_id: string }>;
-  onKardexPopupOpen: (lineIndex: number, accountId: string, lineAmount?: number) => void;
+  onKardexPopupOpen: (lineIndex: number, accountId: string, lineAmount?: number, lineMemo?: string) => void;
 }
 
 export interface UseJournalFormReturn {
@@ -81,11 +81,12 @@ export function useJournalForm({
       const creditVal = toDecimal(newLine.credit);
       const lineAmount = debitVal || creditVal;
       
-      onKardexPopupOpen(idx, accountId, lineAmount > 0 ? lineAmount : undefined);
+      const initialConcepto = newLine.line_memo?.trim() || memo.trim() || undefined;
+      onKardexPopupOpen(idx, accountId, lineAmount > 0 ? lineAmount : undefined, initialConcepto);
     }
     
     setLine(idx, { account_id: accountId });
-  }, [lines, kardexDefinitions, onKardexPopupOpen, setLine]);
+  }, [lines, kardexDefinitions, onKardexPopupOpen, setLine, memo]);
 
   const handleKardexPopupSave = useCallback((kardexData: KardexData, lineIndex: number) => {
     setLine(lineIndex, {

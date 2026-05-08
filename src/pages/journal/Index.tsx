@@ -70,6 +70,7 @@ export default function JournalPage() {
     lineIndex: number;
     accountId: string;
     lineAmount?: number;
+    lineMemo?: string;
   } | null>(null);
   const [auxiliaryModalState, setAuxiliaryModalState] = useState<{
     isOpen: boolean;
@@ -109,12 +110,13 @@ export default function JournalPage() {
     accounts,
     entries,
     kardexDefinitions,
-    onKardexPopupOpen: (lineIndex, accountId, lineAmount) => {
+    onKardexPopupOpen: (lineIndex, accountId, lineAmount, lineMemo) => {
       setKardexPopupState({
         isOpen: true,
         lineIndex,
         accountId,
-        lineAmount
+        lineAmount,
+        lineMemo,
       });
     }
   });
@@ -492,6 +494,7 @@ export default function JournalPage() {
           lineAmount={kardexPopupState.lineAmount}
           onSave={handleKardexPopupSave}
           initialData={form.lines[kardexPopupState.lineIndex]?.kardexData}
+          initialConcepto={kardexPopupState.lineMemo}
         />
       )}
 
