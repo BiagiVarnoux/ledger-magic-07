@@ -24,6 +24,7 @@ interface InlineKardexPopupProps {
   lineAmount?: number;
   onSave: (data: KardexData) => void;
   initialData?: KardexData;
+  initialConcepto?: string;
 }
 
 export function InlineKardexPopup({
@@ -32,7 +33,8 @@ export function InlineKardexPopup({
   accountId,
   lineAmount,
   onSave,
-  initialData
+  initialData,
+  initialConcepto,
 }: InlineKardexPopupProps) {
   const { accounts, kardexDefinitions } = useAccounting();
   const [movementType, setMovementType] = useState<'entrada' | 'salida'>('entrada');
