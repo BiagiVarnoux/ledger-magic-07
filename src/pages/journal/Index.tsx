@@ -70,6 +70,7 @@ export default function JournalPage() {
     lineIndex: number;
     accountId: string;
     lineAmount?: number;
+    lineMemo?: string;
   } | null>(null);
   const [auxiliaryModalState, setAuxiliaryModalState] = useState<{
     isOpen: boolean;
