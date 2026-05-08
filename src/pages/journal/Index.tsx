@@ -110,12 +110,13 @@ export default function JournalPage() {
     accounts,
     entries,
     kardexDefinitions,
-    onKardexPopupOpen: (lineIndex, accountId, lineAmount) => {
+    onKardexPopupOpen: (lineIndex, accountId, lineAmount, lineMemo) => {
       setKardexPopupState({
         isOpen: true,
         lineIndex,
         accountId,
-        lineAmount
+        lineAmount,
+        lineMemo,
       });
     }
   });
