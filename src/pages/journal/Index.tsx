@@ -494,6 +494,7 @@ export default function JournalPage() {
           lineAmount={kardexPopupState.lineAmount}
           onSave={handleKardexPopupSave}
           initialData={form.lines[kardexPopupState.lineIndex]?.kardexData}
+          initialConcepto={kardexPopupState.lineMemo}
         />
       )}
 
