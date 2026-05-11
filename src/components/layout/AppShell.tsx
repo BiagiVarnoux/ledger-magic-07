@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useUserAccess } from '@/contexts/UserAccessContext';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
-import { Eye, Settings, Package } from 'lucide-react';
+import { Eye, Settings, Package, ShoppingCart } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,6 +96,19 @@ export function AppShell() {
               </DropdownMenu>
             )}
             
+            {/* Sales (owner only) */}
+            {!loading && isOwner && (
+              <Button
+                variant={location.pathname === '/sales' ? "default" : "ghost"}
+                size="sm"
+                onClick={() => navigate('/sales')}
+                className="flex items-center gap-1"
+              >
+                <ShoppingCart className="h-4 w-4" />
+                Ventas
+              </Button>
+            )}
+
             {/* Settings icon (owner only) */}
             {!loading && isOwner && (
               <Button
