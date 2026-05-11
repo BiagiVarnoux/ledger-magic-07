@@ -794,6 +794,137 @@ export type Database = {
         }
         Relationships: []
       }
+      sale_items: {
+        Row: {
+          cantidad: number
+          costo_total: number | null
+          costo_unitario: number | null
+          created_at: string
+          cuenta_inventario_id: string | null
+          id: string
+          inventory_movement_id: string | null
+          margen_bruto: number | null
+          metodo_valuacion: string
+          precio_unitario_neto: number
+          product_codigo: string | null
+          product_id: string
+          product_nombre: string
+          sale_id: string
+          subtotal_neto: number
+        }
+        Insert: {
+          cantidad: number
+          costo_total?: number | null
+          costo_unitario?: number | null
+          created_at?: string
+          cuenta_inventario_id?: string | null
+          id?: string
+          inventory_movement_id?: string | null
+          margen_bruto?: number | null
+          metodo_valuacion: string
+          precio_unitario_neto: number
+          product_codigo?: string | null
+          product_id: string
+          product_nombre: string
+          sale_id: string
+          subtotal_neto: number
+        }
+        Update: {
+          cantidad?: number
+          costo_total?: number | null
+          costo_unitario?: number | null
+          created_at?: string
+          cuenta_inventario_id?: string | null
+          id?: string
+          inventory_movement_id?: string | null
+          margen_bruto?: number | null
+          metodo_valuacion?: string
+          precio_unitario_neto?: number
+          product_codigo?: string | null
+          product_id?: string
+          product_nombre?: string
+          sale_id?: string
+          subtotal_neto?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales: {
+        Row: {
+          aux_entry_id: string | null
+          canal: string
+          cliente_nombre: string | null
+          con_factura: boolean
+          created_at: string
+          estado: string
+          fecha: string
+          glosa: string | null
+          id: string
+          journal_entry_id: string | null
+          numero: string
+          precio_neto_total: number
+          tipo_pago: string
+          total_cobrado: number
+          total_costo: number | null
+          total_it: number
+          total_iva: number
+          user_id: string
+          void_journal_entry_id: string | null
+          void_reason: string | null
+        }
+        Insert: {
+          aux_entry_id?: string | null
+          canal: string
+          cliente_nombre?: string | null
+          con_factura?: boolean
+          created_at?: string
+          estado?: string
+          fecha: string
+          glosa?: string | null
+          id?: string
+          journal_entry_id?: string | null
+          numero: string
+          precio_neto_total: number
+          tipo_pago: string
+          total_cobrado: number
+          total_costo?: number | null
+          total_it?: number
+          total_iva?: number
+          user_id: string
+          void_journal_entry_id?: string | null
+          void_reason?: string | null
+        }
+        Update: {
+          aux_entry_id?: string | null
+          canal?: string
+          cliente_nombre?: string | null
+          con_factura?: boolean
+          created_at?: string
+          estado?: string
+          fecha?: string
+          glosa?: string | null
+          id?: string
+          journal_entry_id?: string | null
+          numero?: string
+          precio_neto_total?: number
+          tipo_pago?: string
+          total_cobrado?: number
+          total_costo?: number | null
+          total_it?: number
+          total_iva?: number
+          user_id?: string
+          void_journal_entry_id?: string | null
+          void_reason?: string | null
+        }
+        Relationships: []
+      }
       shared_access: {
         Row: {
           can_view_accounts: boolean
@@ -887,6 +1018,7 @@ export type Database = {
     }
     Functions: {
       assign_default_owner_role: { Args: { _user_id: string }; Returns: Json }
+      create_sale: { Args: { payload: Json }; Returns: Json }
       get_balance_sheet: {
         Args: { as_of_date: string }
         Returns: {
@@ -923,6 +1055,10 @@ export type Database = {
         Args: { _owner_id: string; _viewer_id: string }
         Returns: boolean
       }
+      next_journal_entry_id: {
+        Args: { p_date: string; p_user_id: string }
+        Returns: string
+      }
       redeem_invitation_code: {
         Args: { _code: string; _user_id: string }
         Returns: Json
@@ -930,6 +1066,10 @@ export type Database = {
       revoke_shared_access: {
         Args: { _owner_id: string; _viewer_id: string }
         Returns: boolean
+      }
+      void_sale: {
+        Args: { p_reason: string; p_sale_id: string }
+        Returns: Json
       }
     }
     Enums: {
