@@ -57,6 +57,7 @@ function AppRoutes() {
         {isOwner && <Route path="settings" element={<SettingsPage />} />}
         {isOwner && <Route path="shipments" element={<ShipmentsPage />} />}
         {isOwner && <Route path="inventory" element={<InventoryPage />} />}
+        {isOwner && <Route path="sales" element={<SalesPage />} />}
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
