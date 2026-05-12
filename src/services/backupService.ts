@@ -20,6 +20,17 @@ async function fetchAllJournalLines(userId: string): Promise<any[]> {
   return rows.map(({ journal_entries, ...line }: any) => line);
 }
 
+/** Paginated sale_items via inner join on sales.user_id (no own user_id column). */
+async function fetchAllSaleItems(userId: string): Promise<any[]> {
+  const rows = await fetchAllPaginated<any>((from, to) =>
+    supabase.from('sale_items')
+      .select('*, sales!inner(user_id)')
+      .eq('sales.user_id', userId)
+      .range(from, to)
+  );
+  return rows.map(({ sales, ...item }: any) => item);
+}
+
 export interface BackupData {
   version: string;
   created_at: string;
@@ -42,6 +53,8 @@ export interface BackupData {
   cost_sheet_cells?: any[];
   report_settings?: any[];
   shipments?: any[];
+  sales?: any[];
+  sale_items?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
@@ -67,6 +80,8 @@ export async function createFullBackup(): Promise<BackupData> {
     cost_sheet_cells,
     report_settings,
     shipments,
+    sales,
+    sale_items,
   ] = await Promise.all([
     fetchAllUserRows('accounts', user.id),
     fetchAllUserRows('journal_entries', user.id),
@@ -86,6 +101,8 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllUserRows('cost_sheet_cells', user.id),
     fetchAllUserRows('report_settings', user.id),
     fetchAllUserRows('shipments', user.id),
+    fetchAllUserRows('sales', user.id),
+    fetchAllSaleItems(user.id),
   ]);
 
   return {
@@ -109,6 +126,8 @@ export async function createFullBackup(): Promise<BackupData> {
     cost_sheet_cells,
     report_settings,
     shipments,
+    sales,
+    sale_items,
   };
 }
 
@@ -149,6 +168,13 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     // journal_lines are deleted via CASCADE when journal_entries are deleted
     // auxiliary_movement_details and inventory_movements are deleted via triggers on journal_entries delete
     await safeDelete('shipments');
+    // sale_items must go before sales (no user_id, scoped via RLS)
+    const { error: saleItemsDelError } = await supabase
+      .from('sale_items')
+      .delete()
+      .gte('created_at', '1900-01-01');
+    if (saleItemsDelError) throw new Error(`Error limpiando sale_items: ${saleItemsDelError.message}`);
+    await safeDelete('sales');
     await safeDelete('auxiliary_movement_details');
     await safeDelete('auxiliary_ledger');
     await safeDelete('auxiliary_ledger_definitions');
@@ -276,9 +302,21 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       await chunkedInsert('shipments', shipmentRows);
     }
 
+    // Sales (must come AFTER journal_entries since they reference journal_entry_id)
+    if (backup.sales?.length) {
+      const sales = backup.sales.map((s: any) => ({ ...s, user_id: user.id }));
+      await chunkedInsert('sales', sales);
+    }
+
+    if (backup.sale_items?.length) {
+      // sale_items has no user_id; just reinsert as-is
+      await chunkedInsert('sale_items', backup.sale_items);
+    }
+
     const extras = [];
     if (backup.products?.length) extras.push(`${backup.products.length} productos`);
     if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
+    if (backup.sales?.length) extras.push(`${backup.sales.length} ventas`);
 
     return { 
       success: true, 
