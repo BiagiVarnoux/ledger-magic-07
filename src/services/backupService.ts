@@ -53,6 +53,8 @@ export interface BackupData {
   cost_sheet_cells?: any[];
   report_settings?: any[];
   shipments?: any[];
+  sales?: any[];
+  sale_items?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
