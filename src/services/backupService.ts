@@ -302,9 +302,21 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       await chunkedInsert('shipments', shipmentRows);
     }
 
+    // Sales (must come AFTER journal_entries since they reference journal_entry_id)
+    if (backup.sales?.length) {
+      const sales = backup.sales.map((s: any) => ({ ...s, user_id: user.id }));
+      await chunkedInsert('sales', sales);
+    }
+
+    if (backup.sale_items?.length) {
+      // sale_items has no user_id; just reinsert as-is
+      await chunkedInsert('sale_items', backup.sale_items);
+    }
+
     const extras = [];
     if (backup.products?.length) extras.push(`${backup.products.length} productos`);
     if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
+    if (backup.sales?.length) extras.push(`${backup.sales.length} ventas`);
 
     return { 
       success: true, 
