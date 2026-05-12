@@ -168,6 +168,13 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     // journal_lines are deleted via CASCADE when journal_entries are deleted
     // auxiliary_movement_details and inventory_movements are deleted via triggers on journal_entries delete
     await safeDelete('shipments');
+    // sale_items must go before sales (no user_id, scoped via RLS)
+    const { error: saleItemsDelError } = await supabase
+      .from('sale_items')
+      .delete()
+      .gte('created_at', '1900-01-01');
+    if (saleItemsDelError) throw new Error(`Error limpiando sale_items: ${saleItemsDelError.message}`);
+    await safeDelete('sales');
     await safeDelete('auxiliary_movement_details');
     await safeDelete('auxiliary_ledger');
     await safeDelete('auxiliary_ledger_definitions');
