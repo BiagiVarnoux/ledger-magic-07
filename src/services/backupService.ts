@@ -80,6 +80,8 @@ export async function createFullBackup(): Promise<BackupData> {
     cost_sheet_cells,
     report_settings,
     shipments,
+    sales,
+    sale_items,
   ] = await Promise.all([
     fetchAllUserRows('accounts', user.id),
     fetchAllUserRows('journal_entries', user.id),
@@ -99,6 +101,8 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllUserRows('cost_sheet_cells', user.id),
     fetchAllUserRows('report_settings', user.id),
     fetchAllUserRows('shipments', user.id),
+    fetchAllUserRows('sales', user.id),
+    fetchAllSaleItems(user.id),
   ]);
 
   return {
