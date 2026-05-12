@@ -126,6 +126,8 @@ export async function createFullBackup(): Promise<BackupData> {
     cost_sheet_cells,
     report_settings,
     shipments,
+    sales,
+    sale_items,
   };
 }
 
