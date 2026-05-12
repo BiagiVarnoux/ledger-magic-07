@@ -20,6 +20,17 @@ async function fetchAllJournalLines(userId: string): Promise<any[]> {
   return rows.map(({ journal_entries, ...line }: any) => line);
 }
 
+/** Paginated sale_items via inner join on sales.user_id (no own user_id column). */
+async function fetchAllSaleItems(userId: string): Promise<any[]> {
+  const rows = await fetchAllPaginated<any>((from, to) =>
+    supabase.from('sale_items')
+      .select('*, sales!inner(user_id)')
+      .eq('sales.user_id', userId)
+      .range(from, to)
+  );
+  return rows.map(({ sales, ...item }: any) => item);
+}
+
 export interface BackupData {
   version: string;
   created_at: string;
