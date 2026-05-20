@@ -195,11 +195,8 @@ export function calcFleteProrrateado(
 }
 
 /**
- * Manipuleo en aduana (almacenaje, examen previo, SUMA, agencia despachante):
- * SIEMPRE se prorratea por PESO BRUTO físico real, no por peso volumen ni chargeable.
- * El manipuleo es manejo físico local (montacargas, estiba, almacenaje), no transporte
- * aéreo internacional. Si un producto no tiene peso bruto ingresado, se usa el peso
- * efectivo del método del embarque como fallback para no perder costo.
+ * Manipuleo en aduana prorrateado por peso, usando el mismo método configurado
+ * en la pestaña Medidas del embarque (automático / peso volumen / peso bruto).
  */
 export function calcManipuleoProrrateado(
   products: ShipmentProduct[],
