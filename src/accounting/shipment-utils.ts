@@ -195,30 +195,21 @@ export function calcFleteProrrateado(
 }
 
 /**
- * Manipuleo en aduana (almacenaje, examen previo, SUMA, agencia despachante):
- * SIEMPRE se prorratea por PESO BRUTO físico real, no por peso volumen ni chargeable.
- * El manipuleo es manejo físico local (montacargas, estiba, almacenaje), no transporte
- * aéreo internacional. Si un producto no tiene peso bruto ingresado, se usa el peso
- * efectivo del método del embarque como fallback para no perder costo.
+ * Manipuleo en aduana prorrateado por peso, usando el mismo método configurado
+ * en la pestaña Medidas del embarque (automático / peso volumen / peso bruto).
  */
 export function calcManipuleoProrrateado(
   products: ShipmentProduct[],
   gastos_aduana: ShipmentExpense[],
-  metodoFallback: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
+  metodo: 'automatico' | 'peso_volumen' | 'peso_bruto' = 'automatico'
 ): Record<string, number> {
   const totalManipuleo = gastos_aduana.reduce((s, g) => s + g.monto, 0);
+  const pesoTotal = calcPesoTotalEmbarque(products, metodo);
   const result: Record<string, number> = {};
-  if (totalManipuleo === 0) return result;
-
-  // Peso de prorrateo: peso bruto si existe, sino peso efectivo del método
-  const pesoDe = (p: ShipmentProduct) =>
-    p.peso_bruto ?? getPesoEfectivoPorMetodo(p, metodoFallback) ?? 0;
-
-  const pesoTotal = products.reduce((s, p) => s + pesoDe(p), 0);
-  if (pesoTotal === 0) return result;
-
+  if (pesoTotal === 0 || totalManipuleo === 0) return result;
   products.forEach(p => {
-    const participacion = pesoDe(p) / pesoTotal;
+    const peso = getPesoEfectivoPorMetodo(p, metodo) ?? 0;
+    const participacion = peso / pesoTotal;
     const manipuleoDelPaquete = totalManipuleo * participacion;
     result[p.id] = round6(manipuleoDelPaquete / p.cantidad);
   });
