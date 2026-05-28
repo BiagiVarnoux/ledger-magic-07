@@ -11,7 +11,8 @@ export interface CreateSaleResult {
 
 export async function createSale(
   header: SaleHeaderInput,
-  items: SaleItemInput[]
+  items: SaleItemInput[],
+  companyId: string = '00000000-0000-0000-0000-000000000001'
 ): Promise<CreateSaleResult> {
   if (items.length === 0) throw new Error('Agrega al menos un producto');
   for (const it of items) {
@@ -23,11 +24,12 @@ export async function createSale(
   const totals = calculateTaxes(items, header.con_factura);
   const accounts = resolveAccounts(header.canal, header.tipo_pago);
 
-  const payload: CreateSalePayload = {
+  const payload = {
     ...header,
     ...totals,
     ...accounts,
     items,
+    company_id: companyId,
   };
 
   const { data, error } = await supabase.rpc('create_sale', { payload: payload as any });

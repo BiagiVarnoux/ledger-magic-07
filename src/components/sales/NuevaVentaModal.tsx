@@ -132,6 +132,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
           glosa: glosa || null,
         },
         cleanItems,
+        '00000000-0000-0000-0000-000000000001',
       );
       toast.success(`Venta ${result.numero} registrada`);
       onSaved();
