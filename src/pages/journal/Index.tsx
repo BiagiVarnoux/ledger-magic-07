@@ -16,6 +16,7 @@ import { PeriodSelector } from '@/components/reports/PeriodSelector';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { supabase } from '@/integrations/supabase/client';
 import { getCurrentKardexState } from '@/accounting/kardex-utils';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import { exportJournalToCSV } from '@/services/exportService';
 import { exportJournalToPDF, JournalEntryPDF } from '@/services/pdfService';
 import { logAuditEntry } from '@/services/auditService';
@@ -243,7 +244,7 @@ export default function JournalPage() {
             if (!kardexId) {
               const { data: newKardex, error: createError } = await supabase
                 .from('kardex_entries')
-                .insert({ account_id: line.account_id, user_id: user.id })
+                .insert({ account_id: line.account_id, user_id: user.id, company_id: DEFAULT_COMPANY_ID })
                 .select()
                 .single();
               if (createError) throw createError;
@@ -283,6 +284,7 @@ export default function JournalPage() {
               .insert({
                 kardex_id: kardexId,
                 user_id: user.id,
+                company_id: DEFAULT_COMPANY_ID,
                 fecha: je.date,
                 concepto: line.kardexData.concepto,
                 entrada: entrada,

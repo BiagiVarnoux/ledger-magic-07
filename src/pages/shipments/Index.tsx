@@ -25,6 +25,7 @@ import { fmt, todayISO, round2 } from '@/accounting/utils';
 import { generateEntryId } from '@/accounting/utils';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { useUserAccess } from '@/contexts/UserAccessContext';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 import {
   Shipment, ShipmentProduct, ShipmentExpense,
@@ -298,6 +299,7 @@ export default function ShipmentsPage() {
               categoria: 'importado',
               unidad_medida: 'unidad',
               user_id: user.user.id,
+              company_id: DEFAULT_COMPANY_ID,
             }).select('id').single();
             if (error) throw error;
             newProductIds[link.shipmentProductId] = data.id;
@@ -486,8 +488,9 @@ export default function ShipmentsPage() {
             fecha_ingreso: todayISO(),
             cantidad_inicial: product.cantidad,
             cantidad_disponible: product.cantidad,
-            costo_unitario: costo_unitario,  // 6 decimales — para calcular salidas individuales
+            costo_unitario: costo_unitario,
             user_id: user.user.id,
+            company_id: DEFAULT_COMPANY_ID,
           })
           .select('id')
           .single();
@@ -499,12 +502,13 @@ export default function ShipmentsPage() {
           inventory_lot_id: newLot.id,
           tipo: 'ENTRADA',
           cantidad: product.cantidad,
-          costo_unitario,                                  // 6 decimales — para ventas individuales
-          costo_total: costosRedondeados[product.id],      // exacto — suma = crédito A.4.1
+          costo_unitario,
+          costo_total: costosRedondeados[product.id],
           fecha: todayISO(),
           referencia: `${s.numero} — Importación cerrada`,
           metodo_valuacion: 'FIFO',
           user_id: user.user.id,
+          company_id: DEFAULT_COMPANY_ID,
         });
         if (movError) throw movError;
       }

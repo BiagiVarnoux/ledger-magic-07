@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { calcularEstadoProducto, InventoryMovement } from './inventory-utils';
 import { fmt } from '@/accounting/utils';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 interface CostLine {
   accountId: string;
@@ -125,6 +126,7 @@ export function InventoryExitModal({ isOpen, onClose, journalEntryId, journalDat
           referencia: journalEntryId,
           journal_entry_id: journalEntryId,
           user_id: user.id,
+          company_id: DEFAULT_COMPANY_ID,
         });
         if (error) throw error;
       }

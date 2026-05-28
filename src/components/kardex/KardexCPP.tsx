@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO } from '@/accounting/utils';
 import { KardexDefinitionsModal } from './KardexDefinitionsModal';
 import { calculateCPP } from '@/accounting/kardex-utils';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,7 +81,8 @@ export function KardexCPP() {
             .from('kardex_entries')
             .insert({
               account_id: selectedKardexDef.account_id,
-              user_id: user.id
+              user_id: user.id,
+              company_id: DEFAULT_COMPANY_ID,
             })
             .select()
             .single();
@@ -166,14 +168,15 @@ export function KardexCPP() {
         .insert({
           kardex_id: kardexId,
           user_id: user.id,
+          company_id: DEFAULT_COMPANY_ID,
           fecha: formData.fecha,
           concepto: formData.concepto.trim(),
           entrada,
           salidas,
           costo_total: costoTotal,
-          saldo: 0, // Will be recalculated
-          costo_unitario: 0, // Will be recalculated
-          saldo_valorado: 0 // Will be recalculated
+          saldo: 0,
+          costo_unitario: 0,
+          saldo_valorado: 0,
         });
 
       if (error) throw error;

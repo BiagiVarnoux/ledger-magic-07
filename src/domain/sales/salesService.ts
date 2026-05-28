@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { calculateTaxes } from './calculateTaxes';
 import { resolveAccounts } from './resolveAccounts';
 import type { CreateSalePayload, SaleHeaderInput, SaleItemInput, SaleRow } from './types';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 export interface CreateSaleResult {
   success: boolean;
@@ -12,7 +13,7 @@ export interface CreateSaleResult {
 export async function createSale(
   header: SaleHeaderInput,
   items: SaleItemInput[],
-  companyId: string = '00000000-0000-0000-0000-000000000001'
+  companyId: string = DEFAULT_COMPANY_ID
 ): Promise<CreateSaleResult> {
   if (items.length === 0) throw new Error('Agrega al menos un producto');
   for (const it of items) {

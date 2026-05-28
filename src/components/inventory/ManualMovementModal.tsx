@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { calcularEstadoProducto, InventoryMovement } from './inventory-utils';
 import { todayISO } from '@/accounting/utils';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 interface ManualMovementModalProps {
   isOpen: boolean;
@@ -52,11 +53,12 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
           fecha,
           tipo: 'AJUSTE_COSTO',
           cantidad: 0,
-          costo_unitario: nuevoCpp,   // CPP resultante para referencia en el kárdex
-          costo_total: monto,          // El monto que se suma al saldo valorado
+          costo_unitario: nuevoCpp,
+          costo_total: monto,
           metodo_valuacion: 'CPP',
           referencia: (referencia.trim() || concepto.trim() || 'Ajuste de costo NIC 2') + ` — CPP anterior: ${state.costoUnitario.toFixed(2)} → nuevo: ${nuevoCpp.toFixed(2)}`,
           user_id: user.id,
+          company_id: DEFAULT_COMPANY_ID,
         });
         if (error) throw error;
         toast.success(`Ajuste registrado. Nuevo CPP: ${nuevoCpp.toFixed(2)} Bs/u`);
@@ -101,6 +103,7 @@ export function ManualMovementModal({ isOpen, onClose, productId, productName, m
         metodo_valuacion: 'CPP',
         referencia: referencia.trim() || concepto.trim() || null,
         user_id: user.id,
+        company_id: DEFAULT_COMPANY_ID,
       });
       if (error) throw error;
       toast.success('Movimiento registrado');

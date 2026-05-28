@@ -4,6 +4,7 @@
 import { Shipment } from './shipment-types';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 // Helper: convert DB row to Shipment
 function rowToShipment(row: any): Shipment {
@@ -23,6 +24,7 @@ function shipmentToRow(s: Shipment, userId: string) {
   return {
     id,
     user_id: userId,
+    company_id: DEFAULT_COMPANY_ID,
     numero,
     status,
     data: JSON.parse(JSON.stringify(rest)) as Json,

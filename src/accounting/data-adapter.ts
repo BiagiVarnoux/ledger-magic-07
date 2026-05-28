@@ -2,6 +2,7 @@
 import { Account, JournalEntry, AuxiliaryLedgerEntry, AuxiliaryLedgerDefinition, AuxiliaryMovementDetail, KardexDefinition, seedAccounts } from './types';
 import { cmpDate, round2 } from './utils';
 import { supabase } from '@/integrations/supabase/client';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 type MaybeSupa = import("@supabase/supabase-js").SupabaseClient | null;
 
@@ -263,6 +264,7 @@ export const SupaAdapter: IDataAdapter = {
     const accountWithUser = {
       ...a,
       user_id: user.id,
+      company_id: DEFAULT_COMPANY_ID,
       expense_category: a.expense_category ?? null,
       is_cash_equivalent: a.is_cash_equivalent ?? false,
       is_current: a.is_current ?? null,
@@ -309,11 +311,11 @@ export const SupaAdapter: IDataAdapter = {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.saveEntry(e);
     const { data: { user } } = await supa.auth.getUser();
     if (!user) throw new Error("Usuario no autenticado");
-    const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id });
+    const { error: e1 } = await supa.from("journal_entries").upsert({ id: e.id, date: e.date, memo: e.memo||null, void_of: e.void_of||null, user_id: user.id, company_id: DEFAULT_COMPANY_ID });
     if (e1) throw e1;
     const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
     if (eDel) throw eDel;
-    const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null }));
+    const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null, company_id: DEFAULT_COMPANY_ID }));
     const { error: e2 } = await supa.from("journal_lines").insert(payload);
     if (e2) throw e2;
   },
@@ -335,7 +337,7 @@ export const SupaAdapter: IDataAdapter = {
     const supa = await getSupabase(); if (!supa) return LocalAdapter.upsertAuxiliaryDefinition(d);
     const { data: { user } } = await supa.auth.getUser();
     if (!user) throw new Error("Usuario no autenticado");
-    const defWithUser = { ...d, user_id: user.id };
+    const defWithUser = { ...d, user_id: user.id, company_id: DEFAULT_COMPANY_ID };
     const { error } = await supa.from("auxiliary_ledger_definitions").upsert(defWithUser);
     if (error) throw error;
   },
@@ -402,7 +404,7 @@ export const SupaAdapter: IDataAdapter = {
       auxData.id = crypto.randomUUID();
     }
     
-    const auxWithUser = { ...auxData, user_id: user.id };
+    const auxWithUser = { ...auxData, user_id: user.id, company_id: DEFAULT_COMPANY_ID };
     
     let savedEntry;
     if (isNew) {
@@ -456,7 +458,7 @@ export const SupaAdapter: IDataAdapter = {
     if (!user) throw new Error("Usuario no autenticado");
     
     const payload = details.map(d => {
-      const detailCopy = { ...d, user_id: user.id };
+      const detailCopy = { ...d, user_id: user.id, company_id: DEFAULT_COMPANY_ID };
       // For new movements, let the database generate the UUID
       if (!detailCopy.id || detailCopy.id.includes('-')) {
         delete detailCopy.id;
@@ -535,6 +537,7 @@ export const SupaAdapter: IDataAdapter = {
     
     const { error } = await supa.from("quarterly_closures").upsert({
       user_id: user.id,
+      company_id: DEFAULT_COMPANY_ID,
       closure_date: quarterEndDate,
       balances
     });

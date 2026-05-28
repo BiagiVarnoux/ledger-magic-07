@@ -10,6 +10,7 @@ import { ArrowLeft, ArrowRight, Plus, Trash2, ShoppingCart, Loader2 } from 'luci
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO } from '@/accounting/utils';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import {
   calculateTaxes,
   createSale,
@@ -132,7 +133,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
           glosa: glosa || null,
         },
         cleanItems,
-        '00000000-0000-0000-0000-000000000001',
+        DEFAULT_COMPANY_ID,
       );
       toast.success(`Venta ${result.numero} registrada`);
       onSaved();

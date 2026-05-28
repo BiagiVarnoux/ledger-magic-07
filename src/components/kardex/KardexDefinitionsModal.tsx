@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { supabase } from '@/integrations/supabase/client';
 import { KardexDefinition } from '@/accounting/types';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 export function KardexDefinitionsModal() {
   const { accounts, kardexDefinitions, setKardexDefinitions } = useAccounting();
@@ -46,7 +47,8 @@ export function KardexDefinitionsModal() {
         .insert({
           name: name.trim(),
           account_id: selectedAccountId,
-          user_id: user.id
+          user_id: user.id,
+          company_id: DEFAULT_COMPANY_ID,
         })
         .select()
         .single();

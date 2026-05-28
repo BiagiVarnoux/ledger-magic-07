@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { fmt } from '@/accounting/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 interface KardexMovementData {
   concepto: string;
@@ -129,7 +130,8 @@ export function KardexModal({
             .from('kardex_entries')
             .insert({
               account_id: line.accountId,
-              user_id: user.id
+              user_id: user.id,
+              company_id: DEFAULT_COMPANY_ID,
             })
             .select()
             .single();
@@ -144,6 +146,7 @@ export function KardexModal({
           .insert({
             kardex_id: kardexId,
             user_id: user.id,
+            company_id: DEFAULT_COMPANY_ID,
             fecha: originalEntry.date,
             concepto: movement.concepto,
             entrada: movement.entrada,
@@ -152,7 +155,7 @@ export function KardexModal({
             journal_entry_id: originalEntry.id,
             saldo: 0,
             costo_unitario: 0,
-            saldo_valorado: 0
+            saldo_valorado: 0,
           });
 
         if (movError) throw movError;

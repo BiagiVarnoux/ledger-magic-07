@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { toast } from 'sonner';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 const CATEGORIAS = [
   { value: 'electronica', label: 'Electrónica/Tecnología' },
@@ -89,7 +90,7 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
         if (error) throw error;
         toast.success('Producto actualizado');
       } else {
-        const { error } = await supabase.from('products').insert({ ...payload, user_id: user.id });
+        const { error } = await supabase.from('products').insert({ ...payload, user_id: user.id, company_id: DEFAULT_COMPANY_ID });
         if (error) throw error;
         toast.success('Producto creado');
       }

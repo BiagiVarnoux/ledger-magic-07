@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useToast } from '@/hooks/use-toast';
+import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 
 export interface ReportSettings {
   id: string;
@@ -51,6 +52,7 @@ export function useReportSettings() {
           .from('report_settings')
           .insert({
             user_id: user.id,
+            company_id: DEFAULT_COMPANY_ID,
             ...defaultSettings,
           })
           .select()
