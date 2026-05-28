@@ -315,7 +315,7 @@ export const SupaAdapter: IDataAdapter = {
     if (e1) throw e1;
     const { error: eDel } = await supa.from("journal_lines").delete().eq("entry_id", e.id);
     if (eDel) throw eDel;
-    const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null, company_id: DEFAULT_COMPANY_ID }));
+    const payload = e.lines.map(l=> ({ entry_id: e.id, account_id: l.account_id, debit: round2(l.debit), credit: round2(l.credit), line_memo: l.line_memo||null }));
     const { error: e2 } = await supa.from("journal_lines").insert(payload);
     if (e2) throw e2;
   },
