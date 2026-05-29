@@ -1208,7 +1208,7 @@ export function exportShipmentToPDF(data: ShipmentPDFData): void {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(180, 200, 230);
     doc.text(
-      `Embarque ${data.numero}  ·  Página ${i} de ${pageCount}  ·  Ledger Magic  ·  ${new Date().toLocaleString('es-BO')}`,
+      `Embarque ${data.numero}  ·  Página ${i} de ${pageCount}  ·  ERP BV  ·  ${new Date().toLocaleString('es-BO')}`,
       pageWidth / 2, ph - 3.5,
       { align: 'center' }
     );

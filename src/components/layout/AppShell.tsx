@@ -136,7 +136,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
     <div className="flex flex-col h-full">
       <div className="px-4 py-4 border-b shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-bold text-base leading-tight truncate">Ledger Magic</span>
+          <span className="font-bold text-base leading-tight truncate">ERP BV</span>
           {isReadOnly && (
             <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
               <Eye className="w-3 h-3" />
@@ -253,7 +253,7 @@ export function AppShell() {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <span className="font-semibold text-sm">Ledger Magic</span>
+          <span className="font-semibold text-sm">ERP BV</span>
           {isReadOnly && (
             <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full">
               <Eye className="w-3 h-3" />
@@ -272,7 +272,7 @@ export function AppShell() {
           <p className="text-xs text-muted-foreground">
             {isReadOnly
               ? 'Modo de solo lectura — Estás viendo datos compartidos contigo.'
-              : 'Ledger Magic ERP — Pia Gemer House'}
+              : 'ERP BV — Pia Gemer House'}
           </p>
         </footer>
       </div>

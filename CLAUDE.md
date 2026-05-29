@@ -15,7 +15,7 @@ There is no test suite. Type-checking is done via `tsc --noEmit` (implied by the
 
 ## Architecture Overview
 
-This is a Spanish-language accounting SPA (Libro Diario / Ledger Magic) built with React + TypeScript + Vite, backed by Supabase. The UI uses shadcn/ui components throughout.
+This is a Spanish-language accounting SPA (Libro Diario / ERP BV) built with React + TypeScript + Vite, backed by Supabase. The UI uses shadcn/ui components throughout.
 
 ### Data layer — `src/accounting/`
 
