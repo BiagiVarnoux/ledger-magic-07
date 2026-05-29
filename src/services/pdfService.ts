@@ -314,7 +314,9 @@ export interface BalanceSheetNIIFData {
   totalPasivosNoCorrientes: number;
   totalPasivo: number;
   patrimonioDetalle: Array<{ id: string; name: string; balance: number }>;
-  utilidadAcumulada: number;
+  utilidadesAcumuladasDesplegado: number;  // saldo Pn.2 + I-G de años anteriores
+  resultadoEjercicio: number;              // I-G del año fiscal de bsDate únicamente
+  fiscalYear: number;                      // año de la gestión (para el label)
   totalPatrimonio: number;
   razonCorriente: number | null;
   razonEndeudamiento: number;
@@ -340,7 +342,8 @@ export function exportBalanceSheetNIIFToPDF(data: BalanceSheetNIIFData, date: st
     ['', { content: 'Total Pasivos', styles: { fontStyle: 'bold' } }, { content: fmt(data.totalPasivo), styles: { fontStyle: 'bold' } }],
     [{ content: 'PATRIMONIO', colSpan: 3, styles: { fillColor: [230, 200, 240], fontStyle: 'bold' } }],
     ...data.patrimonioDetalle.map(p => [p.id, p.name, fmt(p.balance)]),
-    ['—', 'Resultado del Ejercicio', fmt(data.utilidadAcumulada)],
+    ['Pn.2', 'Utilidades Acumuladas', fmt(data.utilidadesAcumuladasDesplegado)],
+    ['—', `Resultado del Ejercicio ${data.fiscalYear}`, fmt(data.resultadoEjercicio)],
     ['', { content: 'Total Patrimonio', styles: { fontStyle: 'bold' } }, { content: fmt(data.totalPatrimonio), styles: { fontStyle: 'bold' } }],
     [{ content: 'TOTAL PASIVO + PATRIMONIO', colSpan: 2, styles: { fillColor: [200, 200, 200], fontStyle: 'bold' } }, { content: fmt(data.totalPasivo + data.totalPatrimonio), styles: { fillColor: [200, 200, 200], fontStyle: 'bold' } }],
   ];

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { FileDown, TrendingUp, TrendingDown } from 'lucide-react';
 import { Account, JournalEntry } from '@/accounting/types';
 import { signedBalanceFor, fmt, round2 } from '@/accounting/utils';
+import { getFiscalYearBounds, computePeriodResult, findUtilidadesAcumuladasAccount } from '@/accounting/fiscal-year-utils';
 import { exportBalanceSheetNIIFToPDF, BalanceSheetNIIFData } from '@/services/pdfService';
 
 interface BalanceSheetReportProps {
@@ -25,11 +26,8 @@ interface AccountBalance {
 
 // Classify assets/liabilities as current or non-current
 function isCurrentAsset(account: Account): boolean {
-  // Use manual classification if set
   if (account.is_current === true) return true;
   if (account.is_current === false) return false;
-  
-  // Fallback to keyword heuristics
   const currentKeywords = [
     'caja', 'banco', 'efectivo', 'cobrar', 'inventario', 'mercaderia', 'mercadería',
     'anticipo', 'prepago', 'iva', 'crédito fiscal', 'credito fiscal', 'usdt', 'cripto'
@@ -39,11 +37,8 @@ function isCurrentAsset(account: Account): boolean {
 }
 
 function isCurrentLiability(account: Account): boolean {
-  // Use manual classification if set
   if (account.is_current === true) return true;
   if (account.is_current === false) return false;
-  
-  // Fallback to keyword heuristics
   const currentKeywords = [
     'pagar', 'proveedor', 'acreedor', 'iva', 'débito fiscal', 'debito fiscal',
     'impuesto', 'sueldo', 'salario', 'corto plazo', 'anticipo'
@@ -53,35 +48,26 @@ function isCurrentLiability(account: Account): boolean {
 }
 
 interface BalanceSheetNIIF {
-  // Current Assets
   activosCorrientes: AccountBalance[];
   totalActivosCorrientes: number;
-  
-  // Non-Current Assets
   activosNoCorrientes: AccountBalance[];
   totalActivosNoCorrientes: number;
-  
   totalActivo: number;
-  
-  // Current Liabilities
   pasivosCorrientes: AccountBalance[];
   totalPasivosCorrientes: number;
-  
-  // Non-Current Liabilities
   pasivosNoCorrientes: AccountBalance[];
   totalPasivosNoCorrientes: number;
-  
   totalPasivo: number;
-  
-  // Equity
+  // Equity — split into three conceptual layers to avoid double-counting:
+  // 1. patrimonioDetalle: all PATRIMONIO accounts EXCEPT Pn.2 (UA)
+  // 2. utilidadesAcumuladasDesplegado: real balance of Pn.2 + prior-year I-G results
+  // 3. resultadoEjercicio: current fiscal-year I-G result only
   patrimonioDetalle: AccountBalance[];
-  utilidadAcumulada: number;
+  utilidadesAcumuladasDesplegado: number;
+  resultadoEjercicio: number;
+  fiscalYear: number;
   totalPatrimonio: number;
-  
-  // Verification
   check: number;
-  
-  // Financial Ratios
   razonCorriente: number | null;
   razonEndeudamiento: number;
   capitalTrabajo: number;
@@ -94,36 +80,37 @@ export function BalanceSheetReport({
   onBsDateChange,
 }: BalanceSheetReportProps) {
   const balanceSheet = useMemo<BalanceSheetNIIF>(() => {
-    const activosCorrientesMap = new Map<string, AccountBalance>();
-    const activosNoCorrientesMap = new Map<string, AccountBalance>();
-    const pasivosCorrientesMap = new Map<string, AccountBalance>();
-    const pasivosNoCorrientesMap = new Map<string, AccountBalance>();
-    const patrimonioMap = new Map<string, AccountBalance>();
+    // --- Fiscal year bounds for bsDate (calendar year) ---
+    const fyBounds = getFiscalYearBounds(bsDate);
+    const fiscalYearStart = fyBounds.start;  // e.g. "2026-01-01"
+    const priorYearEnd    = `${fyBounds.year - 1}-12-31`;
 
-    // Initialize accounts with classification
+    // --- Identify the "Utilidades Acumuladas" account (Pn.2) ---
+    const uaAccount = findUtilidadesAcumuladasAccount(accounts);
+    const uaAccountId = uaAccount?.id;
+
+    // --- Build maps, excluding Pn.2 from patrimonioMap to avoid double-count ---
+    const activosCorrientesMap    = new Map<string, AccountBalance>();
+    const activosNoCorrientesMap  = new Map<string, AccountBalance>();
+    const pasivosCorrientesMap    = new Map<string, AccountBalance>();
+    const pasivosNoCorrientesMap  = new Map<string, AccountBalance>();
+    const patrimonioMap           = new Map<string, AccountBalance>();
+
     for (const a of accounts) {
       const entry = { id: a.id, name: a.name, balance: 0 };
-      
       if (a.type === 'ACTIVO') {
-        if (isCurrentAsset(a)) {
-          activosCorrientesMap.set(a.id, entry);
-        } else {
-          activosNoCorrientesMap.set(a.id, entry);
-        }
-      }
-      if (a.type === 'PASIVO') {
-        if (isCurrentLiability(a)) {
-          pasivosCorrientesMap.set(a.id, entry);
-        } else {
-          pasivosNoCorrientesMap.set(a.id, entry);
-        }
-      }
-      if (a.type === 'PATRIMONIO') {
+        isCurrentAsset(a) ? activosCorrientesMap.set(a.id, entry) : activosNoCorrientesMap.set(a.id, entry);
+      } else if (a.type === 'PASIVO') {
+        isCurrentLiability(a) ? pasivosCorrientesMap.set(a.id, entry) : pasivosNoCorrientesMap.set(a.id, entry);
+      } else if (a.type === 'PATRIMONIO' && a.id !== uaAccountId) {
+        // Pn.2 is excluded here; its value is displayed separately as utilidadesAcumuladasDesplegado
         patrimonioMap.set(a.id, entry);
       }
     }
 
-    // Calculate balances per account until bsDate
+    // --- Calculate balances per ACTIVO/PASIVO/PATRIMONIO account until bsDate ---
+    let saldoRealCuentaUA = 0;
+
     for (const a of accounts) {
       let bal = 0;
       for (const e of entries) {
@@ -133,71 +120,75 @@ export function BalanceSheetReport({
           bal += signedBalanceFor(l.debit, l.credit, a.normal_side);
         }
       }
+      const roundedBal = round2(bal);
 
       if (a.type === 'ACTIVO') {
         const map = isCurrentAsset(a) ? activosCorrientesMap : activosNoCorrientesMap;
         const acc = map.get(a.id);
-        if (acc) acc.balance = round2(bal);
-      }
-      if (a.type === 'PASIVO') {
+        if (acc) acc.balance = roundedBal;
+      } else if (a.type === 'PASIVO') {
         const map = isCurrentLiability(a) ? pasivosCorrientesMap : pasivosNoCorrientesMap;
         const acc = map.get(a.id);
-        if (acc) acc.balance = round2(bal);
-      }
-      if (a.type === 'PATRIMONIO') {
-        const acc = patrimonioMap.get(a.id);
-        if (acc) acc.balance = round2(bal);
-      }
-    }
-
-    // Accumulated profit (income - expenses) until bsDate
-    let ingresos = 0, gastos = 0;
-    for (const e of entries) {
-      if (e.date > bsDate) continue;
-      for (const l of e.lines) {
-        const a = accounts.find(x => x.id === l.account_id);
-        if (!a) continue;
-        if (a.type === 'INGRESO') {
-          ingresos += round2(l.credit - l.debit);
-        }
-        if (a.type === 'GASTO') {
-          gastos += round2(l.debit - l.credit);
+        if (acc) acc.balance = roundedBal;
+      } else if (a.type === 'PATRIMONIO') {
+        if (a.id === uaAccountId) {
+          // Capture real Pn.2 balance separately
+          saldoRealCuentaUA = roundedBal;
+        } else {
+          const acc = patrimonioMap.get(a.id);
+          if (acc) acc.balance = roundedBal;
         }
       }
     }
-    const utilidadAcumulada = round2(ingresos - gastos);
 
-    // Filter and sort
+    // --- I-G split: current year vs prior years ---
+    // Current year: entries from fiscalYearStart to bsDate
+    const currentYearResult = computePeriodResult(accounts, entries, fiscalYearStart, bsDate);
+    const resultadoEjercicio = currentYearResult.resultado;
+
+    // Prior years: all entries before this fiscal year started
+    // Only computed if there are entries before the year boundary
+    let utilidadesAcumuladasDeAniosAnteriores = 0;
+    if (priorYearEnd >= '2000-01-01') {  // sanity guard
+      const priorResult = computePeriodResult(accounts, entries, '0001-01-01', priorYearEnd);
+      utilidadesAcumuladasDeAniosAnteriores = priorResult.resultado;
+    }
+
+    // utilidadesAcumuladasDesplegado = real Pn.2 balance + prior I-G results
+    // The real Pn.2 balance captures manual journal entries (dividends, adjustments).
+    // Prior I-G results capture the economic accumulation not yet formally reclassified.
+    const utilidadesAcumuladasDesplegado = round2(saldoRealCuentaUA + utilidadesAcumuladasDeAniosAnteriores);
+
+    // --- Filter and sort ---
     const filterAndSort = (map: Map<string, AccountBalance>) =>
       Array.from(map.values())
         .filter(x => x.balance !== 0)
         .sort((a, b) => a.id.localeCompare(b.id));
 
-    const activosCorrientes = filterAndSort(activosCorrientesMap);
-    const activosNoCorrientes = filterAndSort(activosNoCorrientesMap);
-    const pasivosCorrientes = filterAndSort(pasivosCorrientesMap);
-    const pasivosNoCorrientes = filterAndSort(pasivosNoCorrientesMap);
-    const patrimonioDetalle = filterAndSort(patrimonioMap);
+    const activosCorrientes    = filterAndSort(activosCorrientesMap);
+    const activosNoCorrientes  = filterAndSort(activosNoCorrientesMap);
+    const pasivosCorrientes    = filterAndSort(pasivosCorrientesMap);
+    const pasivosNoCorrientes  = filterAndSort(pasivosNoCorrientesMap);
+    const patrimonioDetalle    = filterAndSort(patrimonioMap);
 
-    // Totals - apply round2 to prevent floating point errors
-    const totalActivosCorrientes = round2(activosCorrientes.reduce((sum, x) => sum + x.balance, 0));
-    const totalActivosNoCorrientes = round2(activosNoCorrientes.reduce((sum, x) => sum + x.balance, 0));
-    const totalActivo = round2(totalActivosCorrientes + totalActivosNoCorrientes);
+    // --- Totals ---
+    const totalActivosCorrientes   = round2(activosCorrientes.reduce((s, x) => s + x.balance, 0));
+    const totalActivosNoCorrientes = round2(activosNoCorrientes.reduce((s, x) => s + x.balance, 0));
+    const totalActivo              = round2(totalActivosCorrientes + totalActivosNoCorrientes);
 
-    const totalPasivosCorrientes = round2(pasivosCorrientes.reduce((sum, x) => sum + x.balance, 0));
-    const totalPasivosNoCorrientes = round2(pasivosNoCorrientes.reduce((sum, x) => sum + x.balance, 0));
-    const totalPasivo = round2(totalPasivosCorrientes + totalPasivosNoCorrientes);
+    const totalPasivosCorrientes   = round2(pasivosCorrientes.reduce((s, x) => s + x.balance, 0));
+    const totalPasivosNoCorrientes = round2(pasivosNoCorrientes.reduce((s, x) => s + x.balance, 0));
+    const totalPasivo              = round2(totalPasivosCorrientes + totalPasivosNoCorrientes);
 
-    const totalPatrimonioContable = round2(patrimonioDetalle.reduce((sum, x) => sum + x.balance, 0));
-    const totalPatrimonio = round2(totalPatrimonioContable + utilidadAcumulada);
+    // totalPatrimonioContable: only the explicitly listed accounts (no Pn.2, no I-G)
+    const totalPatrimonioContable = round2(patrimonioDetalle.reduce((s, x) => s + x.balance, 0));
+    // totalPatrimonio = contable + UA desplegado + resultado ejercicio
+    const totalPatrimonio = round2(totalPatrimonioContable + utilidadesAcumuladasDesplegado + resultadoEjercicio);
 
-    // Financial Ratios
-    const razonCorriente = totalPasivosCorrientes > 0 
-      ? totalActivosCorrientes / totalPasivosCorrientes 
+    const razonCorriente = totalPasivosCorrientes > 0
+      ? totalActivosCorrientes / totalPasivosCorrientes
       : null;
-    const razonEndeudamiento = totalActivo > 0 
-      ? (totalPasivo / totalActivo) * 100 
-      : 0;
+    const razonEndeudamiento = totalActivo > 0 ? (totalPasivo / totalActivo) * 100 : 0;
     const capitalTrabajo = round2(totalActivosCorrientes - totalPasivosCorrientes);
 
     return {
@@ -212,7 +203,9 @@ export function BalanceSheetReport({
       totalPasivosNoCorrientes,
       totalPasivo,
       patrimonioDetalle,
-      utilidadAcumulada,
+      utilidadesAcumuladasDesplegado,
+      resultadoEjercicio,
+      fiscalYear: fyBounds.year,
       totalPatrimonio,
       check: round2(totalActivo - (totalPasivo + totalPatrimonio)),
       razonCorriente,
@@ -234,7 +227,9 @@ export function BalanceSheetReport({
       totalPasivosNoCorrientes: balanceSheet.totalPasivosNoCorrientes,
       totalPasivo: balanceSheet.totalPasivo,
       patrimonioDetalle: balanceSheet.patrimonioDetalle,
-      utilidadAcumulada: balanceSheet.utilidadAcumulada,
+      utilidadesAcumuladasDesplegado: balanceSheet.utilidadesAcumuladasDesplegado,
+      resultadoEjercicio: balanceSheet.resultadoEjercicio,
+      fiscalYear: balanceSheet.fiscalYear,
       totalPatrimonio: balanceSheet.totalPatrimonio,
       razonCorriente: balanceSheet.razonCorriente,
       razonEndeudamiento: balanceSheet.razonEndeudamiento,
@@ -307,7 +302,6 @@ export function BalanceSheetReport({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* Current Assets */}
                 {renderAccountSection(
                   'ACTIVOS CORRIENTES',
                   balanceSheet.activosCorrientes,
@@ -315,8 +309,6 @@ export function BalanceSheetReport({
                   'text-blue-700 dark:text-blue-400',
                   'bg-blue-50 dark:bg-blue-950/30'
                 )}
-                
-                {/* Non-Current Assets */}
                 {renderAccountSection(
                   'ACTIVOS NO CORRIENTES',
                   balanceSheet.activosNoCorrientes,
@@ -324,8 +316,6 @@ export function BalanceSheetReport({
                   'text-indigo-700 dark:text-indigo-400',
                   'bg-indigo-50 dark:bg-indigo-950/30'
                 )}
-                
-                {/* Total Assets */}
                 <TableRow className="bg-muted">
                   <TableCell colSpan={2} className="text-right font-bold">
                     Total Activos
@@ -347,7 +337,6 @@ export function BalanceSheetReport({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {/* Current Liabilities */}
                 {renderAccountSection(
                   'PASIVOS CORRIENTES',
                   balanceSheet.pasivosCorrientes,
@@ -355,8 +344,6 @@ export function BalanceSheetReport({
                   'text-orange-700 dark:text-orange-400',
                   'bg-orange-50 dark:bg-orange-950/30'
                 )}
-                
-                {/* Non-Current Liabilities */}
                 {renderAccountSection(
                   'PASIVOS NO CORRIENTES',
                   balanceSheet.pasivosNoCorrientes,
@@ -364,8 +351,6 @@ export function BalanceSheetReport({
                   'text-amber-700 dark:text-amber-400',
                   'bg-amber-50 dark:bg-amber-950/30'
                 )}
-                
-                {/* Total Liabilities */}
                 <TableRow className="bg-muted/50">
                   <TableCell colSpan={2} className="text-right font-semibold">
                     Total Pasivos
@@ -386,12 +371,22 @@ export function BalanceSheetReport({
                     <TableCell className="text-right text-sm">{fmt(pat.balance)}</TableCell>
                   </TableRow>
                 ))}
-                {/* Accumulated Profit */}
+                {/* Utilidades Acumuladas (saldo Pn.2 + resultados I-G de años anteriores) */}
+                <TableRow>
+                  <TableCell className="font-mono text-xs">Pn.2</TableCell>
+                  <TableCell className="font-medium text-sm">Utilidades Acumuladas</TableCell>
+                  <TableCell className={`text-right font-medium text-sm ${balanceSheet.utilidadesAcumuladasDesplegado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {fmt(balanceSheet.utilidadesAcumuladasDesplegado)}
+                  </TableCell>
+                </TableRow>
+                {/* Resultado del Ejercicio — solo el año fiscal de bsDate */}
                 <TableRow>
                   <TableCell className="font-mono text-xs">—</TableCell>
-                  <TableCell className="font-medium text-sm">Resultado del Ejercicio</TableCell>
-                  <TableCell className={`text-right font-medium text-sm ${balanceSheet.utilidadAcumulada >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {fmt(balanceSheet.utilidadAcumulada)}
+                  <TableCell className="font-medium text-sm">
+                    Resultado del Ejercicio {balanceSheet.fiscalYear}
+                  </TableCell>
+                  <TableCell className={`text-right font-medium text-sm ${balanceSheet.resultadoEjercicio >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {fmt(balanceSheet.resultadoEjercicio)}
                   </TableCell>
                 </TableRow>
                 <TableRow className="bg-muted/50">
@@ -401,7 +396,6 @@ export function BalanceSheetReport({
                   <TableCell className="text-right font-semibold">{fmt(balanceSheet.totalPatrimonio)}</TableCell>
                 </TableRow>
 
-                {/* Total Liabilities + Equity */}
                 <TableRow className="bg-muted">
                   <TableCell colSpan={2} className="text-right font-bold">
                     Total Pasivo + Patrimonio
@@ -430,14 +424,14 @@ export function BalanceSheetReport({
             <CardContent className="pt-4">
               <div className="text-sm text-muted-foreground">Razón Corriente</div>
               <div className={`text-2xl font-bold flex items-center gap-2 ${
-                balanceSheet.razonCorriente !== null && balanceSheet.razonCorriente >= 1 
-                  ? 'text-green-600' 
+                balanceSheet.razonCorriente !== null && balanceSheet.razonCorriente >= 1
+                  ? 'text-green-600'
                   : 'text-amber-600'
               }`}>
-                {balanceSheet.razonCorriente !== null 
-                  ? `${balanceSheet.razonCorriente.toFixed(2)}x` 
+                {balanceSheet.razonCorriente !== null
+                  ? `${balanceSheet.razonCorriente.toFixed(2)}x`
                   : 'N/A'}
-                {balanceSheet.razonCorriente !== null && balanceSheet.razonCorriente >= 1 
+                {balanceSheet.razonCorriente !== null && balanceSheet.razonCorriente >= 1
                   ? <TrendingUp className="h-5 w-5" />
                   : balanceSheet.razonCorriente !== null && <TrendingDown className="h-5 w-5" />}
               </div>
@@ -446,7 +440,7 @@ export function BalanceSheetReport({
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="border-orange-200 dark:border-orange-800">
             <CardContent className="pt-4">
               <div className="text-sm text-muted-foreground">Razón de Endeudamiento</div>
@@ -460,7 +454,7 @@ export function BalanceSheetReport({
               </div>
             </CardContent>
           </Card>
-          
+
           <Card className="border-green-200 dark:border-green-800">
             <CardContent className="pt-4">
               <div className="text-sm text-muted-foreground">Capital de Trabajo</div>

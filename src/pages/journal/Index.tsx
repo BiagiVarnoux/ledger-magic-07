@@ -48,7 +48,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useJournalForm, LineDraft } from '@/hooks/useJournalForm';
 
 export default function JournalPage() {
-  const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions } = useAccounting();
+  const { accounts, entries, setEntries, adapter, auxiliaryDefinitions, kardexDefinitions, fiscalYears } = useAccounting();
   const { isReadOnly } = useUserAccess();
   
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -111,6 +111,7 @@ export default function JournalPage() {
     accounts,
     entries,
     kardexDefinitions,
+    fiscalYears,
     onKardexPopupOpen: (lineIndex, accountId, lineAmount, lineMemo) => {
       setKardexPopupState({
         isOpen: true,

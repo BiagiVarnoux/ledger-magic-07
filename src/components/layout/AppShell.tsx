@@ -14,7 +14,7 @@ const MODULE_PATHS: Record<string, string[]> = {
   FI:       ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/reports'],
   MM:       ['/inventory', '/shipments'],
   SD:       ['/sales'],
-  SETTINGS: ['/settings'],
+  SETTINGS: ['/settings', '/fiscal-years'],
 };
 
 function getActiveModule(pathname: string): string | null {
@@ -199,7 +199,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             label="Configuración" badge="" icon={Settings}
             isExpanded={expanded.has('SETTINGS')} onToggle={() => toggle('SETTINGS')}
           >
-            <NavItem path="/settings" label="Configuración" currentPath={location.pathname} onClick={close} />
+            <NavItem path="/settings"     label="Configuración" currentPath={location.pathname} onClick={close} />
+            <NavItem path="/fiscal-years" label="Gestiones"     currentPath={location.pathname} onClick={close} />
           </ModuleSection>
         )}
       </nav>

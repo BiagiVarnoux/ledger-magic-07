@@ -89,6 +89,23 @@ export interface AuxiliaryMovementDetail {
   movement_type: 'INCREASE' | 'DECREASE';
 }
 
+export type FiscalYearStatus = 'OPEN' | 'CLOSED';
+
+export interface FiscalYear {
+  id: string;
+  company_id: string;
+  year: number;
+  start_date: string;  // YYYY-MM-DD
+  end_date: string;    // YYYY-MM-DD
+  status: FiscalYearStatus;
+  net_result_snapshot: number | null;
+  closed_at: string | null;
+  closed_by: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface KardexDefinition {
   id: string;
   name: string;

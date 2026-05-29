@@ -1,7 +1,8 @@
 // src/hooks/useJournalForm.ts
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
-import { JournalEntry, JournalLine, Account } from '@/accounting/types';
+import { FiscalYear, JournalEntry, JournalLine, Account } from '@/accounting/types';
+import { isDateInClosedPeriod } from '@/accounting/fiscal-year-utils';
 import { todayISO, toDecimal, formatDecimal, generateEntryId, round2 } from '@/accounting/utils';
 import { KardexData } from '@/components/kardex/InlineKardexPopup';
 
@@ -17,6 +18,7 @@ export interface UseJournalFormProps {
   accounts: Account[];
   entries: JournalEntry[];
   kardexDefinitions: Array<{ account_id: string }>;
+  fiscalYears: FiscalYear[];
   onKardexPopupOpen: (lineIndex: number, accountId: string, lineAmount?: number, lineMemo?: string) => void;
 }
 
@@ -50,6 +52,7 @@ export function useJournalForm({
   accounts,
   entries,
   kardexDefinitions,
+  fiscalYears,
   onKardexPopupOpen,
 }: UseJournalFormProps): UseJournalFormReturn {
   const [date, setDate] = useState<string>(todayISO());
@@ -107,6 +110,18 @@ export function useJournalForm({
   }, [lines]);
 
   const validateAndBuildEntry = useCallback((): JournalEntry | null => {
+    // Period lock — frontend validation.
+    // TODO: agregar trigger de BD en journal_entries para defensa en profundidad del period lock
+    // Ver: supabase/migrations — PR futuro pendiente.
+    if (isDateInClosedPeriod(date, fiscalYears)) {
+      const fy = fiscalYears.find(f => date >= f.start_date && date <= f.end_date);
+      toast.error(
+        `No se pueden registrar asientos en la gestión ${fy?.year ?? ''}, que está cerrada. ` +
+        `Reabra la gestión en Configuración → Gestiones si necesita hacer ajustes.`
+      );
+      return null;
+    }
+
     const clean: JournalLine[] = [];
     for (const l of lines) {
       const acc = l.account_id?.trim();
@@ -144,7 +159,7 @@ export function useJournalForm({
     }
     const id = editingEntry ? editingEntry.id : generateEntryId(date, entries);
     return { id, date, memo: memo.trim() || undefined, lines: clean };
-  }, [lines, accounts, editingEntry, date, memo, entries]);
+  }, [lines, accounts, editingEntry, date, memo, entries, fiscalYears]);
 
   const clearForm = useCallback(() => {
     setMemo('');
