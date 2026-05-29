@@ -20,6 +20,27 @@ async function fetchAllJournalLines(userId: string): Promise<any[]> {
   return rows.map(({ journal_entries, ...line }: any) => line);
 }
 
+/** Returns the first company_id that the user belongs to. */
+async function getUserCompanyId(userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('company_members')
+    .select('company_id')
+    .eq('user_id', userId)
+    .limit(1)
+    .single();
+  if (error || !data) {
+    throw new Error('No se encontró compañía asociada al usuario');
+  }
+  return (data as any).company_id;
+}
+
+/** Paginated SELECT * WHERE company_id = ? for tables without user_id. */
+async function fetchAllCompanyRows(table: string, companyId: string): Promise<any[]> {
+  return await fetchAllPaginated<any>((from, to) =>
+    supabase.from(table as any).select('*').eq('company_id', companyId).range(from, to)
+  );
+}
+
 /** Paginated sale_items via inner join on sales.user_id (no own user_id column). */
 async function fetchAllSaleItems(userId: string): Promise<any[]> {
   const rows = await fetchAllPaginated<any>((from, to) =>
@@ -55,11 +76,15 @@ export interface BackupData {
   shipments?: any[];
   sales?: any[];
   sale_items?: any[];
+  // v2.1 fields
+  fiscal_years?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Usuario no autenticado');
+
+  const companyId = await getUserCompanyId(user.id);
 
   const [
     accounts,
@@ -82,6 +107,7 @@ export async function createFullBackup(): Promise<BackupData> {
     shipments,
     sales,
     sale_items,
+    fiscal_years,
   ] = await Promise.all([
     fetchAllUserRows('accounts', user.id),
     fetchAllUserRows('journal_entries', user.id),
@@ -103,10 +129,11 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllUserRows('shipments', user.id),
     fetchAllUserRows('sales', user.id),
     fetchAllSaleItems(user.id),
+    fetchAllCompanyRows('fiscal_years', companyId),
   ]);
 
   return {
-    version: '2.0',
+    version: '2.1',
     created_at: new Date().toISOString(),
     accounts,
     journal_entries,
@@ -128,6 +155,7 @@ export async function createFullBackup(): Promise<BackupData> {
     shipments,
     sales,
     sale_items,
+    fiscal_years,
   };
 }
 
@@ -164,9 +192,20 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
   };
 
   try {
+    // Resolve company scope for tables that use company_id instead of user_id
+    const userCompanyIdForRestore = await getUserCompanyId(user.id);
+
     // Delete existing data in reverse order of dependencies
     // journal_lines are deleted via CASCADE when journal_entries are deleted
     // auxiliary_movement_details and inventory_movements are deleted via triggers on journal_entries delete
+
+    // fiscal_years: scoped by company_id, not user_id
+    const { error: fyDelError } = await supabase
+      .from('fiscal_years')
+      .delete()
+      .eq('company_id', userCompanyIdForRestore);
+    if (fyDelError) throw new Error(`Error limpiando fiscal_years: ${fyDelError.message}`);
+
     await safeDelete('shipments');
     // sale_items must go before sales (no user_id, scoped via RLS)
     const { error: saleItemsDelError } = await supabase
@@ -313,10 +352,21 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       await chunkedInsert('sale_items', backup.sale_items);
     }
 
+    // v2.1: fiscal_years (scoped by company_id, not user_id)
+    if (backup.fiscal_years?.length) {
+      const fiscalYears = backup.fiscal_years.map((fy: any) => ({
+        ...fy,
+        company_id: userCompanyIdForRestore,
+        // closed_by is preserved as-is (may be null or a valid user UUID)
+      }));
+      await chunkedInsert('fiscal_years', fiscalYears);
+    }
+
     const extras = [];
     if (backup.products?.length) extras.push(`${backup.products.length} productos`);
     if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
     if (backup.sales?.length) extras.push(`${backup.sales.length} ventas`);
+    if (backup.fiscal_years?.length) extras.push(`${backup.fiscal_years.length} gestiones fiscales`);
 
     return { 
       success: true, 
