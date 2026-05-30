@@ -688,6 +688,8 @@ export type Database = {
       }
       products: {
         Row: {
+          archived_at: string | null
+          archived_reason: string | null
           categoria: string | null
           codigo: string
           created_at: string
@@ -697,11 +699,14 @@ export type Database = {
           is_active: boolean
           metodo_valuacion: string
           nombre: string
+          status: 'activo' | 'archivado' | 'descontinuado'
           unidad_medida: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          archived_at?: string | null
+          archived_reason?: string | null
           categoria?: string | null
           codigo: string
           created_at?: string
@@ -711,11 +716,14 @@ export type Database = {
           is_active?: boolean
           metodo_valuacion?: string
           nombre: string
+          status?: 'activo' | 'archivado' | 'descontinuado'
           unidad_medida?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          archived_at?: string | null
+          archived_reason?: string | null
           categoria?: string | null
           codigo?: string
           created_at?: string
@@ -725,6 +733,7 @@ export type Database = {
           is_active?: boolean
           metodo_valuacion?: string
           nombre?: string
+          status?: 'activo' | 'archivado' | 'descontinuado'
           unidad_medida?: string
           updated_at?: string
           user_id?: string

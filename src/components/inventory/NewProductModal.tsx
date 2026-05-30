@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAccounting } from '@/accounting/AccountingProvider';
 import { toast } from 'sonner';
 import { DEFAULT_COMPANY_ID } from '@/lib/constants';
+import { Archive } from 'lucide-react';
 
 const CATEGORIAS = [
   { value: 'electronica', label: 'Electrónica/Tecnología' },
@@ -25,8 +26,13 @@ export interface ProductData {
   cuenta_inventario_id: string | null;
   descripcion: string | null;
   unidad_medida: string;
+  metodo_valuacion: string;
   is_active: boolean;
+  status: 'activo' | 'archivado' | 'descontinuado';
+  archived_at: string | null;
+  archived_reason: string | null;
   user_id: string;
+  company_id: string;
 }
 
 interface NewProductModalProps {
@@ -109,12 +115,23 @@ export function NewProductModal({ isOpen, onClose, onSaved, editProduct }: NewPr
     onClose();
   }
 
+  const isArchivedOrDiscontinued = isEditing && editProduct && editProduct.status !== 'activo';
+
   return (
     <Dialog open={isOpen} onOpenChange={v => !v && resetAndClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
         </DialogHeader>
+        {isArchivedOrDiscontinued && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+            <Archive className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Este producto está <strong>{editProduct!.status}</strong>. Editar sus datos no lo reactivará.
+              Para reactivarlo, usa la sección de productos archivados en el inventario.
+            </p>
+          </div>
+        )}
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Nombre *</Label>

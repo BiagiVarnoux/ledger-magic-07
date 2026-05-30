@@ -71,7 +71,7 @@ export function ShipmentCloseModal({ isOpen, shipment, costos, onConfirm, onCanc
       .from('products')
       .select('id, nombre, codigo, cuenta_inventario_id')
       .eq('user_id', user.user.id)
-      .eq('is_active', true);
+      .eq('status', 'activo');
 
     const prods = (data ?? []) as SupaProduct[];
     setSupaProducts(prods);

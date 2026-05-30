@@ -283,14 +283,22 @@ export default function ShipmentsPage() {
       const newProductIds: Record<string, string> = {};
       for (const link of links) {
         if (link.isNew && link.newProductData) {
-          // Check if product with same codigo already exists
+          // Check if product with same codigo already exists (any status)
           const { data: existing } = await supabase.from('products')
-            .select('id')
+            .select('id, status, nombre')
             .eq('codigo', link.newProductData.codigo)
-            .eq('user_id', user.user.id)
+            .eq('company_id', DEFAULT_COMPANY_ID)
             .maybeSingle();
           if (existing) {
             newProductIds[link.shipmentProductId] = existing.id;
+            if (existing.status === 'archivado') {
+              await supabase.from('products')
+                .update({ status: 'activo', archived_at: null, archived_reason: null })
+                .eq('id', existing.id);
+              toast.info(`Producto "${existing.nombre}" reactivado automáticamente`);
+            } else if (existing.status === 'descontinuado') {
+              toast.warning(`Producto "${existing.nombre}" está marcado como descontinuado. Se vinculó al embarque pero permanece descontinuado.`);
+            }
           } else {
             const { data, error } = await supabase.from('products').insert({
               nombre: link.newProductData.nombre,

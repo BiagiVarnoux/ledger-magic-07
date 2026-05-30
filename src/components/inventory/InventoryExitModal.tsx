@@ -53,7 +53,7 @@ export function InventoryExitModal({ isOpen, onClose, journalEntryId, journalDat
       .from('products')
       .select('id, nombre, codigo')
       .eq('user_id', user.id)
-      .eq('is_active', true);
+      .eq('status', 'activo');
     setProducts(prods || []);
 
     const { data: movs } = await supabase

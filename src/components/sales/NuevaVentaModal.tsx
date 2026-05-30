@@ -87,7 +87,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
       .from('products')
       .select('id, codigo, nombre, cuenta_inventario_id, metodo_valuacion')
       .eq('user_id', user.id)
-      .eq('is_active', true)
+      .eq('status', 'activo')
       .order('nombre');
     setProducts((data ?? []) as ProductOption[]);
   }
