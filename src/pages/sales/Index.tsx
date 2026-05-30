@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Table, TableBody, TableCell, TableFoot, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Plus, ShoppingCart, Ban, DollarSign, TrendingUp, Percent, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -56,8 +56,10 @@ interface SaleItem {
   product_codigo: string | null;
   cantidad: number;
   precio_unitario_neto: number;
-  costo_unitario: number | null;
   subtotal_neto: number;
+  costo_unitario: number | null;
+  costo_total: number | null;      // precalculado por el RPC (usar este)
+  margen_bruto: number | null;     // precalculado por el RPC
   created_at: string;
 }
 
@@ -116,9 +118,18 @@ export default function SalesPage() {
   }, [confirmedFiltered]);
 
   const tableTotals = useMemo(() => {
-    const cobrado = round2(filtered.filter(s => s.estado === 'confirmed').reduce((sum, s) => sum + s.total_cobrado, 0));
-    const costo = round2(filtered.filter(s => s.estado === 'confirmed' && s.total_costo !== null).reduce((sum, s) => sum + (s.total_costo ?? 0), 0));
-    const margen = round2(cobrado - costo);
+    const confirmed = filtered.filter(s => s.estado === 'confirmed');
+    const cobrado = round2(confirmed.reduce((sum, s) => sum + s.total_cobrado, 0));
+    const costo = round2(
+      confirmed.filter(s => s.total_costo !== null)
+               .reduce((sum, s) => sum + (s.total_costo ?? 0), 0)
+    );
+    // Margen = precio_neto_total - costo (excluye IVA, igual que el RPC)
+    const netoTotal = round2(
+      confirmed.filter(s => s.total_costo !== null)
+               .reduce((sum, s) => sum + s.precio_neto_total, 0)
+    );
+    const margen = round2(netoTotal - costo);
     return { cobrado, costo, margen };
   }, [filtered]);
 
@@ -161,8 +172,9 @@ export default function SalesPage() {
 
   const detailTotals = useMemo(() => {
     if (!detailSale || saleItems.length === 0) return null;
-    const costo = round2(saleItems.reduce((sum, it) => sum + (it.costo_unitario !== null ? it.costo_unitario * it.cantidad : 0), 0));
-    const margen = round2((detailSale.precio_neto_total) - costo);
+    // Usar costo_total precalculado por el RPC (correcto para FIFO multi-lote)
+    const costo = round2(saleItems.reduce((sum, it) => sum + (it.costo_total ?? 0), 0));
+    const margen = round2(detailSale.precio_neto_total - costo);
     const pct = detailSale.precio_neto_total > 0 ? round2((margen / detailSale.precio_neto_total) * 100) : 0;
     return { costo, margen, pct };
   }, [detailSale, saleItems]);
@@ -307,15 +319,15 @@ export default function SalesPage() {
               })}
             </TableBody>
             {/* Totales al pie */}
-            <tfoot>
-              <tr className="border-t bg-muted/30 font-semibold text-sm">
-                <td colSpan={5} className="px-4 py-2 text-muted-foreground">Totales (confirmadas)</td>
-                <td className="px-4 py-2 text-right">Bs {fmt(tableTotals.cobrado)}</td>
-                <td className="px-4 py-2 text-right text-muted-foreground">Bs {fmt(tableTotals.costo)}</td>
-                <td className="px-4 py-2 text-right">Bs {fmt(tableTotals.margen)}</td>
-                <td colSpan={2}></td>
-              </tr>
-            </tfoot>
+            <TableFooter>
+              <TableRow className="bg-muted/30 font-semibold text-sm">
+                <TableCell colSpan={5} className="text-muted-foreground">Totales (confirmadas)</TableCell>
+                <TableCell className="text-right">Bs {fmt(tableTotals.cobrado)}</TableCell>
+                <TableCell className="text-right text-muted-foreground">Bs {fmt(tableTotals.costo)}</TableCell>
+                <TableCell className="text-right">Bs {fmt(tableTotals.margen)}</TableCell>
+                <TableCell colSpan={2}></TableCell>
+              </TableRow>
+            </TableFooter>
           </Table>
         </div>
       )}
