@@ -95,8 +95,8 @@ export function CustomerSearchCombobox({ value, customerName, onChange, disabled
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const showDropdown = open && !value && (filtered.length > 0 || (query.length >= 3 && !loading));
-  const showCreateOption = open && !value && query.length >= 3 && filtered.length === 0;
+  const showDropdown = open && !value && query.length >= 1 && (filtered.length > 0 || query.length >= 3);
+  const showCreateOption = open && !value && query.length >= 3;
 
   return (
     <>
