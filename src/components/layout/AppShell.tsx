@@ -180,8 +180,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             label="Materiales" badge="MM" icon={Package}
             isExpanded={expanded.has('MM')} onToggle={() => toggle('MM')}
           >
-            <NavItem path="/inventory" label="Inventario" currentPath={location.pathname} onClick={close} />
             <NavItem path="/shipments" label="Embarques"  currentPath={location.pathname} onClick={close} />
+            <NavItem path="/inventory" label="Inventario" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
         )}
 
