@@ -20,6 +20,7 @@ import ShipmentsPage from "./pages/shipments/Index";
 import InventoryPage from "./pages/inventory/Index";
 import SalesPage from "./pages/sales/Index";
 import CustomersPage from "./pages/customers/Index";
+import DashboardPage from "./pages/dashboard/Index";
 import FiscalYearsPage from "./pages/fiscal-years/Index";
 import NotFound from "./pages/NotFound";
 
@@ -60,6 +61,7 @@ function AppRoutes() {
         {isOwner && <Route path="shipments" element={<ShipmentsPage />} />}
         {isOwner && <Route path="inventory" element={<InventoryPage />} />}
         {isOwner && <Route path="sales" element={<SalesPage />} />}
+        {isOwner && <Route path="dashboard" element={<DashboardPage />} />}
         {isOwner && <Route path="customers" element={<CustomersPage />} />}
         {isOwner && <Route path="fiscal-years" element={<FiscalYearsPage />} />}
         <Route path="*" element={<NotFound />} />

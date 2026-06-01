@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 const MODULE_PATHS: Record<string, string[]> = {
   FI:       ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/reports'],
   MM:       ['/inventory', '/shipments'],
-  SD:       ['/sales', '/customers'],
+  SD:       ['/dashboard', '/sales', '/customers'],
   SETTINGS: ['/settings', '/fiscal-years'],
 };
 
@@ -190,6 +190,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             label="Ventas" badge="SD" icon={ShoppingCart}
             isExpanded={expanded.has('SD')} onToggle={() => toggle('SD')}
           >
+            <NavItem path="/dashboard" label="Dashboard" currentPath={location.pathname} onClick={close} />
             <NavItem path="/customers" label="Clientes" currentPath={location.pathname} onClick={close} />
             <NavItem path="/sales" label="Ventas" currentPath={location.pathname} onClick={close} />
           </ModuleSection>
