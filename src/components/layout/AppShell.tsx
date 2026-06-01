@@ -11,7 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const MODULE_PATHS: Record<string, string[]> = {
-  FI:       ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/reports'],
+  FI:       ['/accounts', '/journal', '/ledger', '/auxiliary-ledgers', '/receivables', '/reports'],
   MM:       ['/inventory', '/shipments'],
   SD:       ['/dashboard', '/sales', '/customers'],
   SETTINGS: ['/settings', '/fiscal-years'],
@@ -122,6 +122,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         ...(permissions.can_view_journal   ? [{ path: '/journal',           label: 'Libro Diario'      }] : []),
         ...(permissions.can_view_ledger    ? [{ path: '/ledger',            label: 'Libro Mayor'       }] : []),
         ...(permissions.can_view_auxiliary ? [{ path: '/auxiliary-ledgers', label: 'Libros Auxiliares' }] : []),
+        { path: '/receivables', label: 'Cuentas x Cobrar' },
         ...(permissions.can_view_reports   ? [{ path: '/reports',           label: 'Reportes'          }] : []),
       ]
     : [
@@ -129,6 +130,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         { path: '/journal',           label: 'Libro Diario'      },
         { path: '/ledger',            label: 'Libro Mayor'       },
         { path: '/auxiliary-ledgers', label: 'Libros Auxiliares' },
+        { path: '/receivables',       label: 'Cuentas x Cobrar'  },
         { path: '/reports',           label: 'Reportes'          },
       ];
 
@@ -275,7 +277,7 @@ export function AppShell() {
           <p className="text-xs text-muted-foreground">
             {isReadOnly
               ? 'Modo de solo lectura — Estás viendo datos compartidos contigo.'
-              : 'ERP BV — Pia Gemer House'}
+              : 'ERP BV — Biagi & Varnoux'}
           </p>
         </footer>
       </div>

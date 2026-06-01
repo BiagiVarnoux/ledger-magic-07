@@ -78,6 +78,11 @@ export interface BackupData {
   sale_items?: any[];
   // v2.1 fields
   fiscal_years?: any[];
+  // v2.2 fields
+  customers?: any[];
+  receivables?: any[];
+  payables?: any[];
+  debt_payments?: any[];
 }
 
 export async function createFullBackup(): Promise<BackupData> {
@@ -108,6 +113,10 @@ export async function createFullBackup(): Promise<BackupData> {
     sales,
     sale_items,
     fiscal_years,
+    customers,
+    receivables,
+    payables,
+    debt_payments,
   ] = await Promise.all([
     fetchAllUserRows('accounts', user.id),
     fetchAllUserRows('journal_entries', user.id),
@@ -130,10 +139,14 @@ export async function createFullBackup(): Promise<BackupData> {
     fetchAllUserRows('sales', user.id),
     fetchAllSaleItems(user.id),
     fetchAllCompanyRows('fiscal_years', companyId),
+    fetchAllUserRows('customers', user.id),
+    fetchAllUserRows('receivables', user.id),
+    fetchAllUserRows('payables', user.id),
+    fetchAllUserRows('debt_payments', user.id),
   ]);
 
   return {
-    version: '2.1',
+    version: '2.2',
     created_at: new Date().toISOString(),
     accounts,
     journal_entries,
@@ -156,6 +169,10 @@ export async function createFullBackup(): Promise<BackupData> {
     sales,
     sale_items,
     fiscal_years,
+    customers,
+    receivables,
+    payables,
+    debt_payments,
   };
 }
 
@@ -207,6 +224,11 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
     if (fyDelError) throw new Error(`Error limpiando fiscal_years: ${fyDelError.message}`);
 
     await safeDelete('shipments');
+    // debt_payments and receivables/payables must go before sales (FK references)
+    await safeDelete('debt_payments');
+    await safeDelete('receivables');
+    await safeDelete('payables');
+    await safeDelete('customers');
     // sale_items must go before sales (no user_id, scoped via RLS)
     const { error: saleItemsDelError } = await supabase
       .from('sale_items')
@@ -362,11 +384,39 @@ export async function restoreFromBackup(backup: BackupData): Promise<{ success: 
       await chunkedInsert('fiscal_years', fiscalYears);
     }
 
+    // v2.2: customers, receivables, payables, debt_payments
+    // customers must come before receivables (FK: receivables.customer_id → customers.id)
+    if (backup.customers?.length) {
+      const rows = backup.customers.map((c: any) => ({ ...c, user_id: user.id }));
+      await chunkedInsert('customers', rows);
+    }
+
+    // receivables and payables are independent of each other
+    if (backup.receivables?.length) {
+      const rows = backup.receivables.map((r: any) => ({ ...r, user_id: user.id }));
+      await chunkedInsert('receivables', rows);
+    }
+
+    if (backup.payables?.length) {
+      const rows = backup.payables.map((p: any) => ({ ...p, user_id: user.id }));
+      await chunkedInsert('payables', rows);
+    }
+
+    // debt_payments must come after receivables and payables (FKs to both)
+    if (backup.debt_payments?.length) {
+      const rows = backup.debt_payments.map((d: any) => ({ ...d, user_id: user.id }));
+      await chunkedInsert('debt_payments', rows);
+    }
+
     const extras = [];
     if (backup.products?.length) extras.push(`${backup.products.length} productos`);
     if (backup.shipments?.length) extras.push(`${backup.shipments.length} embarques`);
     if (backup.sales?.length) extras.push(`${backup.sales.length} ventas`);
     if (backup.fiscal_years?.length) extras.push(`${backup.fiscal_years.length} gestiones fiscales`);
+    if (backup.customers?.length) extras.push(`${backup.customers.length} clientes`);
+    if (backup.receivables?.length) extras.push(`${backup.receivables.length} CxC`);
+    if (backup.payables?.length) extras.push(`${backup.payables.length} CxP`);
+    if (backup.debt_payments?.length) extras.push(`${backup.debt_payments.length} pagos`);
 
     return { 
       success: true, 
