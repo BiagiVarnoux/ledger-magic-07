@@ -12,6 +12,7 @@ import { useUserAccess } from '@/contexts/UserAccessContext';
 import { ReadOnlyBanner } from '@/components/shared/ReadOnlyBanner';
 import { fmt, round2 } from '@/accounting/utils';
 import { listSales, voidSale, CANAL_LABELS, type SaleRow } from '@/domain/sales';
+import { useAccounting } from '@/accounting/AccountingProvider';
 import { NuevaVentaModal } from '@/components/sales/NuevaVentaModal';
 
 type PeriodFilter = 'month' | 'prev_month' | 'last30' | 'all';
@@ -65,6 +66,7 @@ interface SaleItem {
 
 export default function SalesPage() {
   const { isReadOnly } = useUserAccess();
+  const { reloadEntries } = useAccounting();
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
@@ -162,6 +164,7 @@ export default function SalesPage() {
       setVoidTarget(null);
       setVoidStep(1);
       setVoidReason('');
+      await reloadEntries();
       load();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Error al anular');

@@ -12,6 +12,7 @@ import { Trash2, ShoppingCart, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { fmt, todayISO, round2 } from '@/accounting/utils';
+import { useAccounting } from '@/accounting/AccountingProvider';
 import { DEFAULT_COMPANY_ID } from '@/lib/constants';
 import {
   calculateTaxes,
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
+  const { reloadEntries } = useAccounting();
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [stockMap, setStockMap] = useState<Record<string, { stock: number; cpp: number }>>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -217,6 +219,7 @@ export function NuevaVentaModal({ isOpen, onClose, onSaved }: Props) {
         DEFAULT_COMPANY_ID,
       );
       toast.success(`Venta ${result.numero} registrada`);
+      await reloadEntries();
       onSaved();
       onClose();
     } catch (e: unknown) {

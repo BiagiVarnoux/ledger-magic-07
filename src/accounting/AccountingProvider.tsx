@@ -19,6 +19,7 @@ interface AccountingContextType {
   setAuxiliaryDefinitions: React.Dispatch<React.SetStateAction<AuxiliaryLedgerDefinition[]>>;
   setKardexDefinitions: React.Dispatch<React.SetStateAction<KardexDefinition[]>>;
   setFiscalYears: React.Dispatch<React.SetStateAction<FiscalYear[]>>;
+  reloadEntries: () => Promise<void>;
   adapter: IDataAdapter;
 }
 
@@ -44,10 +45,21 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
   const [kardexDefinitions, setKardexDefinitions] = useState<KardexDefinition[]>([]);
   const [fiscalYears, setFiscalYears] = useState<FiscalYear[]>([]);
   const [adapter, setAdapter] = useState<IDataAdapter>(LocalAdapter);
+  const adapterRef = React.useRef<IDataAdapter>(LocalAdapter);
+
+  async function reloadEntries() {
+    try {
+      const es = await adapterRef.current.loadEntries();
+      setEntries(es);
+    } catch (e: any) {
+      console.error('reloadEntries:', e);
+    }
+  }
 
   useEffect(() => {
     (async () => {
       const db = await pickAdapter();
+      adapterRef.current = db;
       setAdapter(db);
       try {
         const acc = await db.loadAccounts();
@@ -96,6 +108,7 @@ export function AccountingProvider({ children }: AccountingProviderProps) {
       setAuxiliaryDefinitions,
       setKardexDefinitions,
       setFiscalYears,
+      reloadEntries,
       adapter
     }}>
       {children}
